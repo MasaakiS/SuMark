@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+target/
+dist/
+*.log
+*.lock
+.vscode/
+.idea/
+*.backup
+要件.md

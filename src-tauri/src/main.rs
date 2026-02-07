@@ -1,0 +1,44 @@
+// Prevents additional console window on Windows in release, DO NOT REMOVE!!
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use chrono::{Local, Datelike, Timelike};
+
+// 現在の日付を返すコマンド
+#[tauri::command]
+fn get_current_date() -> String {
+    let now = Local::now();
+    format!("{:04}-{:02}-{:02}", now.year(), now.month(), now.day())
+}
+
+// 現在の日時を返すコマンド
+#[tauri::command]
+fn get_current_datetime() -> String {
+    let now = Local::now();
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        now.year(),
+        now.month(),
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second()
+    )
+}
+
+// 現在の時刻を返すコマンド
+#[tauri::command]
+fn get_current_time() -> String {
+    let now = Local::now();
+    format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second())
+}
+
+fn main() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            get_current_date,
+            get_current_datetime,
+            get_current_time
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

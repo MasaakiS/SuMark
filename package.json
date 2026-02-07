@@ -1,0 +1,25 @@
+{
+  "name": "sumark",
+  "version": "0.1.0",
+  "description": "SuMark - A powerful WYSIWYG Markdown editor",
+  "main": "src/index.html",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev --no-watch",
+    "dev:watch": "tauri dev",
+    "build": "tauri build",
+    "build:mac": "tauri build --target universal-apple-darwin",
+    "build:win": "tauri build --target x86_64-pc-windows-msvc"
+  },
+  "keywords": [
+    "markdown",
+    "editor",
+    "tauri",
+    "desktop-app"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.5.0"
+  }
+}
