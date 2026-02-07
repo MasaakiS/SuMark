@@ -1,6 +1,6 @@
 # SuMark
 
-Tauri ベースのデスクトップ向け WYSIWYG Markdown エディタです。MarkText のように、Markdown を書きながらリアルタイムにリッチテキスト表示を行います。
+Tauri ベースのデスクトップ向け WYSIWYG Markdown エディタです。Markdown を書きながらリアルタイムにリッチテキスト表示を行います。
 
 ## 特徴
 
