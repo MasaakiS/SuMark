@@ -51,7 +51,55 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'SuMark ${{ github.ref_name }}'
-          releaseBody: 'See the assets to download and install SuMark.'
+          releaseBody: |
+            ## Downloads
+
+            ### Installer (recommended)
+            | OS | File |
+            |---|---|
+            | macOS | `.dmg` |
+            | Windows | `.msi` |
+
+            ### Portable (no install required)
+            | OS | File |
+            |---|---|
+            | macOS | `SuMark.app.zip` |
+            | Windows | `SuMark-portable-windows.zip` |
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
+
+      # Create portable zip for macOS
+      - name: Create portable zip (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          APP_PATH=$(find src-tauri/target -name "SuMark.app" -type d | head -1)
+          if [ -n "$APP_PATH" ]; then
+            ditto -c -k --sequesterRsrc "$APP_PATH" "SuMark-portable-macos.zip"
+          fi
+
+      - name: Upload portable zip (macOS)
+        if: matrix.platform == 'macos-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          files: SuMark-portable-macos.zip
+
+      # Create portable zip for Windows
+      - name: Create portable zip (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "SuMark.exe" | Where-Object { $_.DirectoryName -like "*release*" -and $_.DirectoryName -notlike "*deps*" } | Select-Object -First 1
+          if ($exe) {
+            Compress-Archive -Path $exe.FullName -DestinationPath "SuMark-portable-windows.zip"
+          }
+
+      - name: Upload portable zip (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          files: SuMark-portable-windows.zip
