@@ -36,7 +36,7 @@
         "removeFile": true,
         "renameFile": true,
         "exists": true,
-        "scope": ["$HOME/**", "$DOCUMENT/**", "$DESKTOP/**", "$DOWNLOAD/**"]
+        "scope": ["**"]
       }
     },
     "bundle": {
