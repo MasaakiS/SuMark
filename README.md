@@ -133,6 +133,16 @@ npm install
 npm run dev
 ```
 
+> ⚠️ **macOS について**
+> 現在の配布物は未署名のため、初回起動時に Gatekeeper でブロックされる場合があります。
+> その場合は「システム設定 → プライバシーとセキュリティ」から許可してください。
+> どうしても起動できない場合は、アプリの場所に合わせて以下を実行してください（自己責任）：
+> 
+> ```bash
+> # 例: アプリが /Applications にある場合
+> sudo xattr -r -d com.apple.quarantine /Applications/SuMark.app
+> ```
+
 ## ビルド
 
 ### macOS向けビルド
