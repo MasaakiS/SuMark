@@ -73,7 +73,7 @@ const EMOJI_MAP = {
 };
 
 // Tauri APIs
-let invoke, tauriOpen, tauriSave, readTextFile, writeTextFile, readBinaryFile, shellOpen;
+let invoke, tauriOpen, tauriSave, readTextFile, writeTextFile, readBinaryFile, writeBinaryFile, createDir, readDir, exists, shellOpen, convertFileSrc;
 
 // DOM
 let editor, currentFileSpan, wordCountSpan, tabList;
@@ -97,6 +97,11 @@ function init() {
         readTextFile = window.__TAURI__.fs.readTextFile;
         writeTextFile = window.__TAURI__.fs.writeTextFile;
         readBinaryFile = window.__TAURI__.fs.readBinaryFile;
+        writeBinaryFile = window.__TAURI__.fs.writeBinaryFile;
+        createDir = window.__TAURI__.fs.createDir;
+        readDir = window.__TAURI__.fs.readDir;
+        exists = window.__TAURI__.fs.exists;
+        convertFileSrc = window.__TAURI__.tauri.convertFileSrc;
         shellOpen = window.__TAURI__.shell.open;
         console.log('Tauri APIs OK');
     } catch (err) {
@@ -217,7 +222,21 @@ function configureTurndown() {
     // Remove copy buttons from Turndown output
     turndownService.addRule('codeCopyBtn', {
         filter: function(node) {
-            return node.classList && node.classList.contains('code-copy-btn');
+            return node.classList && (
+                node.classList.contains('code-copy-btn') ||
+                node.classList.contains('code-copy-container') ||
+                node.classList.contains('image-copy-btn')
+            );
+        },
+        replacement: function() {
+            return '';
+        }
+    });
+
+    // Remove line numbers gutter from Turndown output
+    turndownService.addRule('lineNumbersGutter', {
+        filter: function(node) {
+            return node.classList && node.classList.contains('line-numbers-gutter');
         },
         replacement: function() {
             return '';
@@ -245,6 +264,42 @@ function configureTurndown() {
             const src = node.src || '';
             const width = parseInt(node.style.width);
             return '<img src="' + src + '" alt="' + alt + '" width="' + width + '">';
+        }
+    });
+
+    // Toggle (details/summary) blocks: preserve as HTML
+    turndownService.addRule('detailsBlock', {
+        filter: function(node) {
+            return node.nodeName === 'DETAILS';
+        },
+        replacement: function(content, node) {
+            const summary = node.querySelector('summary');
+            const summaryText = summary ? summary.textContent.trim() : 'トグル';
+            // Get toggle-content div or all content after summary
+            const contentDiv = node.querySelector('.toggle-content');
+            let innerMd = '';
+            if (contentDiv) {
+                innerMd = turndownService.turndown(contentDiv.innerHTML).trim();
+            } else {
+                // Fallback: collect all child nodes except summary
+                const tempDiv = document.createElement('div');
+                Array.from(node.childNodes).forEach(child => {
+                    if (child !== summary) tempDiv.appendChild(child.cloneNode(true));
+                });
+                innerMd = turndownService.turndown(tempDiv.innerHTML).trim();
+            }
+            if (!innerMd) innerMd = '内容を入力...';
+            return '\n<details>\n<summary>' + summaryText + '</summary>\n\n' + innerMd + '\n\n</details>\n';
+        }
+    });
+
+    // Remove toggle-content wrapper from turndown (handled by detailsBlock rule)
+    turndownService.addRule('toggleContentDiv', {
+        filter: function(node) {
+            return node.classList && node.classList.contains('toggle-content');
+        },
+        replacement: function(content) {
+            return content;
         }
     });
 
@@ -281,7 +336,16 @@ function getMarkdown() {
         console.error('Turndown not available');
         return editor.textContent || '';
     }
-    return turndownService.turndown(editor.innerHTML);
+
+    // Before Turndown conversion, clean <br> inside table cells
+    const clone = editor.cloneNode(true);
+    clone.querySelectorAll('th br, td br').forEach(br => {
+        br.parentNode.removeChild(br);
+    });
+
+    let md = turndownService.turndown(clone.innerHTML);
+
+    return md;
 }
 
 function setMarkdown(md) {
@@ -305,6 +369,15 @@ function setMarkdown(md) {
 
     // Render Mermaid diagrams
     renderMermaidBlocks();
+
+    // Add delete buttons to TOC containers
+    setupTocDeleteButtons();
+
+    // Add line numbers to code blocks
+    updateAllLineNumbers();
+
+    // Setup toggle blocks
+    setupToggleBlocks();
 }
 
 // ========== Code Block Live Highlighting ==========
@@ -370,6 +443,54 @@ function highlightCodeBlock(codeEl) {
     if (isInsideCode) {
         setCaretCharacterOffset(codeEl, caretOffset);
     }
+
+    // Update line numbers
+    const pre = codeEl.closest('pre');
+    if (pre) updateLineNumbers(pre);
+}
+
+// ========== Line Numbers ==========
+function updateLineNumbers(pre) {
+    if (!pre || pre.tagName !== 'PRE') return;
+    // Skip Mermaid containers
+    if (pre.closest('.mermaid-container')) return;
+
+    const code = pre.querySelector('code');
+    if (!code) return;
+
+    const text = code.textContent;
+    const lines = text.split('\n');
+    // Remove trailing empty line (common with code blocks ending in \n)
+    if (lines.length > 1 && lines[lines.length - 1] === '') {
+        lines.pop();
+    }
+    const lineCount = Math.max(lines.length, 1);
+
+    let gutter = pre.querySelector('.line-numbers-gutter');
+    if (!gutter) {
+        gutter = document.createElement('div');
+        gutter.className = 'line-numbers-gutter';
+        gutter.setAttribute('contenteditable', 'false');
+        pre.insertBefore(gutter, pre.firstChild);
+    }
+
+    // Only update if line count changed
+    const currentCount = gutter.children.length;
+    if (currentCount !== lineCount) {
+        let html = '';
+        for (let i = 1; i <= lineCount; i++) {
+            html += '<span>' + i + '</span>';
+        }
+        gutter.innerHTML = html;
+    }
+}
+
+function updateAllLineNumbers() {
+    editor.querySelectorAll('pre').forEach(pre => {
+        if (!pre.closest('.mermaid-container')) {
+            updateLineNumbers(pre);
+        }
+    });
 }
 
 function debouncedHighlightCodeAtCursor() {
@@ -496,6 +617,18 @@ function setupEventListeners() {
 
     // Link click handling - Cmd/Ctrl+click opens in browser
     editor.addEventListener('click', e => {
+        // TOC delete button
+        if (e.target.closest('.toc-delete-btn')) {
+            e.preventDefault();
+            e.stopPropagation();
+            const tocContainer = e.target.closest('.toc-container');
+            if (tocContainer) {
+                tocContainer.remove();
+                markModified();
+            }
+            return;
+        }
+
         // TOC link click - scroll to heading
         const tocLink = e.target.closest('.toc-link');
         if (tocLink) {
@@ -517,6 +650,19 @@ function setupEventListeners() {
             return;
         }
 
+        // Click on non-editable element (TOC, Mermaid preview): select it so Backspace/Delete can remove it
+        const nonEditable = e.target.closest('[contenteditable="false"]');
+        if (nonEditable && nonEditable !== editor && editor.contains(nonEditable)) {
+            // Don't interfere with buttons inside non-editable elements
+            if (e.target.closest('button')) return;
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.selectNode(nonEditable);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            return;
+        }
+
         const link = e.target.closest('a');
         if (link) {
             if (e.metaKey || e.ctrlKey) {
@@ -534,6 +680,8 @@ function setupEventListeners() {
         { id: 'newBtn',       handler: newFile },
         { id: 'openBtn',      handler: openFile },
         { id: 'saveBtn',      handler: saveFile },
+        { id: 'saveAsBtn',    handler: saveAsFile },
+        { id: 'pdfBtn',       handler: exportPDF },
         { id: 'undoBtn',      handler: () => document.execCommand('undo') },
         { id: 'redoBtn',      handler: () => document.execCommand('redo') },
         { id: 'boldBtn',      handler: () => document.execCommand('bold') },
@@ -551,6 +699,7 @@ function setupEventListeners() {
         { id: 'tableBtn',     handler: insertTable },
         { id: 'codeBlockBtn', handler: insertCodeBlock },
         { id: 'quoteBtn',     handler: applyBlockquote },
+        { id: 'toggleBtn',    handler: insertToggle },
         { id: 'hrBtn',        handler: insertHorizontalRule },
         { id: 'dateBtn',      handler: insertDate },
         { id: 'timeBtn',      handler: insertTime },
@@ -591,6 +740,19 @@ function onEditorInput() {
 
     // Re-highlight code block if cursor is inside one
     debouncedHighlightCodeAtCursor();
+
+    // Update line numbers for code block at cursor
+    const sel2 = window.getSelection();
+    if (sel2.rangeCount) {
+        let n = sel2.anchorNode;
+        while (n && n !== editor) {
+            if (n.tagName === 'PRE') { updateLineNumbers(n); break; }
+            if (n.tagName === 'CODE' && n.parentElement && n.parentElement.tagName === 'PRE') {
+                updateLineNumbers(n.parentElement); break;
+            }
+            n = n.parentElement;
+        }
+    }
 }
 
 // ========== Block-Level Auto-Conversion ==========
@@ -709,6 +871,17 @@ function handleBlockAutoConversion() {
     const ulContentMatch = text.match(/^[-*] (.+)$/);
     if (ulContentMatch && !text.startsWith('- [')) {
         const content = ulContentMatch[1];
+        // Check if inside toggle-content — use DOM manipulation instead of execCommand
+        const toggleContent = block.closest('.toggle-content');
+        if (toggleContent) {
+            const ul = document.createElement('ul');
+            const li = document.createElement('li');
+            li.textContent = content;
+            ul.appendChild(li);
+            block.parentNode.replaceChild(ul, block);
+            setCursorToEnd(li);
+            return;
+        }
         block.textContent = content;
         document.execCommand('formatBlock', false, 'p');
         // Select all text in the block, then apply list
@@ -723,6 +896,16 @@ function handleBlockAutoConversion() {
     }
     // Unordered list prefix only: "- " or "* "
     if (text === '- ' || text === '* ') {
+        const toggleContent = block.closest('.toggle-content');
+        if (toggleContent) {
+            const ul = document.createElement('ul');
+            const li = document.createElement('li');
+            li.innerHTML = '<br>';
+            ul.appendChild(li);
+            block.parentNode.replaceChild(ul, block);
+            setCursorTo(li);
+            return;
+        }
         block.textContent = '';
         block.innerHTML = '<br>';
         document.execCommand('formatBlock', false, 'p');
@@ -734,6 +917,16 @@ function handleBlockAutoConversion() {
     const olContentMatch = text.match(/^\d+\. (.+)$/);
     if (olContentMatch) {
         const content = olContentMatch[1];
+        const toggleContent = block.closest('.toggle-content');
+        if (toggleContent) {
+            const ol = document.createElement('ol');
+            const li = document.createElement('li');
+            li.textContent = content;
+            ol.appendChild(li);
+            block.parentNode.replaceChild(ol, block);
+            setCursorToEnd(li);
+            return;
+        }
         block.textContent = content;
         document.execCommand('formatBlock', false, 'p');
         const newSel = window.getSelection();
@@ -747,10 +940,69 @@ function handleBlockAutoConversion() {
     }
     // Ordered list prefix only: "1. "
     if (/^\d+\. $/.test(text)) {
+        const toggleContent = block.closest('.toggle-content');
+        if (toggleContent) {
+            const ol = document.createElement('ol');
+            const li = document.createElement('li');
+            li.innerHTML = '<br>';
+            ol.appendChild(li);
+            block.parentNode.replaceChild(ol, block);
+            setCursorTo(li);
+            return;
+        }
         block.textContent = '';
         block.innerHTML = '<br>';
         document.execCommand('formatBlock', false, 'p');
         document.execCommand('insertOrderedList');
+        return;
+    }
+
+    // Toggle with content: ">>> text"
+    const toggleContentMatch = text.match(/^>>> (.+)$/);
+    if (toggleContentMatch) {
+        const content = toggleContentMatch[1];
+        const details = document.createElement('details');
+        details.setAttribute('open', '');
+        const summary = document.createElement('summary');
+        summary.textContent = content;
+        summary.setAttribute('contenteditable', 'true');
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'toggle-content';
+        const p = document.createElement('p');
+        p.innerHTML = '<br>';
+        contentDiv.appendChild(p);
+        details.appendChild(summary);
+        details.appendChild(contentDiv);
+        block.parentNode.replaceChild(details, block);
+        const afterP = document.createElement('p');
+        afterP.innerHTML = '<br>';
+        details.parentNode.insertBefore(afterP, details.nextSibling);
+        setCursorTo(p);
+        return;
+    }
+    // Toggle prefix only: ">>> "
+    if (text === '>>> ') {
+        const details = document.createElement('details');
+        details.setAttribute('open', '');
+        const summary = document.createElement('summary');
+        summary.textContent = 'トグル';
+        summary.setAttribute('contenteditable', 'true');
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'toggle-content';
+        const p = document.createElement('p');
+        p.innerHTML = '<br>';
+        contentDiv.appendChild(p);
+        details.appendChild(summary);
+        details.appendChild(contentDiv);
+        block.parentNode.replaceChild(details, block);
+        const afterP = document.createElement('p');
+        afterP.innerHTML = '<br>';
+        details.parentNode.insertBefore(afterP, details.nextSibling);
+        // Select summary text for editing
+        const r = document.createRange();
+        r.selectNodeContents(summary);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(r);
         return;
     }
 
@@ -939,6 +1191,79 @@ function handleKeyDown(e) {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const mod = isMac ? e.metaKey : e.ctrlKey;
 
+    // Cmd/Ctrl+P: PDF export
+    if (mod && e.key === 'p') {
+        e.preventDefault();
+        exportPDF();
+        return;
+    }
+
+    // Backspace/Delete: handle non-editable elements (TOC, Mermaid, etc.)
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+        const sel = window.getSelection();
+        if (sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+
+            // Case 1: Selection spans across a non-editable element
+            if (!range.collapsed) {
+                const selected = range.commonAncestorContainer;
+                const nonEditable = selected.nodeType === 1
+                    ? selected.closest('[contenteditable="false"]')
+                    : selected.parentElement && selected.parentElement.closest('[contenteditable="false"]');
+                if (nonEditable && nonEditable !== editor) {
+                    e.preventDefault();
+                    nonEditable.remove();
+                    markModified();
+                    return;
+                }
+            }
+
+            // Case 2: Cursor is at the boundary of a non-editable element
+            if (range.collapsed) {
+                const node = range.startContainer;
+                const offset = range.startOffset;
+                let target = null;
+
+                if (e.key === 'Backspace') {
+                    // Check previous sibling or previous node
+                    if (node.nodeType === 1 && offset > 0) {
+                        const prev = node.childNodes[offset - 1];
+                        if (prev && prev.nodeType === 1 && prev.getAttribute('contenteditable') === 'false') {
+                            target = prev;
+                        }
+                    } else if (node.nodeType === 3 && offset === 0) {
+                        // At start of text node, check previous sibling of parent block
+                        const block = getParentBlock(node);
+                        if (block && block.previousElementSibling &&
+                            block.previousElementSibling.getAttribute('contenteditable') === 'false') {
+                            target = block.previousElementSibling;
+                        }
+                    }
+                } else { // Delete
+                    if (node.nodeType === 1 && offset < node.childNodes.length) {
+                        const next = node.childNodes[offset];
+                        if (next && next.nodeType === 1 && next.getAttribute('contenteditable') === 'false') {
+                            target = next;
+                        }
+                    } else if (node.nodeType === 3 && offset === node.textContent.length) {
+                        const block = getParentBlock(node);
+                        if (block && block.nextElementSibling &&
+                            block.nextElementSibling.getAttribute('contenteditable') === 'false') {
+                            target = block.nextElementSibling;
+                        }
+                    }
+                }
+
+                if (target) {
+                    e.preventDefault();
+                    target.remove();
+                    markModified();
+                    return;
+                }
+            }
+        }
+    }
+
     // Enter key: special handling
     if (e.key === 'Enter') {
         handleEnterKey(e);
@@ -983,7 +1308,11 @@ function handleKeyDown(e) {
                 break;
             case 's':
                 e.preventDefault();
-                saveFile();
+                if (e.shiftKey) {
+                    saveAsFile();
+                } else {
+                    saveFile();
+                }
                 break;
             case 'b':
                 e.preventDefault();
@@ -1012,18 +1341,179 @@ function handleEnterKey(e) {
     if (!sel.rangeCount) return;
 
     const range = sel.getRangeAt(0);
+
+    // ---- Details/Summary: handle BEFORE getParentBlock (summary is not a block tag) ----
+    let detailsAncestor = range.startContainer;
+    while (detailsAncestor && detailsAncestor !== editor) {
+        if (detailsAncestor.nodeType === 1 && detailsAncestor.tagName === 'DETAILS') break;
+        detailsAncestor = detailsAncestor.parentNode;
+    }
+    if (detailsAncestor && detailsAncestor.tagName === 'DETAILS' && detailsAncestor !== editor) {
+        const detailsEl = detailsAncestor;
+        const summaryEl = detailsEl.querySelector(':scope > summary');
+
+        // Case 1: Cursor is in summary → move to toggle content
+        if (summaryEl && summaryEl.contains(range.startContainer)) {
+            e.preventDefault();
+            let contentDiv = detailsEl.querySelector(':scope > .toggle-content');
+            if (!contentDiv) {
+                contentDiv = document.createElement('div');
+                contentDiv.className = 'toggle-content';
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                contentDiv.appendChild(p);
+                detailsEl.appendChild(contentDiv);
+            }
+            const firstP = contentDiv.querySelector('p') || contentDiv.firstElementChild;
+            if (firstP) {
+                setCursorTo(firstP);
+            } else {
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                contentDiv.appendChild(p);
+                setCursorTo(p);
+            }
+            return;
+        }
+
+        // Case 2: Cursor is in toggle content
+        const toggleContent = detailsEl.querySelector(':scope > .toggle-content');
+        if (toggleContent && toggleContent.contains(range.startContainer)) {
+            const currentBlock = getParentBlock(range.startContainer);
+
+            // If inside a list within toggle, check if at very start of first item
+            // to allow inserting elements before the list
+            if (currentBlock && (currentBlock.tagName === 'LI')) {
+                const parentList = currentBlock.closest('ul, ol');
+                if (parentList && toggleContent.firstElementChild === parentList) {
+                    // Check if this is the first LI and cursor is at the very start
+                    const firstLi = parentList.querySelector('li');
+                    if (firstLi === currentBlock) {
+                        const testRange = document.createRange();
+                        testRange.selectNodeContents(currentBlock);
+                        testRange.setEnd(range.startContainer, range.startOffset);
+                        const isAtStart = testRange.toString().length === 0;
+                        if (isAtStart && currentBlock.textContent.trim() !== '') {
+                            e.preventDefault();
+                            const newP = document.createElement('p');
+                            newP.innerHTML = '<br>';
+                            toggleContent.insertBefore(newP, parentList);
+                            setCursorTo(newP);
+                            return;
+                        }
+                    }
+                }
+                // fall through to normal list Enter handling
+            } else if (currentBlock && (currentBlock.tagName === 'TD' || currentBlock.tagName === 'TH')) {
+                // fall through to normal table Enter handling
+            } else {
+                // Check if cursor is at the very start of the first element
+                if (currentBlock && toggleContent.firstElementChild === currentBlock) {
+                    const testRange = document.createRange();
+                    testRange.selectNodeContents(currentBlock);
+                    testRange.setEnd(range.startContainer, range.startOffset);
+                    const isAtStart = testRange.toString().length === 0;
+                    if (isAtStart && currentBlock.textContent.trim() !== '') {
+                        e.preventDefault();
+                        const newP = document.createElement('p');
+                        newP.innerHTML = '<br>';
+                        toggleContent.insertBefore(newP, currentBlock);
+                        setCursorTo(newP);
+                        return;
+                    }
+                }
+
+                // Empty line at end: exit toggle
+                if (currentBlock && currentBlock.textContent.trim() === '') {
+                    const children = Array.from(toggleContent.children);
+                    const idx = children.indexOf(currentBlock);
+                    const isLast = idx === children.length - 1;
+                    if (isLast && children.length > 1) {
+                        e.preventDefault();
+                        currentBlock.remove();
+                        let afterEl = detailsEl.nextElementSibling;
+                        if (!afterEl || afterEl.tagName !== 'P') {
+                            afterEl = document.createElement('p');
+                            afterEl.innerHTML = '<br>';
+                            detailsEl.parentNode.insertBefore(afterEl, detailsEl.nextSibling);
+                        }
+                        setCursorTo(afterEl);
+                        return;
+                    }
+                }
+
+                // Normal Enter in toggle content: split text and create new paragraph
+                if (currentBlock) {
+                    e.preventDefault();
+                    const afterRange = document.createRange();
+                    afterRange.setStart(range.startContainer, range.startOffset);
+                    afterRange.setEndAfter(currentBlock.lastChild || currentBlock);
+                    const afterFrag = afterRange.extractContents();
+
+                    const newP = document.createElement('p');
+                    if (afterFrag.textContent.trim() || afterFrag.querySelector('*')) {
+                        newP.appendChild(afterFrag);
+                    } else {
+                        newP.innerHTML = '<br>';
+                    }
+
+                    // Clean up current block if empty
+                    if (!currentBlock.textContent.trim() && !currentBlock.querySelector('br')) {
+                        currentBlock.innerHTML = '<br>';
+                    }
+
+                    // Insert new paragraph after current block within toggle-content
+                    if (currentBlock.nextSibling) {
+                        toggleContent.insertBefore(newP, currentBlock.nextSibling);
+                    } else {
+                        toggleContent.appendChild(newP);
+                    }
+                    setCursorTo(newP);
+                    return;
+                } else {
+                    // No block found (text directly in toggle-content)
+                    e.preventDefault();
+                    const newP = document.createElement('p');
+                    newP.innerHTML = '<br>';
+                    toggleContent.appendChild(newP);
+                    setCursorTo(newP);
+                    return;
+                }
+            }
+        }
+    }
+
     const block = getParentBlock(range.startContainer);
     if (!block) return;
 
     const tag = block.tagName;
 
-    // In heading: create paragraph after, not another heading
+    // In heading: create paragraph, not another heading
     if (/^H[1-6]$/.test(tag)) {
         e.preventDefault();
+
+        // Check if cursor is at the very beginning of the heading
+        const isAtStart = (function() {
+            if (!range.collapsed) return false;
+            const testRange = document.createRange();
+            testRange.selectNodeContents(block);
+            testRange.setEnd(range.startContainer, range.startOffset);
+            return testRange.toString().length === 0;
+        })();
+
         const p = document.createElement('p');
         p.innerHTML = '<br>';
-        block.parentNode.insertBefore(p, block.nextSibling);
-        setCursorTo(p);
+
+        if (isAtStart) {
+            // Insert empty paragraph BEFORE heading (to push heading down)
+            block.parentNode.insertBefore(p, block);
+            // Keep cursor in the heading
+            setCursorTo(block);
+        } else {
+            // Insert paragraph after heading
+            block.parentNode.insertBefore(p, block.nextSibling);
+            setCursorTo(p);
+        }
         return;
     }
 
@@ -1060,6 +1550,8 @@ function handleEnterKey(e) {
         }
         e.preventDefault();
         document.execCommand('insertLineBreak');
+        // Update line numbers after new line
+        if (preEl) updateLineNumbers(preEl);
         return;
     }
 
@@ -1133,6 +1625,41 @@ function handleEnterKey(e) {
         }
 
         // Otherwise, let default list behavior handle it
+        // But inside toggle-content, browser default doesn't work properly
+        const listInToggle = block.closest('.toggle-content');
+        if (listInToggle) {
+            e.preventDefault();
+            const sel3 = window.getSelection();
+            const r3 = sel3.getRangeAt(0);
+
+            // Extract content after cursor
+            const afterRange = document.createRange();
+            afterRange.setStart(r3.startContainer, r3.startOffset);
+            afterRange.setEndAfter(block.lastChild || block);
+            const afterFrag = afterRange.extractContents();
+            const afterText = afterFrag.textContent;
+
+            const newLi = document.createElement('li');
+            if (afterText.trim()) {
+                newLi.appendChild(afterFrag);
+            } else {
+                newLi.innerHTML = '<br>';
+            }
+
+            // Clean up current LI if empty
+            if (!block.textContent.trim() && !block.querySelector('br')) {
+                block.innerHTML = '<br>';
+            }
+
+            const parentList = block.parentNode;
+            if (block.nextSibling) {
+                parentList.insertBefore(newLi, block.nextSibling);
+            } else {
+                parentList.appendChild(newLi);
+            }
+            setCursorTo(newLi);
+            return;
+        }
         return;
     }
 
@@ -1178,6 +1705,8 @@ function handleEnterKey(e) {
             if (lang && typeof hljs !== 'undefined') {
                 highlightCodeBlock(code);
             }
+            // Add line numbers
+            updateLineNumbers(pre);
             return;
         }
     }
@@ -1397,6 +1926,118 @@ function applyHeading(level) {
     } else {
         document.execCommand('formatBlock', false, tag);
     }
+}
+
+function insertToggle() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+
+    const range = sel.getRangeAt(0);
+
+    // Check if already inside a details element
+    let node = range.startContainer;
+    while (node && node !== editor) {
+        if (node.tagName === 'DETAILS') return;
+        node = node.parentNode;
+    }
+
+    const details = document.createElement('details');
+    details.setAttribute('open', '');
+    const summary = document.createElement('summary');
+    summary.setAttribute('contenteditable', 'true');
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'toggle-content';
+    details.appendChild(summary);
+    details.appendChild(contentDiv);
+
+    // Check if there is a selection (non-collapsed range)
+    if (!range.collapsed) {
+        // Collect all block-level elements that overlap the selection
+        const blocksToMove = [];
+        const startBlock = getParentBlock(range.startContainer) || range.startContainer;
+        const endBlock = getParentBlock(range.endContainer) || range.endContainer;
+
+        // Walk through direct children of editor to find blocks in selection
+        let collecting = false;
+        const editorChildren = Array.from(editor.childNodes);
+        for (const child of editorChildren) {
+            if (child.contains(startBlock) || child === startBlock) {
+                collecting = true;
+            }
+            if (collecting) {
+                blocksToMove.push(child);
+            }
+            if (child.contains(endBlock) || child === endBlock) {
+                break;
+            }
+        }
+
+        if (blocksToMove.length > 0) {
+            // Use first block's text as summary, or default
+            const firstText = blocksToMove[0].textContent.trim();
+            summary.textContent = firstText.substring(0, 50) || 'トグル';
+
+            // Insert details before the first collected block
+            const insertBefore = blocksToMove[0];
+            insertBefore.parentNode.insertBefore(details, insertBefore);
+
+            // Move all collected blocks into toggle-content
+            blocksToMove.forEach(b => {
+                contentDiv.appendChild(b);
+            });
+
+            // Ensure toggle-content has content
+            if (contentDiv.children.length === 0) {
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                contentDiv.appendChild(p);
+            }
+
+            // Add a paragraph after details for continuing editing
+            const afterP = document.createElement('p');
+            afterP.innerHTML = '<br>';
+            details.parentNode.insertBefore(afterP, details.nextSibling);
+
+            // Select summary text for editing
+            const r = document.createRange();
+            r.selectNodeContents(summary);
+            sel.removeAllRanges();
+            sel.addRange(r);
+            onEditorInput();
+            return;
+        }
+    }
+
+    // No selection: insert empty toggle (original behavior)
+    summary.textContent = 'トグル';
+    const p = document.createElement('p');
+    p.innerHTML = '<br>';
+    contentDiv.appendChild(p);
+
+    const block = getParentBlock(range.startContainer);
+
+    // Insert after current block or replace empty block
+    if (block && block !== editor) {
+        if (block.textContent.trim() === '' && block.tagName === 'P') {
+            block.parentNode.replaceChild(details, block);
+        } else {
+            block.parentNode.insertBefore(details, block.nextSibling);
+        }
+    } else {
+        editor.appendChild(details);
+    }
+
+    // Add a paragraph after details for continuing editing
+    const afterP = document.createElement('p');
+    afterP.innerHTML = '<br>';
+    details.parentNode.insertBefore(afterP, details.nextSibling);
+
+    // Select the summary text for editing
+    const r = document.createRange();
+    r.selectNodeContents(summary);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    onEditorInput();
 }
 
 function applyBlockquote() {
@@ -1627,11 +2268,76 @@ async function insertImage() {
 }
 
 function insertTable() {
-    const html = '<table><thead><tr><th>列1</th><th>列2</th><th>列3</th></tr></thead>' +
-                 '<tbody><tr><td>データ</td><td>データ</td><td>データ</td></tr>' +
-                 '<tr><td>データ</td><td>データ</td><td>データ</td></tr></tbody></table>' +
-                 '<p><br></p>';
-    document.execCommand('insertHTML', false, html);
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    const block = getParentBlock(range.startContainer);
+    const containerEl = range.startContainer.nodeType === Node.ELEMENT_NODE
+        ? range.startContainer
+        : range.startContainer.parentElement;
+    const cell = containerEl ? containerEl.closest('td, th') : null;
+
+    // Prevent nested tables - do not insert table inside table cells
+    if (cell) {
+        return;
+    }
+
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    ['列1', '列2', '列3'].forEach(text => {
+        const th = document.createElement('th');
+        th.textContent = text;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (let i = 0; i < 2; i++) {
+        const tr = document.createElement('tr');
+        for (let j = 0; j < 3; j++) {
+            const td = document.createElement('td');
+            td.textContent = 'データ';
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+
+    const afterP = document.createElement('p');
+    afterP.innerHTML = '<br>';
+
+    // Find insertion point - check if inside toggle-content
+    const toggleContent = block ? block.closest('.toggle-content') : null;
+    if (toggleContent) {
+        // Insert inside toggle-content
+        if (block && block.parentNode === toggleContent) {
+            if (block.textContent.trim() === '' && block.tagName === 'P') {
+                toggleContent.replaceChild(table, block);
+            } else {
+                toggleContent.insertBefore(table, block.nextSibling);
+            }
+        } else {
+            toggleContent.appendChild(table);
+        }
+        toggleContent.insertBefore(afterP, table.nextSibling);
+    } else if (block && block !== editor && block.parentNode) {
+        block.parentNode.insertBefore(table, block.nextSibling);
+        block.parentNode.insertBefore(afterP, table.nextSibling);
+    } else {
+        editor.appendChild(table);
+        editor.appendChild(afterP);
+    }
+    // Place cursor in first header cell
+    const firstTh = table.querySelector('th');
+    if (firstTh) {
+        const r = document.createRange();
+        r.selectNodeContents(firstTh);
+        sel.removeAllRanges();
+        sel.addRange(r);
+    }
+    onEditorInput();
 }
 
 // Supported languages for code block dropdown (Highlight.js common languages)
@@ -1744,6 +2450,9 @@ function doInsertCodeBlock(lang, savedRange) {
         if (lang && typeof hljs !== 'undefined') {
             highlightCodeBlock(code);
         }
+
+        // Add line numbers
+        updateLineNumbers(pre);
     }
 }
 
@@ -1802,7 +2511,14 @@ async function openFile() {
                     continue;
                 }
 
-                const contents = await readTextFile(filePath);
+                let contents = await readTextFile(filePath);
+
+                // Resolve relative image paths to asset protocol URLs for display
+                const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+                const fileDir = filePath.substring(0, lastSlash);
+                contents = resolveRelativeImages(contents, fileDir);
+                contents = await resolveRelativeCsvLinks(contents, fileDir);
+
                 const filename = filePath.split('/').pop().split('\\').pop();
                 const html = (typeof marked !== 'undefined') ? marked.parse(contents) : contents;
                 createTab(filePath, filename, html);
@@ -1812,6 +2528,185 @@ async function openFile() {
         console.error('Error opening file:', err);
         alert('ファイルを開けませんでした: ' + err);
     }
+}
+
+// Resolve relative image paths in Markdown to asset protocol URLs for display
+// This is a synchronous, lightweight string replacement (no file I/O)
+function resolveRelativeImages(markdown, fileDir) {
+    // Handle nested parentheses in URLs (e.g., Notion exports with unencoded parens)
+    const imgRegex = /!\[([^\]]*)\]\(([^)]*(?:\([^)]*\)[^)]*)*)\)/g;
+    let match;
+    const replacements = [];
+
+    while ((match = imgRegex.exec(markdown)) !== null) {
+        const fullMatch = match[0];
+        const alt = match[1];
+        const rawPath = match[2];
+
+        // Skip data URIs, http(s) URLs, absolute paths, and already-converted asset URLs
+        if (rawPath.startsWith('data:') || rawPath.startsWith('http://') ||
+            rawPath.startsWith('https://') || rawPath.startsWith('/') ||
+            rawPath.startsWith('asset://')) {
+            continue;
+        }
+
+        // URL-decode the path (Notion exports use URL-encoded paths)
+        let decodedPath;
+        try {
+            decodedPath = decodeURIComponent(rawPath);
+        } catch (e) {
+            decodedPath = rawPath;
+        }
+
+        // Resolve to absolute path and convert to asset protocol URL
+        const absolutePath = fileDir + '/' + decodedPath;
+        try {
+            const assetUrl = convertFileSrc(absolutePath);
+            replacements.push({
+                original: fullMatch,
+                replacement: '![' + alt + '](' + assetUrl + ')'
+            });
+        } catch (err) {
+            console.warn('Could not convert to asset URL:', absolutePath, err);
+        }
+    }
+
+    // Apply replacements
+    let result = markdown;
+    for (const r of replacements) {
+        result = result.replace(r.original, r.replacement);
+    }
+    return result;
+}
+
+// Resolve relative CSV links in Markdown to inline Markdown tables
+async function resolveRelativeCsvLinks(markdown, fileDir) {
+    // Match links ending in .csv, handling nested parentheses in URLs
+    const linkRegex = /\[([^\]]*)\]\(([^)]*(?:\([^)]*\)[^)]*)*\.csv)\)/g;
+    let match;
+    const replacements = [];
+
+    while ((match = linkRegex.exec(markdown)) !== null) {
+        const fullMatch = match[0];
+        const linkText = match[1];
+        const rawPath = match[2];
+
+        // Skip http(s) URLs and absolute paths
+        if (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('/')) {
+            continue;
+        }
+
+        // URL-decode the path (Notion exports use URL-encoded paths)
+        let decodedPath;
+        try {
+            decodedPath = decodeURIComponent(rawPath);
+        } catch (e) {
+            decodedPath = rawPath;
+        }
+
+        const absolutePath = fileDir + '/' + decodedPath;
+
+        try {
+            const csvText = await readTextFile(absolutePath);
+            const table = csvToMarkdownTable(csvText, linkText);
+            if (table) {
+                replacements.push({ original: fullMatch, replacement: table });
+            }
+        } catch (err) {
+            console.warn('Could not resolve CSV link:', absolutePath, err);
+        }
+    }
+
+    let result = markdown;
+    for (const r of replacements) {
+        result = result.replace(r.original, r.replacement);
+    }
+    return result;
+}
+
+// Parse CSV text and convert to Markdown table
+function csvToMarkdownTable(csvText, title) {
+    const rows = parseCsv(csvText);
+    if (rows.length === 0) return null;
+
+    // Find max columns
+    const maxCols = Math.max(...rows.map(r => r.length));
+    if (maxCols === 0) return null;
+
+    // Normalize rows to have equal columns
+    const normalized = rows.map(row => {
+        while (row.length < maxCols) row.push('');
+        return row;
+    });
+
+    // Build Markdown table
+    let md = '';
+    if (title) {
+        md += '**' + title + '**\n\n';
+    }
+
+    // Header row
+    md += '| ' + normalized[0].map(c => c.replace(/\|/g, '\\|')).join(' | ') + ' |\n';
+    // Separator
+    md += '| ' + normalized[0].map(() => '---').join(' | ') + ' |\n';
+    // Data rows
+    for (let i = 1; i < normalized.length; i++) {
+        md += '| ' + normalized[i].map(c => c.replace(/\|/g, '\\|')).join(' | ') + ' |\n';
+    }
+
+    return md;
+}
+
+// Simple CSV parser that handles quoted fields
+function parseCsv(text) {
+    const rows = [];
+    let current = [];
+    let field = '';
+    let inQuotes = false;
+    const len = text.length;
+
+    for (let i = 0; i < len; i++) {
+        const ch = text[i];
+
+        if (inQuotes) {
+            if (ch === '"') {
+                if (i + 1 < len && text[i + 1] === '"') {
+                    field += '"';
+                    i++; // skip escaped quote
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                field += ch;
+            }
+        } else {
+            if (ch === '"') {
+                inQuotes = true;
+            } else if (ch === ',') {
+                current.push(field.trim());
+                field = '';
+            } else if (ch === '\n') {
+                current.push(field.trim());
+                if (current.some(c => c !== '')) {
+                    rows.push(current);
+                }
+                current = [];
+                field = '';
+            } else if (ch === '\r') {
+                // skip carriage return
+            } else {
+                field += ch;
+            }
+        }
+    }
+
+    // Last field/row
+    current.push(field.trim());
+    if (current.some(c => c !== '')) {
+        rows.push(current);
+    }
+
+    return rows;
 }
 
 async function saveFile() {
@@ -1828,7 +2723,8 @@ async function saveFile() {
         }
 
         if (filePath) {
-            const markdown = getMarkdown();
+            let markdown = getMarkdown();
+            markdown = await resolveImagesForSave(markdown, filePath);
             await writeTextFile(filePath, markdown);
             tab.filePath = filePath;
             tab.title = filePath.split('/').pop().split('\\').pop();
@@ -1839,6 +2735,442 @@ async function saveFile() {
     } catch (err) {
         console.error('Error saving file:', err);
         alert('ファイルを保存できませんでした: ' + err);
+    }
+}
+
+// ========== Save As ==========
+async function saveAsFile() {
+    const tab = getActiveTab();
+    if (!tab) return;
+
+    try {
+        const defaultPath = tab.filePath || (tab.title.endsWith('.md') ? tab.title : tab.title + '.md');
+        const filePath = await tauriSave({
+            defaultPath: defaultPath,
+            filters: [{ name: 'Markdown', extensions: ['md'] }]
+        });
+
+        if (filePath) {
+            let markdown = getMarkdown();
+            markdown = await resolveImagesForSave(markdown, filePath);
+            await writeTextFile(filePath, markdown);
+            tab.filePath = filePath;
+            tab.title = filePath.split('/').pop().split('\\').pop();
+            tab.isModified = false;
+            renderTabs();
+            updateStatusBar();
+        }
+    } catch (err) {
+        console.error('Error saving file as:', err);
+        alert('ファイルを保存できませんでした: ' + err);
+    }
+}
+
+// ========== Resolve Images for Save ==========
+// Convert asset:// URLs back to relative paths, and save Base64 images to files
+async function resolveImagesForSave(markdown, mdFilePath) {
+    const lastSlash = Math.max(mdFilePath.lastIndexOf('/'), mdFilePath.lastIndexOf('\\'));
+    const fileDir = mdFilePath.substring(0, lastSlash);
+    const mdFileName = mdFilePath.substring(lastSlash + 1).replace(/\.md$/i, '');
+
+    // --- Step 1: Convert asset URLs back to relative paths ---
+    // macOS: asset://localhost/ENCODED_PATH
+    // Windows: https://asset.localhost/PATH
+    const replacements = [];
+
+    function assetUrlToAbsPath(url) {
+        // macOS format: asset://localhost/%2Fpath%2Fto%2Ffile
+        if (url.startsWith('asset://localhost/')) {
+            return decodeURIComponent(url.substring('asset://localhost/'.length));
+        }
+        // Windows format: https://asset.localhost/path/to/file
+        if (url.startsWith('https://asset.localhost/')) {
+            return decodeURIComponent(url.substring('https://asset.localhost/'.length));
+        }
+        return null;
+    }
+
+    // Pattern: ![alt](asset://localhost/...) or ![alt](https://asset.localhost/...)
+    const mdAssetRegex = /!\[([^\]]*)\]\(((?:asset:\/\/localhost\/|https:\/\/asset\.localhost\/)[^)]+)\)/g;
+    let match;
+    while ((match = mdAssetRegex.exec(markdown)) !== null) {
+        const fullMatch = match[0];
+        const alt = match[1];
+        const assetUrl = match[2];
+        const absPath = assetUrlToAbsPath(assetUrl);
+        if (absPath && absPath.startsWith(fileDir + '/')) {
+            const relPath = absPath.substring(fileDir.length + 1);
+            replacements.push({ original: fullMatch, replacement: '![' + alt + '](' + relPath + ')' });
+        }
+    }
+
+    // Pattern: <img src="asset://localhost/..." or <img src="https://asset.localhost/...">
+    const htmlAssetRegex = /<img\s+src="((?:asset:\/\/localhost\/|https:\/\/asset\.localhost\/)[^"]*)"\s*alt="([^"]*)"(?:\s*width="(\d+)")?\s*\/?>/g;
+    while ((match = htmlAssetRegex.exec(markdown)) !== null) {
+        const fullMatch = match[0];
+        const assetUrl = match[1];
+        const alt = match[2];
+        const width = match[3];
+        const absPath = assetUrlToAbsPath(assetUrl);
+        if (absPath && absPath.startsWith(fileDir + '/')) {
+            const relPath = absPath.substring(fileDir.length + 1);
+            const widthAttr = width ? ' width="' + width + '"' : '';
+            replacements.push({ original: fullMatch, replacement: '<img src="' + relPath + '" alt="' + alt + '"' + widthAttr + '>' });
+        }
+    }
+
+    // Apply asset URL replacements first
+    let result = markdown;
+    for (const r of replacements) {
+        result = result.replace(r.original, r.replacement);
+    }
+
+    // --- Step 2: Save Base64 images (from paste) to files ---
+    // Detect image directory for new images
+    let imageDir = null;
+
+    // Check companion directory (Notion-style)
+    try {
+        const exactDir = fileDir + '/' + mdFileName;
+        if (await exists(exactDir)) { imageDir = mdFileName; }
+    } catch (e) { /* ignore */ }
+    if (!imageDir) {
+        const notionHashMatch = mdFileName.match(/^(.+)\s+[0-9a-f]{20,32}$/);
+        if (notionHashMatch) {
+            try {
+                const baseDir = fileDir + '/' + notionHashMatch[1];
+                if (await exists(baseDir)) { imageDir = notionHashMatch[1]; }
+            } catch (e) { /* ignore */ }
+        }
+    }
+    // Check from existing relative image paths in the markdown
+    if (!imageDir) {
+        const existingImgMatch = result.match(/!\[[^\]]*\]\(([^)]+\/)[^/]+\.[a-zA-Z]+\)/);
+        if (existingImgMatch) {
+            const relDir = existingImgMatch[1].replace(/\/$/, '');
+            try {
+                if (await exists(fileDir + '/' + relDir)) { imageDir = relDir; }
+            } catch (e) { /* ignore */ }
+        }
+    }
+    if (!imageDir) { imageDir = 'images'; }
+
+    // Match Base64 images (from paste operations)
+    const mdImgRegex = /!\[([^\]]*)\]\(data:(image\/[a-zA-Z+]+);base64,([A-Za-z0-9+/=\s]+)\)/g;
+    const htmlImgRegex = /<img\s+src="data:(image\/[a-zA-Z+]+);base64,([A-Za-z0-9+/=\s]+)"\s*alt="([^"]*)"(?:\s*width="(\d+)")?\s*\/?>/g;
+
+    // Scan existing files in image directory to avoid overwriting
+    let imgCounter = 0;
+    try {
+        const dirPath = fileDir + '/' + imageDir;
+        if (await exists(dirPath)) {
+            const entries = await readDir(dirPath);
+            for (const entry of entries) {
+                const name = entry.name || '';
+                const counterMatch = name.match(/_(\d{3})\.[a-zA-Z]+$/);
+                if (counterMatch) {
+                    const num = parseInt(counterMatch[1], 10);
+                    if (num > imgCounter) imgCounter = num;
+                }
+            }
+        }
+    } catch (e) { /* ignore - start from 0 */ }
+    const base64Replacements = [];
+
+    while ((match = mdImgRegex.exec(result)) !== null) {
+        imgCounter++;
+        const fullMatch = match[0];
+        const alt = match[1];
+        const mime = match[2];
+        const base64Data = match[3].replace(/\s/g, '');
+        const ext = mimeToExt(mime);
+        const fileName = generateImageFileName(alt, imgCounter, ext);
+        try {
+            await saveImageFile(fileDir, imageDir, fileName, base64Data);
+            base64Replacements.push({ original: fullMatch, replacement: '![' + alt + '](' + imageDir + '/' + fileName + ')' });
+        } catch (err) { console.warn('Failed to save image:', fileName, err); }
+    }
+
+    while ((match = htmlImgRegex.exec(result)) !== null) {
+        imgCounter++;
+        const fullMatch = match[0];
+        const mime = match[1];
+        const base64Data = match[2].replace(/\s/g, '');
+        const alt = match[3];
+        const width = match[4];
+        const ext = mimeToExt(mime);
+        const fileName = generateImageFileName(alt, imgCounter, ext);
+        try {
+            await saveImageFile(fileDir, imageDir, fileName, base64Data);
+            const widthAttr = width ? ' width="' + width + '"' : '';
+            base64Replacements.push({ original: fullMatch, replacement: '<img src="' + imageDir + '/' + fileName + '" alt="' + alt + '"' + widthAttr + '>' });
+        } catch (err) { console.warn('Failed to save image:', fileName, err); }
+    }
+
+    for (const r of base64Replacements) {
+        result = result.replace(r.original, r.replacement);
+    }
+    return result;
+}
+
+function mimeToExt(mime) {
+    const map = {
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+        'image/gif': 'gif',
+        'image/bmp': 'bmp',
+        'image/webp': 'webp',
+        'image/svg+xml': 'svg',
+    };
+    return map[mime] || 'png';
+}
+
+function generateImageFileName(alt, counter, ext) {
+    // Use alt text as filename if it looks like a filename with extension
+    if (alt && /^[\w.-]+$/.test(alt) && alt.includes('.')) {
+        const name = alt.replace(/\.[^.]+$/, '');
+        const origExt = alt.split('.').pop();
+        return name + '_' + String(counter).padStart(3, '0') + '.' + origExt;
+    }
+    // Use alt text (sanitized) + counter for uniqueness
+    if (alt && alt.trim()) {
+        const sanitized = alt.trim()
+            .replace(/[^\w\u3000-\u9FFF\u4E00-\u9FFF\uF900-\uFAFF-]/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_|_$/g, '')
+            .substring(0, 50);
+        if (sanitized) {
+            return sanitized + '_' + String(counter).padStart(3, '0') + '.' + ext;
+        }
+    }
+    return 'image_' + String(counter).padStart(3, '0') + '.' + ext;
+}
+
+async function saveImageFile(fileDir, imageDir, fileName, base64Data) {
+    const dirPath = fileDir + '/' + imageDir;
+
+    // Create directory if it doesn't exist
+    try {
+        const dirExists = await exists(dirPath);
+        if (!dirExists) {
+            await createDir(dirPath, { recursive: true });
+        }
+    } catch (e) {
+        // Try to create anyway
+        try {
+            await createDir(dirPath, { recursive: true });
+        } catch (e2) {
+            // Directory might already exist, continue
+        }
+    }
+
+    // Decode Base64 to binary
+    const binaryStr = atob(base64Data);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+    }
+
+    // Write file
+    const filePath = dirPath + '/' + fileName;
+    await writeBinaryFile(filePath, bytes);
+}
+
+// ========== PDF Export ==========
+async function exportPDF() {
+    try {
+        const tab = getActiveTab();
+        const fileName = tab ? tab.title.replace(/\.md$/i, '') : '無題';
+
+        // Ask user where to save the HTML file (they'll print to PDF from browser)
+        const savePath = await tauriSave({
+            defaultPath: fileName + '.html',
+            filters: [{ name: 'HTML', extensions: ['html'] }]
+        });
+        if (!savePath) return;
+
+        // Collect editor content (clean clone)
+        const clone = editor.cloneNode(true);
+
+        // Remove UI elements from clone
+        clone.querySelectorAll('.code-copy-container, .code-copy-btn, .toc-delete-btn, .image-resize-handle, .image-copy-btn, .line-numbers-gutter').forEach(el => el.remove());
+
+        const editorHTML = clone.innerHTML;
+
+        // Read current stylesheet
+        let cssText = '';
+        try {
+            const stylesheets = document.styleSheets;
+            for (let i = 0; i < stylesheets.length; i++) {
+                try {
+                    const rules = stylesheets[i].cssRules || stylesheets[i].rules;
+                    for (let j = 0; j < rules.length; j++) {
+                        cssText += rules[j].cssText + '\n';
+                    }
+                } catch (e) {
+                    // Cross-origin stylesheet, skip
+                }
+            }
+        } catch (e) {
+            console.error('Failed to read stylesheets:', e);
+        }
+
+        // Also collect hljs inline styles by grabbing the hljs theme link
+        let hljsCSS = '';
+        try {
+            const resp = await fetch('https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-light.min.css');
+            if (resp.ok) hljsCSS = await resp.text();
+        } catch (e) { /* ignore */ }
+
+        // Build complete HTML document
+        const fullHTML = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHtml(fileName)}</title>
+<style>
+/* Base styles */
+body {
+    font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 400;
+    margin: 40px auto;
+    max-width: 900px;
+    padding: 0 20px;
+    color: #333;
+    line-height: 1.8;
+    background: white;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 { font-weight: 700; margin-top: 1.5em; margin-bottom: 0.5em; color: #1a1a1a; }
+h1 { font-size: 2em; border-bottom: 2px solid #eaecef; padding-bottom: 0.3em; }
+h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
+h3 { font-size: 1.25em; }
+
+/* Paragraphs */
+p { margin-bottom: 16px; }
+
+/* Links */
+a { color: #0366d6; text-decoration: none; }
+
+/* Inline code */
+code {
+    padding: 0.2em 0.4em;
+    font-size: 85%;
+    color: #c7254e;
+    background-color: #f9f2f4;
+    border-radius: 6px;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+
+/* Code blocks */
+pre {
+    position: relative;
+    margin-bottom: 16px;
+    padding: 0;
+    overflow: auto;
+    font-size: 85%;
+    line-height: 1.45;
+    background-color: #fafafa;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    display: flex;
+    flex-direction: row;
+}
+pre code {
+    padding: 16px;
+    margin: 0;
+    color: inherit;
+    background-color: transparent;
+    border-radius: 0;
+    font-size: 100%;
+    display: block;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Tables */
+table { border-collapse: collapse; margin-bottom: 16px; width: 100%; }
+th, td { padding: 6px 13px; border: 1px solid #ddd; }
+th { background-color: #f6f8fa; font-weight: 700; }
+
+/* Blockquote */
+blockquote {
+    margin: 0 0 16px;
+    padding: 0 1em;
+    color: #6a737d;
+    border-left: 4px solid #dfe2e5;
+}
+
+/* Lists */
+ul, ol { margin-bottom: 16px; padding-left: 2em; }
+li { margin-bottom: 4px; }
+
+/* Task list */
+.task-list-item { list-style: none; margin-left: -1.5em; }
+input[type="checkbox"] { margin-right: 0.5em; }
+
+/* HR */
+hr { border: none; border-top: 2px solid #eaecef; margin: 24px 0; }
+
+/* Images */
+img { max-width: 100%; }
+
+/* TOC */
+.toc-container {
+    margin: 16px 0;
+    padding: 16px 20px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    border-left: 4px solid #4a9eff;
+}
+.toc-container ul { list-style: none; padding-left: 0; }
+.toc-container li { padding: 2px 0; font-size: 14px; }
+.toc-container a { color: #0366d6; text-decoration: none; }
+
+/* Mermaid */
+.mermaid-container { margin: 16px 0; text-align: center; }
+
+/* Highlight.js theme */
+${hljsCSS}
+
+/* Print optimization */
+@media print {
+    body { margin: 0; padding: 0; max-width: 100%; }
+    pre { page-break-inside: avoid; }
+    table { page-break-inside: avoid; }
+    img { page-break-inside: avoid; }
+    h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
+    pre code { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    blockquote { border-left-color: #dfe2e5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .toc-container { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    code { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+</style>
+</head>
+<body>
+${editorHTML}
+<script>
+// Auto-trigger print dialog, then close the tab
+window.onload = function() {
+    window.print();
+};
+<\/script>
+</body>
+</html>`;
+
+        await writeTextFile(savePath, fullHTML);
+
+        // Open in default browser for printing
+        await invoke('open_in_browser', { path: savePath });
+    } catch (err) {
+        console.error('PDF export error:', err);
+        alert('PDF出力に失敗しました: ' + err);
     }
 }
 
@@ -2338,7 +3670,61 @@ function editMermaidBlock(container) {
     });
 }
 
+// ========== Toggle Blocks Setup ==========
+function setupToggleBlocks() {
+    editor.querySelectorAll('details').forEach(details => {
+        // Ensure details is open in editor for editing
+        details.setAttribute('open', '');
+        // Ensure summary is editable
+        const summary = details.querySelector('summary');
+        if (summary) {
+            summary.setAttribute('contenteditable', 'true');
+        }
+        // Ensure toggle-content div exists
+        let contentDiv = details.querySelector('.toggle-content');
+        if (!contentDiv) {
+            contentDiv = document.createElement('div');
+            contentDiv.className = 'toggle-content';
+            // Move all children after summary into contentDiv
+            const children = Array.from(details.childNodes);
+            let afterSummary = false;
+            children.forEach(child => {
+                if (child === summary) {
+                    afterSummary = true;
+                    return;
+                }
+                if (afterSummary) {
+                    contentDiv.appendChild(child);
+                }
+            });
+            if (contentDiv.children.length === 0) {
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                contentDiv.appendChild(p);
+            }
+            details.appendChild(contentDiv);
+        }
+    });
+}
+
 // ========== TOC Generation ==========
+function setupTocDeleteButtons() {
+    editor.querySelectorAll('.toc-container').forEach(toc => {
+        // Make sure it's contenteditable=false
+        if (toc.getAttribute('contenteditable') !== 'false') {
+            toc.setAttribute('contenteditable', 'false');
+        }
+        // Add delete button if not already present
+        if (!toc.querySelector('.toc-delete-btn')) {
+            const btn = document.createElement('button');
+            btn.className = 'toc-delete-btn';
+            btn.title = '目次を削除';
+            btn.textContent = '✕';
+            toc.insertBefore(btn, toc.firstChild);
+        }
+    });
+}
+
 function insertTOC() {
     const headings = editor.querySelectorAll('h1, h2, h3, h4, h5, h6');
     if (headings.length === 0) {
@@ -2365,7 +3751,9 @@ function insertTOC() {
         h.id = slug;
     });
 
-    let html = '<div class="toc-container" contenteditable="false"><p><strong>📑 目次</strong></p><ul>';
+    let html = '<div class="toc-container" contenteditable="false">' +
+               '<button class="toc-delete-btn" title="目次を削除">✕</button>' +
+               '<p><strong>📑 目次</strong></p><ul>';
     headings.forEach(h => {
         const level = parseInt(h.tagName[1]);
         const text = h.textContent.trim();
@@ -2386,59 +3774,86 @@ function setupCodeCopyButtons() {
     // Add copy buttons to existing code blocks
     addCopyButtonsToCodeBlocks();
 
-    // Watch for new code blocks being added
+    // Watch for new code blocks being added and update line numbers
     const observer = new MutationObserver(() => {
         addCopyButtonsToCodeBlocks();
+        updateAllLineNumbers();
     });
     observer.observe(editor, { childList: true, subtree: true });
 }
 
 function addCopyButtonsToCodeBlocks() {
     editor.querySelectorAll('pre').forEach(pre => {
-        // Skip if already has a copy button
-        if (pre.querySelector('.code-copy-btn')) return;
+        // Skip if already has copy buttons
+        if (pre.querySelector('.code-copy-container')) return;
         // Skip Mermaid containers
         if (pre.closest('.mermaid-container')) return;
 
-        const btn = document.createElement('button');
-        btn.className = 'code-copy-btn';
-        btn.textContent = 'Copy';
-        btn.setAttribute('contenteditable', 'false');
-        btn.addEventListener('mousedown', e => {
-            e.preventDefault();
-            e.stopPropagation();
-        });
-        btn.addEventListener('click', e => {
-            e.preventDefault();
-            e.stopPropagation();
+        const container = document.createElement('div');
+        container.className = 'code-copy-container';
+        container.setAttribute('contenteditable', 'false');
+
+        // Helper: get raw code text
+        function getRawText() {
             const code = pre.querySelector('code');
-            const text = code ? code.textContent : pre.textContent;
+            return code ? code.textContent : pre.textContent;
+        }
+
+        // Helper: copy text to clipboard with visual feedback
+        function copyToClipboard(text, btn, label) {
             navigator.clipboard.writeText(text).then(() => {
                 btn.textContent = 'Copied!';
                 btn.classList.add('copied');
-                setTimeout(() => {
-                    btn.textContent = 'Copy';
-                    btn.classList.remove('copied');
-                }, 2000);
+                setTimeout(() => { btn.textContent = label; btn.classList.remove('copied'); }, 2000);
             }).catch(() => {
-                // Fallback
-                const textarea = document.createElement('textarea');
-                textarea.value = text;
-                textarea.style.position = 'fixed';
-                textarea.style.opacity = '0';
-                document.body.appendChild(textarea);
-                textarea.select();
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.cssText = 'position:fixed;opacity:0';
+                document.body.appendChild(ta);
+                ta.select();
                 document.execCommand('copy');
-                document.body.removeChild(textarea);
+                document.body.removeChild(ta);
                 btn.textContent = 'Copied!';
                 btn.classList.add('copied');
-                setTimeout(() => {
-                    btn.textContent = 'Copy';
-                    btn.classList.remove('copied');
-                }, 2000);
+                setTimeout(() => { btn.textContent = label; btn.classList.remove('copied'); }, 2000);
             });
+        }
+
+        // Button 1: Copy (without line numbers)
+        const btnCopy = document.createElement('button');
+        btnCopy.className = 'code-copy-btn';
+        btnCopy.textContent = 'Copy';
+        btnCopy.title = 'コードをコピー';
+        btnCopy.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+        btnCopy.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            copyToClipboard(getRawText(), btnCopy, 'Copy');
         });
-        pre.appendChild(btn);
+
+        // Button 2: Copy with line numbers
+        const btnNum = document.createElement('button');
+        btnNum.className = 'code-copy-btn';
+        btnNum.textContent = 'Copy #';
+        btnNum.title = '行番号付きでコピー';
+        btnNum.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+        btnNum.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            const rawText = getRawText();
+            const lines = rawText.split('\n');
+            if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+            const maxDigits = String(lines.length).length;
+            const numberedText = lines.map((line, i) => {
+                const num = String(i + 1).padStart(maxDigits, ' ');
+                return num + ' | ' + line;
+            }).join('\n');
+            copyToClipboard(numberedText, btnNum, 'Copy #');
+        });
+
+        container.appendChild(btnCopy);
+        container.appendChild(btnNum);
+        pre.appendChild(container);
     });
 }
 
@@ -2450,11 +3865,49 @@ function setupImageResize() {
     resizeHandle.innerHTML = '<div class="resize-grip"></div>';
     document.body.appendChild(resizeHandle);
 
+    // Image copy button
+    let copyBtn = document.createElement('button');
+    copyBtn.className = 'image-copy-btn';
+    copyBtn.textContent = '📋 Copy';
+    copyBtn.title = '画像をコピー';
+    document.body.appendChild(copyBtn);
+
+    copyBtn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+    copyBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!activeImage) return;
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            // Use natural dimensions for best quality
+            canvas.width = activeImage.naturalWidth || activeImage.width;
+            canvas.height = activeImage.naturalHeight || activeImage.height;
+            ctx.drawImage(activeImage, 0, 0, canvas.width, canvas.height);
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            if (blob) {
+                await navigator.clipboard.write([
+                    new ClipboardItem({ 'image/png': blob })
+                ]);
+                copyBtn.textContent = '✅ Copied!';
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                    copyBtn.textContent = '📋 Copy';
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            }
+        } catch (err) {
+            console.error('Image copy failed:', err);
+            copyBtn.textContent = '❌ Failed';
+            setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 2000);
+        }
+    });
+
     editor.addEventListener('click', (e) => {
         if (e.target.tagName === 'IMG') {
             e.preventDefault();
             selectImage(e.target);
-        } else if (!e.target.closest('.image-resize-handle')) {
+        } else if (!e.target.closest('.image-resize-handle') && !e.target.closest('.image-copy-btn')) {
             deselectImage();
         }
     });
@@ -2465,6 +3918,7 @@ function setupImageResize() {
         img.classList.add('image-selected');
         positionHandle();
         resizeHandle.style.display = 'block';
+        copyBtn.style.display = 'block';
     }
 
     function deselectImage() {
@@ -2473,6 +3927,7 @@ function setupImageResize() {
         }
         activeImage = null;
         resizeHandle.style.display = 'none';
+        copyBtn.style.display = 'none';
     }
 
     function positionHandle() {
@@ -2480,6 +3935,9 @@ function setupImageResize() {
         const rect = activeImage.getBoundingClientRect();
         resizeHandle.style.left = (rect.right - 12) + 'px';
         resizeHandle.style.top = (rect.bottom - 12) + 'px';
+        // Position copy button at top-right of image
+        copyBtn.style.left = (rect.right - copyBtn.offsetWidth - 4) + 'px';
+        copyBtn.style.top = (rect.top + 4) + 'px';
     }
 
     resizeHandle.addEventListener('mousedown', (e) => {

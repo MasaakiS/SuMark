@@ -258,6 +258,71 @@ body {
     margin-bottom: 0;
 }
 
+/* Toggle (details/summary) */
+.markdown-body details {
+    margin: 0 0 16px 0;
+    padding: 0;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    background-color: #fafbfc;
+}
+
+.markdown-body details[open] {
+    background-color: #fff;
+}
+
+.markdown-body details summary {
+    padding: 10px 14px;
+    font-weight: 700;
+    cursor: pointer;
+    list-style: none;
+    outline: none;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 6px;
+    background-color: #f6f8fa;
+    transition: background-color 0.15s;
+}
+
+.markdown-body details summary:hover {
+    background-color: #eef1f5;
+}
+
+.markdown-body details summary::before {
+    content: '▶';
+    display: inline-block;
+    font-size: 0.7em;
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.markdown-body details[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+.markdown-body details summary::-webkit-details-marker {
+    display: none;
+}
+
+.markdown-body details .toggle-content {
+    padding: 10px 14px 14px 14px;
+    border-top: 1px solid #e1e4e8;
+}
+
+.markdown-body details .toggle-content > *:last-child {
+    margin-bottom: 0;
+}
+
+.markdown-body details .toggle-content p {
+    margin: 0 0 8px 0;
+}
+
+.markdown-body details .toggle-content p:last-child {
+    margin-bottom: 0;
+}
+
 .markdown-body code {
     padding: 0.2em 0.4em;
     margin: 0;
@@ -271,37 +336,69 @@ body {
 .markdown-body pre {
     position: relative;
     margin-bottom: 16px;
-    padding: 16px;
+    padding: 0;
     overflow: auto;
     font-size: 85%;
     line-height: 1.45;
     background-color: #fafafa;
     border-radius: 6px;
     border: 1px solid #e0e0e0;
+    display: flex;
+    flex-direction: row;
 }
 
-.markdown-body pre .code-copy-btn {
+.markdown-body pre .line-numbers-gutter {
+    flex-shrink: 0;
+    width: 44px;
+    padding: 16px 0;
+    background-color: #f0f0f0;
+    border-right: 1px solid #e0e0e0;
+    text-align: right;
+    user-select: none;
+    -webkit-user-select: none;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.markdown-body pre .line-numbers-gutter span {
+    display: block;
+    padding: 0 8px 0 0;
+    color: #999;
+    font-size: 12px;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    line-height: 1.45;
+    height: 1.45em;
+}
+
+.markdown-body pre .code-copy-container {
     position: absolute;
     top: 6px;
     right: 6px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+}
+
+.markdown-body pre:hover .code-copy-container {
+    opacity: 1;
+}
+
+.markdown-body pre .code-copy-btn {
     padding: 3px 8px;
-    font-size: 12px;
+    font-size: 11px;
     color: #666;
     background-color: #e8e8e8;
     border: 1px solid #ccc;
     border-radius: 4px;
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.2s;
-    z-index: 10;
     user-select: none;
     -webkit-user-select: none;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     line-height: 1.4;
-}
-
-.markdown-body pre:hover .code-copy-btn {
-    opacity: 1;
+    white-space: nowrap;
+    transition: background-color 0.2s, color 0.2s;
 }
 
 .markdown-body pre .code-copy-btn:hover {
@@ -313,16 +410,21 @@ body {
     background-color: #28a745;
     color: white;
     border-color: #28a745;
-    opacity: 1;
 }
 
 .markdown-body pre code {
-    padding: 0;
+    padding: 16px;
     margin: 0;
     color: inherit;
     background-color: transparent;
     border-radius: 0;
     font-size: 100%;
+    display: block;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    flex: 1;
+    min-width: 0;
 }
 
 .markdown-body table {
@@ -632,6 +734,37 @@ body {
     box-shadow: 0 1px 4px rgba(0,0,0,0.3);
 }
 
+.image-copy-btn {
+    position: fixed;
+    display: none;
+    z-index: 10000;
+    padding: 4px 8px;
+    font-size: 11px;
+    color: #666;
+    background-color: rgba(232, 232, 232, 0.95);
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height: 1.4;
+    white-space: nowrap;
+    transition: background-color 0.2s, color 0.2s;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+.image-copy-btn:hover {
+    background-color: rgba(208, 208, 208, 0.95);
+    color: #333;
+}
+
+.image-copy-btn.copied {
+    background-color: #28a745;
+    color: white;
+    border-color: #28a745;
+}
+
 /* ========== Mermaid Diagram ========== */
 .mermaid-container {
     margin: 16px 0;
@@ -687,6 +820,37 @@ body {
     border: 1px solid #e0e0e0;
     border-radius: 6px;
     border-left: 4px solid #4a9eff;
+    position: relative;
+}
+
+.toc-delete-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: #999;
+    font-size: 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s, background-color 0.2s, color 0.2s;
+    padding: 0;
+    line-height: 1;
+}
+
+.toc-container:hover .toc-delete-btn {
+    opacity: 1;
+}
+
+.toc-delete-btn:hover {
+    background: #ff4444;
+    color: white;
 }
 
 .toc-container > p {
@@ -715,6 +879,13 @@ body {
 .toc-container li a.toc-link:hover {
     color: #0245a0;
     text-decoration: underline;
+}
+
+.toc-container.selected,
+.toc-container:focus {
+    outline: 2px solid #4a9eff;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(74, 158, 255, 0.15);
 }
 
 /* ========== Emoji Picker ========== */
@@ -751,4 +922,153 @@ body {
 
 .emoji-item:hover {
     background-color: #e8f0fe;
+}
+
+/* ========== PDF / Print Styles ========== */
+@media print {
+    /* Hide all UI elements */
+    .toolbar,
+    .tab-bar,
+    .status-bar,
+    .modal-overlay,
+    .emoji-picker,
+    .code-copy-container,
+    .code-copy-btn,
+    .toc-delete-btn,
+    .image-resize-handle,
+    .image-copy-btn {
+        display: none !important;
+    }
+
+    body {
+        margin: 0;
+        padding: 0;
+        background: white;
+    }
+
+    .main-content {
+        margin: 0;
+        padding: 0;
+        overflow: visible;
+    }
+
+    .markdown-body {
+        padding: 0;
+        margin: 0;
+        max-width: 100%;
+        box-shadow: none;
+        border: none;
+        font-size: 11pt;
+        line-height: 1.6;
+        overflow: visible;
+    }
+
+    /* Code blocks */
+    .markdown-body pre {
+        border: 1px solid #ccc;
+        page-break-inside: avoid;
+        overflow: visible;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .markdown-body pre code {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .markdown-body pre .line-numbers-gutter {
+        background-color: #f0f0f0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Tables */
+    .markdown-body table {
+        page-break-inside: avoid;
+    }
+
+    /* Images */
+    .markdown-body img {
+        max-width: 100% !important;
+        page-break-inside: avoid;
+    }
+
+    /* Headings */
+    .markdown-body h1,
+    .markdown-body h2,
+    .markdown-body h3,
+    .markdown-body h4,
+    .markdown-body h5,
+    .markdown-body h6 {
+        page-break-after: avoid;
+    }
+
+    /* Blockquotes */
+    .markdown-body blockquote {
+        border-left: 4px solid #ccc !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Toggle blocks */
+    .markdown-body details {
+        border: 1px solid #ccc !important;
+        page-break-inside: avoid;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .markdown-body details[open] > summary::before {
+        transform: rotate(90deg);
+    }
+
+    /* TOC */
+    .toc-container {
+        border: 1px solid #ccc !important;
+        border-left: 4px solid #4a9eff !important;
+        background: #f8f9fa !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        page-break-inside: avoid;
+    }
+
+    /* Mermaid diagrams */
+    .mermaid-container {
+        page-break-inside: avoid;
+    }
+
+    /* Horizontal rule */
+    .markdown-body hr {
+        border-color: #ccc !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Task list checkboxes */
+    .markdown-body input[type="checkbox"] {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Inline code */
+    .markdown-body code {
+        background-color: #f5f5f5 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Syntax highlight colors */
+    .markdown-body pre code .hljs-keyword,
+    .markdown-body pre code .hljs-string,
+    .markdown-body pre code .hljs-number,
+    .markdown-body pre code .hljs-comment,
+    .markdown-body pre code .hljs-built_in,
+    .markdown-body pre code .hljs-title,
+    .markdown-body pre code .hljs-type,
+    .markdown-body pre code .hljs-attr,
+    .markdown-body pre code .hljs-literal {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
 }
