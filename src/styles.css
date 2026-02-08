@@ -286,6 +286,23 @@ body {
     transition: background-color 0.15s;
 }
 
+.markdown-body details summary .toggle-delete-btn {
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: #8a8f99;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 6px;
+    line-height: 1;
+    border-radius: 4px;
+}
+
+.markdown-body details summary .toggle-delete-btn:hover {
+    color: #d73a49;
+    background: #fce8ea;
+}
+
 .markdown-body details summary:hover {
     background-color: #eef1f5;
 }

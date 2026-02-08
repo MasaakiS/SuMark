@@ -617,6 +617,16 @@ function setupEventListeners() {
 
     // Link click handling - Cmd/Ctrl+click opens in browser
     editor.addEventListener('click', e => {
+        // Toggle delete button
+        if (e.target.closest('.toggle-delete-btn')) {
+            e.preventDefault();
+            e.stopPropagation();
+            const details = e.target.closest('details');
+            if (details) {
+                unwrapToggle(details);
+            }
+            return;
+        }
         // TOC delete button
         if (e.target.closest('.toc-delete-btn')) {
             e.preventDefault();
@@ -1396,6 +1406,12 @@ function handleKeyDown(e) {
                 e.preventDefault();
                 applyInlineCode();
                 break;
+            case 'x':
+                if (e.shiftKey) {
+                    e.preventDefault();
+                    document.execCommand('strikethrough');
+                }
+                break;
             // Cmd+Z / Cmd+Shift+Z (undo/redo) are handled natively
         }
     }
@@ -2012,6 +2028,19 @@ function applyHeading(level) {
     }
 }
 
+function ensureToggleDeleteButton(summary) {
+    if (!summary) return;
+    if (!summary.querySelector('.toggle-delete-btn')) {
+        const btn = document.createElement('button');
+        btn.className = 'toggle-delete-btn';
+        btn.type = 'button';
+        btn.title = 'トグルを解除';
+        btn.textContent = '✕';
+        btn.setAttribute('contenteditable', 'false');
+        summary.appendChild(btn);
+    }
+}
+
 function insertToggle() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
@@ -2060,6 +2089,7 @@ function insertToggle() {
             // Use first block's text as summary, or default
             const firstText = blocksToMove[0].textContent.trim();
             summary.textContent = firstText.substring(0, 50) || 'トグル';
+            ensureToggleDeleteButton(summary);
 
             // Insert details before the first collected block
             const insertBefore = blocksToMove[0];
@@ -2094,6 +2124,7 @@ function insertToggle() {
 
     // No selection: insert empty toggle (original behavior)
     summary.textContent = 'トグル';
+    ensureToggleDeleteButton(summary);
     const p = document.createElement('p');
     p.innerHTML = '<br>';
     contentDiv.appendChild(p);
@@ -2250,7 +2281,7 @@ function showModal(title, fields, callback) {
     });
 
     // Enter key submits, Escape cancels
-    fieldsEl.addEventListener('keydown', (e) => {
+    fieldsEl.onkeydown = (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
             submit();
@@ -2259,7 +2290,7 @@ function showModal(title, fields, callback) {
             close();
             editor.focus();
         }
-    });
+    };
 }
 
 function insertLink() {
@@ -3876,6 +3907,42 @@ function editMermaidBlock(container) {
 }
 
 // ========== Toggle Blocks Setup ==========
+function unwrapToggle(details) {
+    if (!details || !details.parentNode) return;
+    const parent = details.parentNode;
+    const summary = details.querySelector(':scope > summary');
+    const contentDiv = details.querySelector(':scope > .toggle-content');
+    let nodes = [];
+    if (contentDiv) {
+        nodes = Array.from(contentDiv.childNodes);
+    } else {
+        nodes = Array.from(details.childNodes).filter(n => n !== summary);
+    }
+    if (nodes.length === 0) {
+        const p = document.createElement('p');
+        p.innerHTML = '<br>';
+        nodes = [p];
+    }
+    const fragment = document.createDocumentFragment();
+    nodes.forEach(node => fragment.appendChild(node));
+    const firstInserted = fragment.firstChild;
+    parent.insertBefore(fragment, details);
+    details.remove();
+    if (firstInserted) {
+        if (firstInserted.nodeType === Node.ELEMENT_NODE) {
+            setCursorTo(firstInserted);
+        } else if (firstInserted.nodeType === Node.TEXT_NODE) {
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.setStart(firstInserted, firstInserted.textContent.length);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+    }
+    markModified();
+}
+
 function setupToggleBlocks() {
     editor.querySelectorAll('details').forEach(details => {
         // Ensure details is open in editor for editing
@@ -3884,6 +3951,7 @@ function setupToggleBlocks() {
         const summary = details.querySelector('summary');
         if (summary) {
             summary.setAttribute('contenteditable', 'true');
+            ensureToggleDeleteButton(summary);
         }
         // Ensure toggle-content div exists
         let contentDiv = details.querySelector('.toggle-content');
