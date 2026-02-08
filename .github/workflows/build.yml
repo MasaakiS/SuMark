@@ -119,10 +119,9 @@ jobs:
             | macOS | `SuMark.app.zip` |
             | Windows | `SuMark-portable-windows.zip` |
             | Linux / Chromebook (x86_64) | `.AppImage` |
-            | Linux / Chromebook (ARM64) | `.AppImage` (arm64) |
           releaseDraft: true
           prerelease: false
-          args: --target ${{ matrix.target }}
+          args: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '--target aarch64-unknown-linux-gnu --bundles deb' || format('--target {0}', matrix.target) }}
 
       # Create portable zip for macOS
       - name: Create portable zip (macOS)
