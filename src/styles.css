@@ -504,8 +504,13 @@ body {
 
 .markdown-body .task-list-item {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 4px;
+}
+
+.markdown-body .task-list-item input[type="checkbox"] {
+    margin: 0;
+    flex-shrink: 0;
 }
 
 /* ========== Status Bar ========== */

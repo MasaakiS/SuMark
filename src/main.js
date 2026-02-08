@@ -1085,8 +1085,8 @@ function handleInlineAutoConversion() {
         return;
     }
 
-    // URL auto-detection: http(s)://... followed by space
-    const urlMatch = before.match(/(https?:\/\/[^\s<>"]+) $/);
+    // URL auto-detection: http(s)://... followed by whitespace
+    const urlMatch = before.match(/(https?:\/\/[^\s<>\"]+)\s$/);
     if (urlMatch) {
         const url = urlMatch[1];
         const urlStart = before.lastIndexOf(url);
@@ -1149,6 +1149,72 @@ function handleInlineAutoConversion() {
             newSel.addRange(newRange);
             return;
         }
+    }
+
+    // Display math: $$...$$
+    const displayMathMatch = before.match(/\$\$([\s\S]+?)\$\$$/);
+    if (displayMathMatch && window.katex) {
+        const math = displayMathMatch[1];
+        const fullMatch = displayMathMatch[0];
+        const startIdx = pos - fullMatch.length;
+        const beforeText = textNode.textContent.substring(0, startIdx);
+        const afterText = textNode.textContent.substring(pos);
+        const parent = textNode.parentNode;
+
+        const frag = document.createDocumentFragment();
+        if (beforeText) frag.appendChild(document.createTextNode(beforeText));
+        const div = document.createElement('div');
+        div.className = 'math-display';
+        try {
+            div.innerHTML = katex.renderToString(math, {displayMode: true, throwOnError: false});
+        } catch (err) {
+            div.textContent = '$$' + math + '$$';
+        }
+        frag.appendChild(div);
+        const cursorText = document.createTextNode('\u200B' + afterText);
+        frag.appendChild(cursorText);
+        parent.replaceChild(frag, textNode);
+
+        const newSel = window.getSelection();
+        const newRange = document.createRange();
+        newRange.setStart(cursorText, 1);
+        newRange.collapse(true);
+        newSel.removeAllRanges();
+        newSel.addRange(newRange);
+        return;
+    }
+
+    // Inline math: $...$
+    const inlineMathMatch = before.match(/\$([^\$]+?)\$$/);
+    if (inlineMathMatch && window.katex) {
+        const math = inlineMathMatch[1];
+        const fullMatch = inlineMathMatch[0];
+        const startIdx = pos - fullMatch.length;
+        const beforeText = textNode.textContent.substring(0, startIdx);
+        const afterText = textNode.textContent.substring(pos);
+        const parent = textNode.parentNode;
+
+        const frag = document.createDocumentFragment();
+        if (beforeText) frag.appendChild(document.createTextNode(beforeText));
+        const span = document.createElement('span');
+        span.className = 'math-inline';
+        try {
+            span.innerHTML = katex.renderToString(math, {displayMode: false, throwOnError: false});
+        } catch (err) {
+            span.textContent = '$' + math + '$';
+        }
+        frag.appendChild(span);
+        const cursorText = document.createTextNode('\u200B' + afterText);
+        frag.appendChild(cursorText);
+        parent.replaceChild(frag, textNode);
+
+        const newSel = window.getSelection();
+        const newRange = document.createRange();
+        newRange.setStart(cursorText, 1);
+        newRange.collapse(true);
+        newSel.removeAllRanges();
+        newSel.addRange(newRange);
+        return;
     }
 }
 
@@ -1834,7 +1900,25 @@ function handlePaste(e) {
             cb.removeAttribute('disabled');
         });
     } else {
-        document.execCommand('insertText', false, text);
+        // Auto-link plain http(s) URLs when pasting plain text
+        const urlRegex = /(https?:\/\/[^\s<>\"]+)/g;
+        if (urlRegex.test(text)) {
+            // Build HTML by escaping non-link parts and wrapping URLs with <a>
+            let lastIndex = 0;
+            let html = '';
+            text.replace(urlRegex, (match, p1, offset) => {
+                html += escapeHtml(text.slice(lastIndex, offset));
+                const href = escapeHtml(match);
+                html += '<a href="' + href + '">' + escapeHtml(match) + '</a>';
+                lastIndex = offset + match.length;
+            });
+            html += escapeHtml(text.slice(lastIndex));
+            // Preserve line breaks
+            html = html.replace(/\n/g, '<br>');
+            document.execCommand('insertHTML', false, html);
+        } else {
+            document.execCommand('insertText', false, text);
+        }
     }
 }
 
@@ -2188,9 +2272,32 @@ function insertLink() {
         selectedText = sel.toString() || '';
     }
 
+    // Determine default URL and text values: if selection is inside an <a>,
+    // use its href and text; if selected text itself looks like a URL, use it.
+    let defaultUrl = 'https://';
+    let defaultText = selectedText;
+    if (sel.rangeCount) {
+        const range = sel.getRangeAt(0);
+        const container = range.startContainer.nodeType === Node.ELEMENT_NODE
+            ? range.startContainer
+            : range.startContainer.parentElement;
+        const anchor = container ? container.closest('a') : null;
+        if (anchor) {
+            try {
+                defaultUrl = anchor.getAttribute('href') || anchor.href || defaultUrl;
+            } catch (err) {
+                defaultUrl = anchor.getAttribute('href') || defaultUrl;
+            }
+            defaultText = anchor.textContent || defaultText;
+        } else {
+            const m = selectedText.trim().match(/^(https?:\/\/\S+)$/i);
+            if (m) defaultUrl = m[1];
+        }
+    }
+
     const fields = [
-        { key: 'url', label: 'URL', value: 'https://', placeholder: 'https://example.com' },
-        { key: 'text', label: 'リンクテキスト', value: selectedText, placeholder: '表示するテキスト' },
+        { key: 'url', label: 'URL', value: defaultUrl, placeholder: 'https://example.com' },
+        { key: 'text', label: 'リンクテキスト', value: defaultText, placeholder: '表示するテキスト' },
     ];
 
     showModal('リンクを挿入', fields, (values) => {
@@ -2469,11 +2576,56 @@ function insertTaskList() {
         const html = '<ul class="contains-task-list">' + items + '</ul><p><br></p>';
         document.execCommand('insertHTML', false, html);
     } else {
-        // Insert empty task item at cursor
-        const html = '<ul class="contains-task-list">' +
-                     '<li class="task-list-item"><input type="checkbox"> </li>' +
-                     '</ul><p><br></p>';
-        document.execCommand('insertHTML', false, html);
+        // Build task list via DOM manipulation for precise structure control
+        const ul = document.createElement('ul');
+        ul.className = 'contains-task-list';
+
+        const li = document.createElement('li');
+        li.className = 'task-list-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+
+        // Use non-breaking space so cursor is visible and has width
+        const textNode = document.createTextNode('\u00A0');
+
+        li.appendChild(cb);
+        li.appendChild(textNode);
+        ul.appendChild(li);
+
+        // Trailing paragraph for continuing editing after the list
+        const p = document.createElement('p');
+        p.innerHTML = '<br>';
+
+        // Find the current block-level element to insert after
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+
+        let block = range.startContainer;
+        while (block && block !== editor && block.parentNode !== editor) {
+            block = block.parentNode;
+        }
+
+        if (block && block !== editor) {
+            block.parentNode.insertBefore(ul, block.nextSibling);
+            ul.parentNode.insertBefore(p, ul.nextSibling);
+            // Remove empty placeholder block
+            if (block.textContent.trim() === '' && block.tagName === 'P') {
+                block.remove();
+            }
+        } else {
+            editor.appendChild(ul);
+            editor.appendChild(p);
+        }
+
+        // Position cursor right after the non-breaking space (beside checkbox)
+        const newRange = document.createRange();
+        newRange.setStart(textNode, 1);
+        newRange.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+
+        editor.focus();
     }
 
     // Make checkboxes interactive
