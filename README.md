@@ -15,6 +15,7 @@ Tauriベースのデスクトップ向けWYSIWYG Markdownエディターです�
 - ▶ **トグル**: Notion 風の折りたたみブロック
 - 📄 **PDF エクスポート**: HTML 形式での PDF 出力
 - 📋 **画像コピー**: 挿入画像をワンクリックでクリップボードにコピー
+- 📥 **Notion エクスポート対応**: Notion の Markdown + CSV を Markdown + テーブルに自動変換
 
 ## 主な機能
 
@@ -95,6 +96,7 @@ Tauriベースのデスクトップ向けWYSIWYG Markdownエディターです�
 - **画像ペースト**: クリップボードの画像を Base64 で埋め込み
 - **Excel/TSV ペースト**: タブ区切りデータをテーブルに自動変換
 - **Markdown ペースト**: Markdown テキストを自動検出してリッチテキストに変換
+
 
 ## 非対応の Markdown 機能
 
