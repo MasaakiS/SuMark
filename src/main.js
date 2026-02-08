@@ -2995,6 +2995,59 @@ async function exportPDF() {
         // Remove UI elements from clone
         clone.querySelectorAll('.code-copy-container, .code-copy-btn, .toc-delete-btn, .image-resize-handle, .image-copy-btn, .line-numbers-gutter').forEach(el => el.remove());
 
+        // Convert asset:// / https://asset.localhost/ URLs to Base64 for PDF export
+        // On macOS, Tauri uses asset://localhost/ENCODED_PATH
+        // On Windows, Tauri uses https://asset.localhost/PATH
+        // Both forms need to be handled
+        const allImages = clone.querySelectorAll('img');
+        for (const img of allImages) {
+            try {
+                const srcAttr = img.getAttribute('src') || '';
+                let imgFilePath = null;
+
+                if (srcAttr.startsWith('asset://localhost/')) {
+                    // macOS format: asset://localhost/%2Fpath%2Fto%2Ffile
+                    imgFilePath = decodeURIComponent(srcAttr.substring('asset://localhost/'.length));
+                } else if (srcAttr.startsWith('https://asset.localhost/')) {
+                    // Windows format: https://asset.localhost/path/to/file
+                    imgFilePath = decodeURIComponent(srcAttr.substring('https://asset.localhost/'.length));
+                }
+
+                if (!imgFilePath) continue; // Skip non-asset images (data:, http:, etc.)
+
+                // Read the image file
+                const binaryData = await readBinaryFile(imgFilePath);
+
+                // Detect MIME type from file extension
+                const lowerPath = imgFilePath.toLowerCase();
+                let mimeType = 'image/png';
+                if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) {
+                    mimeType = 'image/jpeg';
+                } else if (lowerPath.endsWith('.gif')) {
+                    mimeType = 'image/gif';
+                } else if (lowerPath.endsWith('.webp')) {
+                    mimeType = 'image/webp';
+                } else if (lowerPath.endsWith('.svg')) {
+                    mimeType = 'image/svg+xml';
+                } else if (lowerPath.endsWith('.bmp')) {
+                    mimeType = 'image/bmp';
+                }
+
+                // Convert to Base64 (handle large files by chunking)
+                const bytes = new Uint8Array(binaryData);
+                let binary = '';
+                const chunkSize = 8192;
+                for (let i = 0; i < bytes.length; i += chunkSize) {
+                    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+                }
+                const base64 = btoa(binary);
+                img.setAttribute('src', `data:${mimeType};base64,${base64}`);
+            } catch (err) {
+                console.error('Failed to convert image to Base64:', img.getAttribute('src'), err);
+                // Keep original URL (will be broken but better than removing)
+            }
+        }
+
         const editorHTML = clone.innerHTML;
 
         // Read current stylesheet
