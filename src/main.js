@@ -25,6 +25,14 @@ let tabs = [];       // Array of { id, filePath, title, content, isModified, scr
 let activeTabId = null;
 let tabIdCounter = 0;
 
+// ========== Advanced Undo/Redo Stack ==========
+let undoStack = [];        // Array of { html, selection }
+let redoStack = [];        // Array of { html, selection }
+let currentState = null;   // Current editor state
+const MAX_UNDO_STACK = 100; // Maximum undo history size
+let isUndoRedoOperation = false; // Guard to prevent recording during undo/redo
+let saveStateTimer = null; // Debounce timer for saving editor state
+
 // ========== Emoji Map ==========
 const EMOJI_MAP = {
     'smile': '😄', 'laughing': '😆', 'blush': '😊', 'smiley': '😃',
@@ -88,22 +96,36 @@ function init() {
     // Tauri APIs
     try {
         if (!window.__TAURI__) {
-            alert('Tauri APIが利用できません');
-            return;
+            console.warn('[WARN] Tauri API not available - running in browser mode with limited functionality');
+            // Mock Tauri APIs for browser testing
+            invoke = () => Promise.resolve();
+            tauriOpen = () => Promise.resolve(null);
+            tauriSave = () => Promise.resolve(null);
+            readTextFile = () => Promise.resolve('');
+            writeTextFile = () => Promise.resolve();
+            readBinaryFile = () => Promise.resolve(new Uint8Array());
+            writeBinaryFile = () => Promise.resolve();
+            createDir = () => Promise.resolve();
+            readDir = () => Promise.resolve([]);
+            exists = () => Promise.resolve(false);
+            convertFileSrc = (path) => path;
+            shellOpen = () => Promise.resolve();
+            // Don't return - continue initialization
+        } else {
+            invoke = window.__TAURI__.tauri.invoke;
+            tauriOpen = window.__TAURI__.dialog.open;
+            tauriSave = window.__TAURI__.dialog.save;
+            readTextFile = window.__TAURI__.fs.readTextFile;
+            writeTextFile = window.__TAURI__.fs.writeTextFile;
+            readBinaryFile = window.__TAURI__.fs.readBinaryFile;
+            writeBinaryFile = window.__TAURI__.fs.writeBinaryFile;
+            createDir = window.__TAURI__.fs.createDir;
+            readDir = window.__TAURI__.fs.readDir;
+            exists = window.__TAURI__.fs.exists;
+            convertFileSrc = window.__TAURI__.tauri.convertFileSrc;
+            shellOpen = window.__TAURI__.shell.open;
+            console.log('Tauri APIs OK');
         }
-        invoke = window.__TAURI__.tauri.invoke;
-        tauriOpen = window.__TAURI__.dialog.open;
-        tauriSave = window.__TAURI__.dialog.save;
-        readTextFile = window.__TAURI__.fs.readTextFile;
-        writeTextFile = window.__TAURI__.fs.writeTextFile;
-        readBinaryFile = window.__TAURI__.fs.readBinaryFile;
-        writeBinaryFile = window.__TAURI__.fs.writeBinaryFile;
-        createDir = window.__TAURI__.fs.createDir;
-        readDir = window.__TAURI__.fs.readDir;
-        exists = window.__TAURI__.fs.exists;
-        convertFileSrc = window.__TAURI__.tauri.convertFileSrc;
-        shellOpen = window.__TAURI__.shell.open;
-        console.log('Tauri APIs OK');
     } catch (err) {
         console.error('Tauri API init failed:', err);
         return;
@@ -141,10 +163,12 @@ function init() {
     editor.innerHTML = '<p><br></p>';
 
     // Setup event listeners
+    console.log('[DEBUG] Setting up event listeners...');
     setupEventListeners();
     setupTableContextMenu();
     setupImageResize();
     setupCodeCopyButtons();
+    console.log('[DEBUG] Event listeners setup complete');
 
     // Initialize Mermaid (may load asynchronously via defer)
     try {
@@ -170,9 +194,10 @@ function init() {
 // ========== Turndown Configuration ==========
 function configureTurndown() {
     if (typeof TurndownService === 'undefined') {
-        console.error('Turndown not loaded');
+        console.error('[ERROR] Turndown not loaded - TurndownService is undefined');
         return;
     }
+    console.log('[DEBUG] Configuring Turndown...');
 
     turndownService = new TurndownService({
         headingStyle: 'atx',
@@ -184,15 +209,7 @@ function configureTurndown() {
         strongDelimiter: '**',
     });
 
-    // Load GFM plugin (tables, strikethrough, task lists)
-    const gfmPlugin = (typeof TurndownPluginGfm !== 'undefined') ? TurndownPluginGfm :
-                       (typeof turndownPluginGfm !== 'undefined') ? turndownPluginGfm : null;
-    if (gfmPlugin && gfmPlugin.gfm) {
-        turndownService.use(gfmPlugin.gfm);
-        console.log('Turndown GFM plugin loaded');
-    }
-
-    // Custom rule: task list items with checkboxes
+    // Custom rule: task list items with checkboxes (must be BEFORE GFM plugin)
     turndownService.addRule('taskListCheckbox', {
         filter: function(node) {
             return node.nodeName === 'LI' &&
@@ -201,9 +218,36 @@ function configureTurndown() {
         replacement: function(content, node) {
             const cb = node.querySelector('input[type="checkbox"]');
             const checked = cb && cb.checked;
-            // Clean up content: remove leading checkbox text
-            let text = content.replace(/^\s*/, '').trim();
+            // Remove the checkbox from content - GFM plugin adds it as text
+            // Also remove any leading/trailing whitespace and [ ] or [x] patterns
+            let text = content.replace(/^\s*\[([ x])\]\s*/, '').trim();
             return (checked ? '- [x] ' : '- [ ] ') + text + '\n';
+        }
+    });
+
+    // Load GFM plugin (tables, strikethrough, task lists)
+    const gfmPlugin = (typeof TurndownPluginGfm !== 'undefined') ? TurndownPluginGfm :
+                       (typeof turndownPluginGfm !== 'undefined') ? turndownPluginGfm : null;
+    if (gfmPlugin && gfmPlugin.gfm) {
+        turndownService.use(gfmPlugin.gfm);
+        console.log('Turndown GFM plugin loaded');
+    }
+
+    // Custom rule: always convert <pre><code>...</code></pre> to fenced code blocks
+    turndownService.addRule('fencedCodeBlock', {
+        filter: function(node) {
+            return node.nodeName === 'PRE';
+        },
+        replacement: function(content, node) {
+            const codeEl = node.querySelector('code');
+            const codeText = codeEl ? codeEl.textContent : node.textContent || '';
+            let lang = '';
+            if (codeEl && codeEl.className) {
+                const match = codeEl.className.match(/language-([\w-]+)/);
+                if (match) lang = match[1];
+            }
+            const fence = turndownService.options.fence || '```';
+            return '\n' + fence + (lang ? lang : '') + '\n' + codeText.replace(/\n$/, '') + '\n' + fence + '\n';
         }
     });
 
@@ -240,6 +284,29 @@ function configureTurndown() {
         },
         replacement: function() {
             return '';
+        }
+    });
+
+    // KaTeX inline math
+    turndownService.addRule('mathInline', {
+        filter: function(node) {
+            return node.classList && node.classList.contains('math-inline');
+        },
+        replacement: function(content, node) {
+            // Extract original math from data attribute or text content
+            const mathText = node.getAttribute('data-math') || node.textContent.trim();
+            return '$' + mathText + '$';
+        }
+    });
+
+    // KaTeX display math
+    turndownService.addRule('mathDisplay', {
+        filter: function(node) {
+            return node.classList && node.classList.contains('math-display');
+        },
+        replacement: function(content, node) {
+            const mathText = node.getAttribute('data-math') || node.textContent.trim();
+            return '\n$$' + mathText + '$$\n';
         }
     });
 
@@ -449,6 +516,35 @@ function highlightCodeBlock(codeEl) {
     if (pre) updateLineNumbers(pre);
 }
 
+// Highlight all code blocks in the editor (used after undo/redo)
+function highlightAllCodeBlocks() {
+    if (typeof hljs === 'undefined') return;
+    const codeBlocks = editor.querySelectorAll('pre code:not(.language-mermaid)');
+    codeBlocks.forEach(block => {
+        delete block.dataset.highlighted;
+        block.removeAttribute('data-highlighted');
+        hljs.highlightElement(block);
+    });
+}
+
+// Ensure editor starts with an editable element
+function ensureEditableStart() {
+    if (!editor || editor.children.length === 0) {
+        return;
+    }
+    
+    const firstChild = editor.firstElementChild;
+    // Check if first element is a block element that's hard to edit before
+    const blockElements = ['PRE', 'TABLE', 'UL', 'OL', 'BLOCKQUOTE', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+    
+    if (firstChild && blockElements.includes(firstChild.tagName)) {
+        // Insert an empty paragraph at the beginning
+        const p = document.createElement('p');
+        p.innerHTML = '<br>';
+        editor.insertBefore(p, firstChild);
+    }
+}
+
 // ========== Line Numbers ==========
 function updateLineNumbers(pre) {
     if (!pre || pre.tagName !== 'PRE') return;
@@ -471,6 +567,7 @@ function updateLineNumbers(pre) {
         gutter = document.createElement('div');
         gutter.className = 'line-numbers-gutter';
         gutter.setAttribute('contenteditable', 'false');
+        gutter.setAttribute('aria-hidden', 'true');
         pre.insertBefore(gutter, pre.firstChild);
     }
 
@@ -601,8 +698,12 @@ function setupEventListeners() {
     editor.addEventListener('input', onEditorInput);
     editor.addEventListener('keydown', handleKeyDown);
     editor.addEventListener('paste', handlePaste);
-    editor.addEventListener('compositionstart', () => { isComposing = true; });
+    editor.addEventListener('compositionstart', () => { 
+        console.log('[DEBUG] IME composition started');
+        isComposing = true; 
+    });
     editor.addEventListener('compositionend', () => {
+        console.log('[DEBUG] IME composition ended');
         isComposing = false;
         // Trigger conversion after IME commit
         onEditorInput();
@@ -692,8 +793,8 @@ function setupEventListeners() {
         { id: 'saveBtn',      handler: saveFile },
         { id: 'saveAsBtn',    handler: saveAsFile },
         { id: 'pdfBtn',       handler: exportPDF },
-        { id: 'undoBtn',      handler: () => document.execCommand('undo') },
-        { id: 'redoBtn',      handler: () => document.execCommand('redo') },
+        { id: 'undoBtn',      handler: performUndo },
+        { id: 'redoBtn',      handler: performRedo },
         { id: 'boldBtn',      handler: () => document.execCommand('bold') },
         { id: 'italicBtn',    handler: () => document.execCommand('italic') },
         { id: 'strikeBtn',    handler: () => document.execCommand('strikethrough') },
@@ -729,10 +830,223 @@ function setupEventListeners() {
     });
 
     console.log('Event listeners attached');
+    
+    // Initialize undo stack with initial state
+    saveEditorState();
+}
+
+// ========== Advanced Undo/Redo Functions ==========
+
+/**
+ * Save current editor state to undo stack
+ */
+function saveEditorState() {
+    if (isUndoRedoOperation) return; // Don't record during undo/redo
+    if (isConverting) return; // Don't record during auto-conversion
+    
+    const html = editor.innerHTML;
+    const selection = saveSelection();
+    
+    // Check if state actually changed
+    if (currentState && currentState.html === html) {
+        return; // No change, don't save
+    }
+    
+    // Save current state to undo stack
+    if (currentState) {
+        undoStack.push(currentState);
+        // Limit stack size
+        if (undoStack.length > MAX_UNDO_STACK) {
+            undoStack.shift();
+        }
+    }
+    
+    // Update current state
+    currentState = { html, selection };
+    
+    // Clear redo stack when new change is made
+    redoStack = [];
+    
+    console.log('[Undo] State saved. Stack size:', undoStack.length);
+}
+
+/**
+ * Debounced version of saveEditorState (waits 500ms after last input)
+ */
+function debouncedSaveEditorState() {
+    if (saveStateTimer) clearTimeout(saveStateTimer);
+    saveStateTimer = setTimeout(() => {
+        saveEditorState();
+    }, 500);
+}
+
+/**
+ * Save current selection (cursor position/range)
+ */
+function saveSelection() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return null;
+    
+    const range = sel.getRangeAt(0);
+    return {
+        startContainer: getNodePath(range.startContainer),
+        startOffset: range.startOffset,
+        endContainer: getNodePath(range.endContainer),
+        endOffset: range.endOffset,
+        collapsed: range.collapsed
+    };
+}
+
+/**
+ * Restore saved selection
+ */
+function restoreSelection(selectionData) {
+    if (!selectionData) return;
+    
+    try {
+        const startNode = getNodeByPath(selectionData.startContainer);
+        const endNode = getNodeByPath(selectionData.endContainer);
+        
+        if (!startNode || !endNode) return;
+        
+        const range = document.createRange();
+        range.setStart(startNode, Math.min(selectionData.startOffset, startNode.length || startNode.childNodes.length || 0));
+        range.setEnd(endNode, Math.min(selectionData.endOffset, endNode.length || endNode.childNodes.length || 0));
+        
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+    } catch (err) {
+        console.warn('[Undo] Failed to restore selection:', err);
+    }
+}
+
+/**
+ * Get path from editor root to target node
+ */
+function getNodePath(node) {
+    const path = [];
+    let current = node;
+    
+    while (current && current !== editor) {
+        const parent = current.parentNode;
+        if (!parent) break;
+        
+        const index = Array.from(parent.childNodes).indexOf(current);
+        path.unshift(index);
+        current = parent;
+    }
+    
+    return path;
+}
+
+/**
+ * Get node by path from editor root
+ */
+function getNodeByPath(path) {
+    if (!path || path.length === 0) return editor;
+    
+    let current = editor;
+    for (const index of path) {
+        if (!current.childNodes[index]) return null;
+        current = current.childNodes[index];
+    }
+    
+    return current;
+}
+
+/**
+ * Perform undo operation
+ */
+function performUndo() {
+    if (undoStack.length === 0) {
+        console.log('[Undo] Nothing to undo');
+        return;
+    }
+    
+    isUndoRedoOperation = true;
+    
+    // Push current state to redo stack
+    if (currentState) {
+        redoStack.push(currentState);
+    }
+    
+    // Pop from undo stack
+    const previousState = undoStack.pop();
+    currentState = previousState;
+    
+    // Restore editor content
+    editor.innerHTML = previousState.html;
+    
+    // Ensure editor starts with an editable element
+    ensureEditableStart();
+    
+    // Restore selection
+    restoreSelection(previousState.selection);
+    
+    // Re-highlight code blocks
+    highlightAllCodeBlocks();
+    
+    // Update word count
+    updateWordCount();
+    
+    // Mark as modified
+    markModified();
+    
+    isUndoRedoOperation = false;
+    
+    console.log('[Undo] Performed. Undo stack:', undoStack.length, 'Redo stack:', redoStack.length);
+}
+
+/**
+ * Perform redo operation
+ */
+function performRedo() {
+    if (redoStack.length === 0) {
+        console.log('[Redo] Nothing to redo');
+        return;
+    }
+    
+    isUndoRedoOperation = true;
+    
+    // Push current state to undo stack
+    if (currentState) {
+        undoStack.push(currentState);
+        if (undoStack.length > MAX_UNDO_STACK) {
+            undoStack.shift();
+        }
+    }
+    
+    // Pop from redo stack
+    const nextState = redoStack.pop();
+    currentState = nextState;
+    
+    // Restore editor content
+    editor.innerHTML = nextState.html;
+    
+    // Ensure editor starts with an editable element
+    ensureEditableStart();
+    
+    // Restore selection
+    restoreSelection(nextState.selection);
+    
+    // Re-highlight code blocks
+    highlightAllCodeBlocks();
+    
+    // Update word count
+    updateWordCount();
+    
+    // Mark as modified
+    markModified();
+    
+    isUndoRedoOperation = false;
+    
+    console.log('[Redo] Performed. Undo stack:', undoStack.length, 'Redo stack:', redoStack.length);
 }
 
 // ========== Editor Input Handler ==========
 function onEditorInput() {
+    console.log('[DEBUG] onEditorInput called');
     if (isConverting) return;
     if (isComposing) return; // Skip during IME composition
 
@@ -747,6 +1061,9 @@ function onEditorInput() {
 
     updateWordCount();
     markModified();
+    
+    // Save state for undo (debounced to avoid too many snapshots)
+    debouncedSaveEditorState();
 
     // Re-highlight code block if cursor is inside one
     debouncedHighlightCodeAtCursor();
@@ -778,20 +1095,32 @@ function onEditorInput() {
 //   3. Exact match: "---" → HR
 function handleBlockAutoConversion() {
     const sel = window.getSelection();
-    if (!sel.rangeCount || !sel.isCollapsed) return;
+    if (!sel.rangeCount || !sel.isCollapsed) {
+        console.log('[DEBUG] handleBlockAutoConversion: no selection or not collapsed');
+        return;
+    }
 
     const range = sel.getRangeAt(0);
     const block = getParentBlock(range.startContainer);
-    if (!block || block === editor) return;
+    if (!block || block === editor) {
+        console.log('[DEBUG] handleBlockAutoConversion: no valid block found');
+        return;
+    }
 
     // Only convert in P or DIV blocks (not already formatted)
     const tag = block.tagName;
-    if (tag !== 'P' && tag !== 'DIV') return;
+    if (tag !== 'P' && tag !== 'DIV') {
+        console.log('[DEBUG] handleBlockAutoConversion: not P or DIV, tag=', tag);
+        return;
+    }
 
     let text = block.textContent;
+    console.log('[DEBUG] handleBlockAutoConversion: text="' + text + '"');
 
     // Normalize full-width characters to half-width for matching
     const originalText = text;
+    // Non-breaking space (U+00A0) → normal space
+    text = text.replace(/\u00A0/g, ' ');
     // Full-width numbers → half-width
     text = text.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
     // Full-width space → half-width
@@ -811,6 +1140,7 @@ function handleBlockAutoConversion() {
 
     // If text was normalized, update the block content
     if (text !== originalText) {
+        console.log('[DEBUG] Text normalized from "' + originalText + '" to "' + text + '"');
         // Save caret offset
         const caretOffset = getCaretCharacterOffsetWithin(block);
         block.textContent = text;
@@ -821,6 +1151,7 @@ function handleBlockAutoConversion() {
     // Heading: "# text" or "## text" etc.
     const headingMatch = text.match(/^(#{1,6}) (.+)$/);
     if (headingMatch) {
+        console.log('[DEBUG] Heading match found:', headingMatch);
         const level = headingMatch[1].length;
         const content = headingMatch[2];
         const heading = document.createElement('h' + level);
@@ -832,6 +1163,7 @@ function handleBlockAutoConversion() {
     // Heading prefix only: "# "
     const headingPrefixMatch = text.match(/^(#{1,6}) $/);
     if (headingPrefixMatch) {
+        console.log('[DEBUG] Heading prefix match found:', headingPrefixMatch);
         const level = headingPrefixMatch[1].length;
         const heading = document.createElement('h' + level);
         heading.innerHTML = '<br>';
@@ -1175,6 +1507,7 @@ function handleInlineAutoConversion() {
         if (beforeText) frag.appendChild(document.createTextNode(beforeText));
         const div = document.createElement('div');
         div.className = 'math-display';
+        div.setAttribute('data-math', math);
         try {
             div.innerHTML = katex.renderToString(math, {displayMode: true, throwOnError: false});
         } catch (err) {
@@ -1208,6 +1541,7 @@ function handleInlineAutoConversion() {
         if (beforeText) frag.appendChild(document.createTextNode(beforeText));
         const span = document.createElement('span');
         span.className = 'math-inline';
+        span.setAttribute('data-math', math);
         try {
             span.innerHTML = katex.renderToString(math, {displayMode: false, throwOnError: false});
         } catch (err) {
@@ -1266,6 +1600,27 @@ function applyInlineAutoConvert(textNode, match, tag, cursorPos) {
 function handleKeyDown(e) {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const mod = isMac ? e.metaKey : e.ctrlKey;
+    
+    // Cmd/Ctrl+Z: Undo
+    if (mod && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        performUndo();
+        return;
+    }
+    
+    // Cmd/Ctrl+Shift+Z: Redo
+    if (mod && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        performRedo();
+        return;
+    }
+    
+    // Cmd/Ctrl+Y: Redo (alternative shortcut)
+    if (mod && e.key === 'y') {
+        e.preventDefault();
+        performRedo();
+        return;
+    }
 
     // Cmd/Ctrl+P: PDF export
     if (mod && e.key === 'p') {
@@ -1419,6 +1774,12 @@ function handleKeyDown(e) {
 
 // ========== Enter Key Handling ==========
 function handleEnterKey(e) {
+    // Skip Enter handling during IME composition (Japanese input, etc.)
+    // The Enter key during composition is for confirming the conversion, not for creating new lines
+    if (isComposing) {
+        return; // Let the default IME behavior handle it
+    }
+    
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
 
@@ -1699,10 +2060,16 @@ function handleEnterKey(e) {
             // Set cursor after the checkbox space in new item
             const textNode = newLi.lastChild;
             const newRange = document.createRange();
-            newRange.setStart(textNode, textNode.textContent.length);
+            // Position cursor at the end of the text node (after the space)
+            const cursorPos = afterText.trim() ? textNode.textContent.length : 1;
+            newRange.setStart(textNode, cursorPos);
             newRange.collapse(true);
             sel2.removeAllRanges();
             sel2.addRange(newRange);
+            
+            // Focus the new list item to ensure cursor visibility
+            newLi.focus();
+            
             return;
         }
 
@@ -2153,6 +2520,7 @@ function insertToggle() {
     sel.removeAllRanges();
     sel.addRange(r);
     onEditorInput();
+    saveEditorState(); // Save state after inserting toggle
 }
 
 function applyBlockquote() {
@@ -2346,6 +2714,7 @@ function insertLink() {
         const html = '<a href="' + escapeHtml(url) + '">' + escapeHtml(linkText) + '</a>';
         document.execCommand('insertHTML', false, html);
         markModified();
+        saveEditorState(); // Save state after inserting link
     });
 }
 
@@ -2399,6 +2768,7 @@ async function insertImage() {
             const html = '<img src="data:' + mime + ';base64,' + base64 + '" alt="' + escapeHtml(filename) + '">';
             document.execCommand('insertHTML', false, html);
             markModified();
+            saveEditorState(); // Save state after inserting image
         }
     } catch (err) {
         console.error('Error loading image:', err);
@@ -2476,6 +2846,7 @@ function insertTable() {
         sel.addRange(r);
     }
     onEditorInput();
+    saveEditorState(); // Save state after inserting table
 }
 
 // Supported languages for code block dropdown (Highlight.js common languages)
@@ -2526,11 +2897,13 @@ const CODE_LANGUAGES = [
 ];
 
 function insertCodeBlock() {
-    // Save selection
+    // Save selection and selected text
     const sel = window.getSelection();
     let savedRange = null;
+    let selectedText = '';
     if (sel.rangeCount) {
         savedRange = sel.getRangeAt(0).cloneRange();
+        selectedText = sel.toString();
     }
 
     const fields = [
@@ -2539,18 +2912,23 @@ function insertCodeBlock() {
 
     showModal('コードブロックを挿入', fields, (values) => {
         const lang = values.lang || '';
-        doInsertCodeBlock(lang, savedRange);
+        doInsertCodeBlock(lang, savedRange, selectedText);
     });
 }
 
-function doInsertCodeBlock(lang, savedRange) {
+function doInsertCodeBlock(lang, savedRange, selectedText) {
     const pre = document.createElement('pre');
     const code = document.createElement('code');
     if (lang) code.className = 'language-' + lang;
-    code.textContent = 'コードをここに記述';
+    // Use selected text if available, otherwise use placeholder
+    code.textContent = selectedText || 'コードをここに記述';
     pre.appendChild(code);
 
     // Restore selection first
+    if (!editor) {
+        console.error('Editor element not found');
+        return;
+    }
     editor.focus();
     const sel = window.getSelection();
     if (savedRange) {
@@ -2578,19 +2956,21 @@ function doInsertCodeBlock(lang, savedRange) {
             editor.appendChild(p);
         }
 
-        // Select the placeholder text
+        // Select the code content (whether placeholder or selected text)
         const codeRange = document.createRange();
         codeRange.selectNodeContents(code);
         sel.removeAllRanges();
         sel.addRange(codeRange);
 
-        // Apply highlighting
+        // Apply highlighting first
         if (lang && typeof hljs !== 'undefined') {
             highlightCodeBlock(code);
         }
 
-        // Add line numbers
+        // Then add line numbers (wraps the highlighted HTML)
         updateLineNumbers(pre);
+        
+        saveEditorState(); // Save state after inserting code block
     }
 }
 
@@ -2663,10 +3043,13 @@ function insertTaskList() {
     editor.querySelectorAll('input[type="checkbox"][disabled]').forEach(cb => {
         cb.removeAttribute('disabled');
     });
+    
+    saveEditorState(); // Save state after inserting task list
 }
 
 function insertHorizontalRule() {
     document.execCommand('insertHTML', false, '<hr><p><br></p>');
+    saveEditorState(); // Save state after inserting HR
 }
 
 // ========== File Operations ==========
@@ -3446,6 +3829,15 @@ function switchTab(id) {
     // Restore tab content
     editor.innerHTML = tab.content;
     editor.parentElement.scrollTop = tab.scrollTop;
+    
+    // Ensure editor starts with an editable element
+    ensureEditableStart();
+    
+    // Reset undo/redo stack when switching tabs
+    undoStack = [];
+    redoStack = [];
+    currentState = null;
+    saveEditorState(); // Save initial state for new tab
 
     // Make checkboxes interactive
     editor.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -3567,6 +3959,7 @@ async function insertDate() {
         const date = now.toISOString().split('T')[0];
         document.execCommand('insertText', false, date);
     }
+    saveEditorState(); // Save state after inserting date
 }
 
 async function insertTime() {
@@ -3578,6 +3971,7 @@ async function insertTime() {
         const time = now.toTimeString().split(' ')[0];
         document.execCommand('insertText', false, time);
     }
+    saveEditorState(); // Save state after inserting time
 }
 
 async function insertDateTime() {
@@ -3589,6 +3983,7 @@ async function insertDateTime() {
         const datetime = now.toISOString().replace('T', ' ').split('.')[0];
         document.execCommand('insertText', false, datetime);
     }
+    saveEditorState(); // Save state after inserting datetime
 }
 
 // ========== Utility Functions ==========
@@ -4039,6 +4434,7 @@ function insertTOC() {
 
     document.execCommand('insertHTML', false, html);
     markModified();
+    saveEditorState(); // Save state after inserting TOC
 }
 
 // ========== Image Resize ==========
@@ -4318,6 +4714,7 @@ function showEmojiPicker() {
         }
         document.execCommand('insertText', false, emoji);
         markModified();
+        saveEditorState(); // Save state after inserting emoji
     }
 
     emojiPickerEl.addEventListener('click', onEmojiClick);
