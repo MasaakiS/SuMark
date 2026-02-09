@@ -244,6 +244,19 @@
         </div>
     </div>
 
+    <script>
+        // Debug: Check library loading
+        window.addEventListener('DOMContentLoaded', function() {
+            console.log('Libraries loaded:', {
+                marked: typeof marked !== 'undefined',
+                TurndownService: typeof TurndownService !== 'undefined',
+                turndownPluginGfm: typeof turndownPluginGfm !== 'undefined',
+                hljs: typeof hljs !== 'undefined',
+                mermaid: typeof mermaid !== 'undefined',
+                katex: typeof katex !== 'undefined'
+            });
+        });
+    </script>
     <script src="main.js"></script>
 </body>
 </html>
