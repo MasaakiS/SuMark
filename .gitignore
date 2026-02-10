@@ -8,3 +8,9 @@ dist/
 .idea/
 *.backup
 要件.md
+
+# E2E Test outputs
+test/screenshots/
+wdio-*.log
+allure-results/
+allure-report/

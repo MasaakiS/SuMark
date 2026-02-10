@@ -37,7 +37,76 @@ npm run dev
 - 外部HTMLを挿入するときは `escapeHtml` 等でテキストをエスケープする。意図的に生HTMLを保持する場合は明記する。
 
 ## テスト・検証
+
+### 手動テスト
 - 変更後は `npm run dev` で起動し、該当操作（貼り付け、テーブル挿入、画像エクスポートなど）を手動で検証する。
+
+### 自動テスト（E2E）
+プロジェクトには WebDriverIO ベースの E2E テストスイートが用意されています。
+
+#### テストの実行
+```bash
+# ビルド + テスト実行（推奨）
+npm test
+
+# テストのみ実行（ビルド済みの場合）
+npm run test:e2e
+
+# 特定のテストファイルを実行
+npx wdio run wdio.conf.js --spec test/e2e/01-basic.test.js
+```
+
+#### テスト構成
+- **設定**: `wdio.conf.js` - WebDriverIO 設定
+- **ヘルパー**: `test/helpers/TestHelpers.js` - 再利用可能なユーティリティ関数
+- **テストスイート**: `test/e2e/*.test.js` - 機能別のテストファイル
+  - `01-basic.test.js` - 基本操作（起動、入力、削除）
+  - `02-markdown.test.js` - Markdown 自動変換（見出し、リスト、装飾、数式）
+  - `03-toolbar.test.js` - ツールバー操作（全ボタン）
+  - `04-table.test.js` - テーブル操作
+  - `05-shortcuts.test.js` - キーボードショートカット
+  - `06-tabs.test.js` - タブ管理
+
+#### 新しいテストの追加
+1. `test/e2e/` に新しいテストファイルを作成（例: `07-my-feature.test.js`）
+2. `TestHelpers` を使って効率的にテストを記述:
+```javascript
+const { expect } = require('expect-webdriverio');
+const TestHelpers = require('../helpers/TestHelpers');
+
+describe('新機能のテスト', () => {
+    beforeEach(async () => {
+        await TestHelpers.clearEditor();
+    });
+
+    it('機能が動作する', async () => {
+        await TestHelpers.typeInEditor('test');
+        const text = await TestHelpers.getEditorText();
+        expect(text).toContain('test');
+    });
+});
+```
+
+#### テストのベストプラクティス
+- **独立性**: 各テストは他のテストに依存しない（`beforeEach` でクリーンアップ）
+- **待機**: 非同期処理には `TestHelpers.wait()` や `waitForDisplayed()` を使用
+- **明確性**: テスト名は何を検証しているか明確に
+- **スクリーンショット**: 失敗時は `test/screenshots/` に自動保存される
+
+#### CI/CD 統合
+- GitHub Actions でプラットフォーム別（macOS、Linux、Windows）に自動実行
+- main/develop ブランチへの push、PR 時にトリガー
+- ワークフロー: `.github/workflows/e2e-tests.yml`
+
+#### トラブルシューティング
+- テスト失敗時は `test/screenshots/` を確認
+- アプリが起動しない場合は `npm run build` を再実行
+- 詳細なガイドは `test/README.md` を参照
+
+#### 重要な注意点
+- 新機能を追加する際は、対応する E2E テストも追加すること
+- ビルド成果物のパスは `wdio.conf.js` の `binaryPath` で設定
+- リリース前に必ず全テストを実行して品質を確認
 
 ## コミット・タグ規約
 - コミットメッセージは `type(scope): description` 形式（例: `fix(export): handle asset:// images for PDF`）を推奨。
