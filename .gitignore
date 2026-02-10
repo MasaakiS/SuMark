@@ -10,7 +10,12 @@ dist/
 要件.md
 
 # E2E Test outputs
-test/screenshots/
+test/screenshots/*
+!test/screenshots/.gitkeep
 wdio-*.log
 allure-results/
 allure-report/
+
+# Test screenshots at root
+test-*.png
+test-*.jpg

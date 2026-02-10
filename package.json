@@ -11,8 +11,9 @@
     "build:mac": "tauri build --target universal-apple-darwin",
     "build:win": "tauri build --target x86_64-pc-windows-msvc",
     "build:linux": "tauri build --target x86_64-unknown-linux-gnu",
-    "test": "npm run test:build && npm run test:e2e",
+    "test": "npm run test:build && npm run test:smoke",
     "test:build": "tauri build",
+    "test:smoke": "node test/smoke-test.js",
     "test:e2e": "wdio run wdio.conf.js",
     "test:e2e:watch": "wdio run wdio.conf.js --watch"
   },
