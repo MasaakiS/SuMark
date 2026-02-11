@@ -1,0 +1,172 @@
+/**
+ * SuMark Playwright E2E テストヘルパー
+ * page オブジェクト経由でエディタを操作するユーティリティ関数群
+ */
+
+const os = require('os');
+const isMac = os.platform() === 'darwin';
+const MOD = isMac ? 'Meta' : 'Control';
+
+class PlaywrightHelpers {
+    /** @param {import('@playwright/test').Page} page */
+    constructor(page) {
+        this.page = page;
+    }
+
+    // ---------- エディタ基本操作 ----------
+
+    /** エディタをクリック（フォーカス取得） */
+    async focusEditor() {
+        await this.page.click('#editor');
+    }
+
+    /**
+     * エディタをクリアし、初期状態 (<p><br></p>) に戻す。
+     * SELECT ALL + DELETE ではなく evaluate で直接リセットする。
+     */
+    async clearEditor() {
+        await this.page.evaluate(() => {
+            const editor = document.getElementById('editor');
+            editor.innerHTML = '<p><br></p>';
+            const p = editor.querySelector('p');
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(p);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        });
+        await this.page.waitForTimeout(200);
+    }
+
+    /** エディタにテキストを入力（フォーカスを取得してから入力する） */
+    async typeInEditor(text) {
+        await this.focusEditor();
+        await this.page.keyboard.type(text, { delay: 20 });
+        await this.page.waitForTimeout(300);
+    }
+
+    /** エディタにテキストを追加入力（フォーカスせずに直接タイプ） */
+    async typeMore(text) {
+        await this.page.keyboard.type(text, { delay: 20 });
+        await this.page.waitForTimeout(300);
+    }
+
+    /** エディタの HTML コンテンツを取得 */
+    async getEditorHTML() {
+        return await this.page.locator('#editor').innerHTML();
+    }
+
+    /** エディタのテキストコンテンツを取得 */
+    async getEditorText() {
+        return await this.page.locator('#editor').innerText();
+    }
+
+    // ---------- キーボード ----------
+
+    /** Cmd/Ctrl + key を押す */
+    async pressShortcut(key) {
+        await this.page.keyboard.press(`${MOD}+${key}`);
+        await this.page.waitForTimeout(200);
+    }
+
+    /** Cmd/Ctrl+Shift + key を押す */
+    async pressShiftShortcut(key) {
+        await this.page.keyboard.press(`${MOD}+Shift+${key}`);
+        await this.page.waitForTimeout(200);
+    }
+
+    // ---------- ツールバー ----------
+
+    /**
+     * ツールバーボタンをクリック。
+     * mousedown 時に preventDefault して、エディタのフォーカス/選択を保持する。
+     */
+    async clickToolbarButton(buttonId) {
+        const btn = this.page.locator(`#${buttonId}`);
+        // Dispatch mousedown with preventDefault to keep editor focus
+        await btn.evaluate(el => {
+            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        });
+        await btn.click({ force: true });
+        await this.page.waitForTimeout(300);
+    }
+
+    /**
+     * document.execCommand をエディタ上で直接実行する。
+     * ツールバークリックで選択が消える問題を回避する。
+     */
+    async execFormatCommand(command) {
+        await this.page.evaluate((cmd) => {
+            document.execCommand(cmd);
+        }, command);
+        await this.page.waitForTimeout(200);
+    }
+
+    // ---------- モーダル ----------
+
+    /** モーダルが表示されるまで待機 */
+    async waitForModal() {
+        await this.page.locator('#modalOverlay[style*="flex"]').waitFor({ state: 'visible', timeout: 5000 });
+    }
+
+    /** モーダルの入力フィールドに値を設定 (id=modalInput0, modalInput1, ...) */
+    async setModalInput(index, value) {
+        const field = this.page.locator(`#modalInput${index}`);
+        await field.fill(value);
+    }
+
+    /** モーダルの OK ボタンをクリック */
+    async clickModalOK() {
+        await this.page.locator('#modalOk').click();
+        await this.page.waitForTimeout(300);
+    }
+
+    /** モーダルをキャンセルする */
+    async clickModalCancel() {
+        await this.page.locator('#modalCancel').click();
+        await this.page.waitForTimeout(200);
+    }
+
+    // ---------- 検証ヘルパー ----------
+
+    /** エディタ内に特定のタグが存在するか */
+    async editorContainsTag(tagName) {
+        const count = await this.page.locator(`#editor ${tagName}`).count();
+        return count > 0;
+    }
+
+    /** 特定のセレクタの要素が存在するか */
+    async elementExists(selector) {
+        const count = await this.page.locator(selector).count();
+        return count > 0;
+    }
+
+    /** テーブルの行数を取得 */
+    async getTableRowCount() {
+        return await this.page.locator('#editor table tr').count();
+    }
+
+    /** テーブルの列数を取得 */
+    async getTableColumnCount() {
+        const firstRow = this.page.locator('#editor table tr').first();
+        return await firstRow.locator('td, th').count();
+    }
+
+    /** タブの数を取得 */
+    async getTabCount() {
+        return await this.page.locator('.tab').count();
+    }
+
+    /** アクティブなタブのタイトルを取得 */
+    async getActiveTabTitle() {
+        return await this.page.locator('.tab.active').innerText();
+    }
+
+    /** 指定時間待機 */
+    async wait(ms) {
+        await this.page.waitForTimeout(ms);
+    }
+}
+
+module.exports = PlaywrightHelpers;

@@ -831,6 +831,58 @@ function setupEventListeners() {
 
     console.log('Event listeners attached');
     
+    // File drop event (Tauri v1 drag-and-drop support)
+    if (window.__TAURI__ && window.__TAURI__.event) {
+        console.log('[DEBUG] Setting up Tauri file drop listeners...');
+        
+        // Use Tauri v1 event API
+        window.__TAURI__.event.listen('tauri://file-drop', async (event) => {
+            console.log('[DEBUG] File drop event received:', event);
+            console.log('[DEBUG] Event payload:', event.payload);
+            
+            const files = event.payload;
+            console.log('[DEBUG] Files:', files);
+            
+            if (files && Array.isArray(files)) {
+                console.log('[DEBUG] Processing', files.length, 'dropped files');
+                for (const filePath of files) {
+                    console.log('[DEBUG] Processing file:', filePath);
+                    // Check if file is a Markdown file
+                    const ext = filePath.split('.').pop().toLowerCase();
+                    if (ext === 'md' || ext === 'markdown' || ext === 'txt') {
+                        try {
+                            await openFileFromPath(filePath);
+                            console.log('[DEBUG] Successfully opened:', filePath);
+                        } catch (err) {
+                            console.error('Error opening dropped file:', err);
+                            alert('ファイルを開けませんでした: ' + filePath);
+                        }
+                    } else {
+                        console.log('[INFO] Skipping non-Markdown file:', filePath);
+                    }
+                }
+            } else {
+                console.warn('[WARN] No files in drop event or invalid format');
+            }
+        });
+        
+        // File drop hover event (optional visual feedback)
+        window.__TAURI__.event.listen('tauri://file-drop-hover', (event) => {
+            console.log('[DEBUG] File drop hover:', event);
+            document.body.style.outline = '3px dashed #007bff';
+        });
+        
+        // File drop cancelled event
+        window.__TAURI__.event.listen('tauri://file-drop-cancelled', (event) => {
+            console.log('[DEBUG] File drop cancelled:', event);
+            document.body.style.outline = '';
+        });
+        
+        console.log('[DEBUG] Tauri file drop listeners registered');
+    } else {
+        console.log('[DEBUG] Tauri event API not available - file drop disabled');
+    }
+    
     // Initialize undo stack with initial state
     saveEditorState();
 }
@@ -3059,6 +3111,33 @@ async function newFile() {
     editor.focus();
 }
 
+// Open a file from a given path (used by both dialog and drag-and-drop)
+async function openFileFromPath(filePath) {
+    try {
+        // Check if file is already open
+        const existingTab = tabs.find(t => t.filePath === filePath);
+        if (existingTab) {
+            switchTab(existingTab.id);
+            return;
+        }
+
+        let contents = await readTextFile(filePath);
+
+        // Resolve relative image paths to asset protocol URLs for display
+        const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+        const fileDir = filePath.substring(0, lastSlash);
+        contents = resolveRelativeImages(contents, fileDir);
+        contents = await resolveRelativeCsvLinks(contents, fileDir);
+
+        const filename = filePath.split('/').pop().split('\\').pop();
+        const html = (typeof marked !== 'undefined') ? marked.parse(contents) : contents;
+        createTab(filePath, filename, html);
+    } catch (err) {
+        console.error('Error opening file:', err);
+        throw err;
+    }
+}
+
 async function openFile() {
     try {
         const selected = await tauriOpen({
@@ -3070,24 +3149,7 @@ async function openFile() {
             // Handle both single and multiple file selections
             const files = Array.isArray(selected) ? selected : [selected];
             for (const filePath of files) {
-                // Check if file is already open
-                const existingTab = tabs.find(t => t.filePath === filePath);
-                if (existingTab) {
-                    switchTab(existingTab.id);
-                    continue;
-                }
-
-                let contents = await readTextFile(filePath);
-
-                // Resolve relative image paths to asset protocol URLs for display
-                const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
-                const fileDir = filePath.substring(0, lastSlash);
-                contents = resolveRelativeImages(contents, fileDir);
-                contents = await resolveRelativeCsvLinks(contents, fileDir);
-
-                const filename = filePath.split('/').pop().split('\\').pop();
-                const html = (typeof marked !== 'undefined') ? marked.parse(contents) : contents;
-                createTab(filePath, filename, html);
+                await openFileFromPath(filePath);
             }
         }
     } catch (err) {

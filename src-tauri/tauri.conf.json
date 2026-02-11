@@ -8,7 +8,7 @@
   },
   "package": {
     "productName": "SuMark",
-    "version": "0.3.1"
+    "version": "0.4.0"
   },
   "tauri": {
     "allowlist": {
@@ -54,16 +54,10 @@
         "icons/icon.icns",
         "icons/icon.ico",
         "icons/icon.png"
-      ],
-      "windows": {
-        "webviewInstallMode": {
-          "type": "embedBootstrapper",
-          "silent": true
-        }
-      }
+      ]
     },
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: asset: https://asset.localhost; font-src 'self' data:; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: asset: https: http:; font-src 'self' data:; connect-src ipc: http://ipc.localhost https://ipc.localhost"
     },
     "windows": [
       {
@@ -73,7 +67,8 @@
         "width": 1200,
         "height": 800,
         "minWidth": 800,
-        "minHeight": 600
+        "minHeight": 600,
+        "fileDropEnabled": true
       }
     ]
   }
