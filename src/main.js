@@ -169,6 +169,7 @@ function init() {
     setupImageResize();
     setupCodeCopyButtons();
     setupImageErrorHandling();
+    setupImageMutationObserver(); // Watch for new images added to editor
     console.log('[DEBUG] Event listeners setup complete');
 
     // Initialize Mermaid (may load asynchronously via defer)
@@ -466,7 +467,10 @@ function setMarkdown(md) {
     setupToggleBlocks();
     
     // Setup image error handling to display alt text
-    setupImageErrorHandling();
+    // Use setTimeout to ensure DOM is fully updated after innerHTML assignment
+    setTimeout(() => {
+        setupImageErrorHandling();
+    }, 100);
 }
 
 // ========== Code Block Live Highlighting ==========
@@ -4794,47 +4798,111 @@ function addCopyButtonsToCodeBlocks() {
 }
 
 // ========== Image Error Handling ==========
+let imageMutationObserver = null;
+
+function setupImageMutationObserver() {
+    // Create a MutationObserver to watch for new images added to the editor
+    if (imageMutationObserver) {
+        imageMutationObserver.disconnect();
+    }
+    
+    imageMutationObserver = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            // Check for added nodes
+            mutation.addedNodes.forEach((node) => {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    // Check if the node itself is an image
+                    if (node.tagName === 'IMG') {
+                        handleSingleImage(node);
+                    }
+                    // Check for images within the added node
+                    else if (node.querySelectorAll) {
+                        const images = node.querySelectorAll('img');
+                        if (images.length > 0) {
+                            images.forEach(img => handleSingleImage(img));
+                        }
+                    }
+                }
+            });
+        });
+    });
+    
+    // Start observing the editor
+    imageMutationObserver.observe(editor, {
+        childList: true,
+        subtree: true
+    });
+}
+
+function handleSingleImage(img) {
+    // Skip if already processed
+    if (img.dataset.errorHandled) {
+        return;
+    }
+    img.dataset.errorHandled = 'true';
+    
+    // Function to handle error and display alt text
+    const handleImageError = function() {
+        // Skip if already showing alt text or if image loaded successfully
+        if (this.classList.contains('img-error-processed')) {
+            return;
+        }
+        if (this.complete && this.naturalWidth > 0) {
+            return; // Image loaded successfully
+        }
+        
+        this.classList.add('img-error-processed');
+        
+        const alt = this.getAttribute('alt') || '画像を読み込めません';
+        const src = this.getAttribute('src') || '';
+        
+        // Create a container to display alt text
+        const container = document.createElement('div');
+        container.className = 'img-error-container';
+        container.setAttribute('contenteditable', 'false');
+        
+        const altText = document.createElement('div');
+        altText.className = 'img-error-text';
+        altText.textContent = alt;
+        
+        const srcText = document.createElement('div');
+        srcText.className = 'img-error-src';
+        srcText.textContent = '(画像パス: ' + src + ')';
+        
+        container.appendChild(altText);
+        container.appendChild(srcText);
+        
+        // Replace image with error container
+        if (this.parentNode) {
+            this.parentNode.replaceChild(container, this);
+            markModified();
+        }
+    };
+    
+    // Add error event listener
+    img.addEventListener('error', handleImageError);
+    
+    // Also add load event to mark successful loads
+    img.addEventListener('load', function() {
+        this.classList.add('img-loaded-successfully');
+    });
+    
+    // Check current state
+    if (img.complete) {
+        // Image has finished loading (or failed)
+        if (img.naturalWidth === 0 && img.naturalHeight === 0) {
+            // Failed to load
+            handleImageError.call(img);
+        }
+    }
+}
+
 function setupImageErrorHandling() {
     // Handle image load errors and display alt text
-    editor.querySelectorAll('img').forEach(img => {
-        // Skip if already processed
-        if (img.dataset.errorHandled) return;
-        img.dataset.errorHandled = 'true';
-        
-        // Add error event listener
-        img.addEventListener('error', function() {
-            // Skip if already showing alt text
-            if (this.classList.contains('img-error')) return;
-            
-            const alt = this.getAttribute('alt') || '画像を読み込めません';
-            const src = this.getAttribute('src') || '';
-            
-            // Create a container to display alt text
-            const container = document.createElement('div');
-            container.className = 'img-error-container';
-            container.setAttribute('contenteditable', 'false');
-            
-            const altText = document.createElement('div');
-            altText.className = 'img-error-text';
-            altText.textContent = alt;
-            
-            const srcText = document.createElement('div');
-            srcText.className = 'img-error-src';
-            srcText.textContent = '(画像パス: ' + src + ')';
-            
-            container.appendChild(altText);
-            container.appendChild(srcText);
-            
-            // Replace image with error container
-            this.parentNode.replaceChild(container, this);
-            
-            markModified();
-        });
-        
-        // Check if image is already in error state (e.g., cached failed load)
-        if (img.complete && img.naturalWidth === 0) {
-            img.dispatchEvent(new Event('error'));
-        }
+    const images = editor.querySelectorAll('img');
+    
+    images.forEach((img) => {
+        handleSingleImage(img);
     });
 }
 
