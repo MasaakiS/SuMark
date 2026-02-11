@@ -1987,6 +1987,18 @@ function handleEnterKey(e) {
     if (/^H[1-6]$/.test(tag)) {
         e.preventDefault();
 
+        // Check if the heading is empty (convert to paragraph)
+        const headingText = block.textContent.trim();
+        if (headingText === '') {
+            // Convert empty heading to paragraph
+            const p = document.createElement('p');
+            p.innerHTML = '<br>';
+            block.parentNode.insertBefore(p, block);
+            block.remove();
+            setCursorTo(p);
+            return;
+        }
+
         // Check if cursor is at the very beginning of the heading
         const isAtStart = (function() {
             if (!range.collapsed) return false;
@@ -2438,13 +2450,57 @@ function looksLikeMarkdown(text) {
 
 function applyHeading(level) {
     const tag = 'h' + level;
-    const block = getParentBlock(window.getSelection().anchorNode);
-    if (block && block.tagName.toLowerCase() === tag) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    
+    const block = getParentBlock(sel.anchorNode);
+    if (!block) return;
+    
+    // Check if we're toggling off the same heading level
+    if (block.tagName.toLowerCase() === tag) {
         // Toggle off: revert to paragraph
         document.execCommand('formatBlock', false, 'p');
-    } else {
-        document.execCommand('formatBlock', false, tag);
+        return;
     }
+    
+    // Special handling for list items: convert list item to heading
+    if (block.tagName === 'LI') {
+        // Get the text content (excluding checkbox if present)
+        const checkbox = block.querySelector('input[type="checkbox"]');
+        let textContent = '';
+        for (let node of block.childNodes) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                textContent += node.textContent;
+            } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'INPUT') {
+                textContent += node.textContent;
+            }
+        }
+        
+        // Create heading element
+        const heading = document.createElement(tag);
+        heading.textContent = textContent.trim();
+        
+        // Get the parent list
+        const list = block.parentNode;
+        
+        // Insert heading before the list or after it depending on position
+        list.parentNode.insertBefore(heading, list.nextSibling);
+        
+        // Remove the list item
+        block.remove();
+        
+        // If list is now empty, remove it
+        if (list.children.length === 0) {
+            list.remove();
+        }
+        
+        // Set cursor at the end of the heading
+        setCursorTo(heading);
+        return;
+    }
+    
+    // For other block types, use the standard formatBlock command
+    document.execCommand('formatBlock', false, tag);
 }
 
 function ensureToggleDeleteButton(summary) {
