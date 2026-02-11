@@ -536,6 +536,30 @@ function highlightCodeBlock(codeEl) {
     // Don't highlight mermaid blocks
     if (codeEl.classList.contains('language-mermaid')) return;
 
+    // Check line count - skip highlighting for large code blocks (500+ lines)
+    const plainText = codeEl.textContent;
+    const lineCount = plainText.split('\n').length;
+    
+    if (lineCount > 500) {
+        console.log(`[ハイライトスキップ] ${lineCount}行のコードブロックが大きすぎるため、シンタックスハイライトをスキップしました。`);
+        
+        // Update line numbers without highlighting
+        const pre = codeEl.closest('pre');
+        if (pre) {
+            updateLineNumbers(pre);
+            // Add a visual indicator that highlighting is skipped
+            if (!pre.querySelector('.highlight-skipped-notice')) {
+                const notice = document.createElement('div');
+                notice.className = 'highlight-skipped-notice';
+                notice.textContent = `⚠️ ${lineCount}行 - シンタックスハイライト無効`;
+                notice.style.cssText = 'position:absolute;top:5px;right:10px;background:rgba(255,165,0,0.2);color:#ff8c00;padding:2px 8px;border-radius:3px;font-size:11px;pointer-events:none;z-index:10;';
+                pre.style.position = 'relative';
+                pre.appendChild(notice);
+            }
+        }
+        return;
+    }
+
     // Save cursor position
     const sel = window.getSelection();
     const isInsideCode = codeEl.contains(sel.anchorNode);
@@ -544,8 +568,6 @@ function highlightCodeBlock(codeEl) {
         caretOffset = getCaretCharacterOffsetWithin(codeEl);
     }
 
-    // Get plain text and re-highlight
-    const plainText = codeEl.textContent;
     // Remove previous hljs state
     delete codeEl.dataset.highlighted;
     codeEl.removeAttribute('data-highlighted');
@@ -559,7 +581,12 @@ function highlightCodeBlock(codeEl) {
 
     // Update line numbers
     const pre = codeEl.closest('pre');
-    if (pre) updateLineNumbers(pre);
+    if (pre) {
+        updateLineNumbers(pre);
+        // Remove skipped notice if it exists
+        const notice = pre.querySelector('.highlight-skipped-notice');
+        if (notice) notice.remove();
+    }
 }
 
 // Highlight all code blocks in the editor (used after undo/redo)
@@ -567,9 +594,37 @@ function highlightAllCodeBlocks() {
     if (typeof hljs === 'undefined') return;
     const codeBlocks = editor.querySelectorAll('pre code:not(.language-mermaid)');
     codeBlocks.forEach(block => {
+        const lineCount = block.textContent.split('\n').length;
+        
+        if (lineCount > 500) {
+            console.log(`[ハイライトスキップ] ${lineCount}行のコードブロックをスキップしました。`);
+            
+            // Update line numbers and add notice
+            const pre = block.closest('pre');
+            if (pre) {
+                updateLineNumbers(pre);
+                if (!pre.querySelector('.highlight-skipped-notice')) {
+                    const notice = document.createElement('div');
+                    notice.className = 'highlight-skipped-notice';
+                    notice.textContent = `⚠️ ${lineCount}行 - シンタックスハイライト無効`;
+                    notice.style.cssText = 'position:absolute;top:5px;right:10px;background:rgba(255,165,0,0.2);color:#ff8c00;padding:2px 8px;border-radius:3px;font-size:11px;pointer-events:none;z-index:10;';
+                    pre.style.position = 'relative';
+                    pre.appendChild(notice);
+                }
+            }
+            return;
+        }
+        
         delete block.dataset.highlighted;
         block.removeAttribute('data-highlighted');
         hljs.highlightElement(block);
+        
+        // Remove skipped notice if it exists
+        const pre = block.closest('pre');
+        if (pre) {
+            const notice = pre.querySelector('.highlight-skipped-notice');
+            if (notice) notice.remove();
+        }
     });
 }
 
@@ -645,7 +700,15 @@ function debouncedHighlightCodeAtCursor() {
         // Walk up to find code element inside pre
         while (node && node !== editor) {
             if (node.tagName === 'CODE' && node.parentElement && node.parentElement.tagName === 'PRE') {
-                highlightCodeBlock(node);
+                const lineCount = node.textContent.split('\n').length;
+                // Adjust delay based on code size
+                const delay = lineCount > 100 ? 500 : 0;
+                
+                if (delay > 0) {
+                    setTimeout(() => highlightCodeBlock(node), delay);
+                } else {
+                    highlightCodeBlock(node);
+                }
                 return;
             }
             node = node.parentElement;
@@ -2357,8 +2420,76 @@ function handleTabKey(e) {
     document.execCommand('insertText', false, '    ');
 }
 
+// ========== Progress Indicator for Large Operations ==========
+function showProgressIndicator(message) {
+    let indicator = document.getElementById('paste-progress-indicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'paste-progress-indicator';
+        indicator.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.85);color:white;padding:20px 40px;border-radius:8px;font-size:16px;z-index:10000;box-shadow:0 4px 6px rgba(0,0,0,0.3);';
+        document.body.appendChild(indicator);
+    }
+    indicator.textContent = message;
+    indicator.style.display = 'block';
+}
+
+function hideProgressIndicator() {
+    const indicator = document.getElementById('paste-progress-indicator');
+    if (indicator) {
+        indicator.style.display = 'none';
+    }
+}
+
+// ========== Chunked Paste Processing ==========
+async function pasteTextInChunks(lines, codeElement) {
+    const CHUNK_SIZE = 100; // Process 100 lines at a time
+    const totalLines = lines.length;
+    let currentIndex = 0;
+    
+    return new Promise((resolve) => {
+        function processChunk() {
+            const endIndex = Math.min(currentIndex + CHUNK_SIZE, totalLines);
+            const chunk = lines.slice(currentIndex, endIndex);
+            
+            // Insert chunk
+            for (let i = 0; i < chunk.length; i++) {
+                if (currentIndex + i > 0) {
+                    document.execCommand('insertLineBreak');
+                }
+                if (chunk[i]) {
+                    document.execCommand('insertText', false, chunk[i]);
+                }
+            }
+            
+            currentIndex = endIndex;
+            
+            // Update progress
+            if (totalLines > 500) {
+                const progress = Math.round((currentIndex / totalLines) * 100);
+                showProgressIndicator(`貼り付け中... ${progress}% (${currentIndex}/${totalLines}行)`);
+            }
+            
+            // Continue processing or finish
+            if (currentIndex < totalLines) {
+                requestAnimationFrame(processChunk);
+            } else {
+                if (totalLines > 500) {
+                    hideProgressIndicator();
+                }
+                resolve();
+            }
+        }
+        
+        // Start processing
+        if (totalLines > 500) {
+            showProgressIndicator(`貼り付け中... 0% (0/${totalLines}行)`);
+        }
+        requestAnimationFrame(processChunk);
+    });
+}
+
 // ========== Paste Handling ==========
-function handlePaste(e) {
+async function handlePaste(e) {
     // 0. If inside a code block, always paste as plain text
     const sel = window.getSelection();
     if (sel.rangeCount) {
@@ -2367,35 +2498,70 @@ function handlePaste(e) {
             if (node.tagName === 'CODE' && node.parentElement && node.parentElement.tagName === 'PRE') {
                 e.preventDefault();
                 const text = e.clipboardData.getData('text/plain');
-                // Insert plain text preserving newlines within the code block
-                // Use insertText for each line with insertLineBreak between them
                 const lines = text.split('\n');
-                for (let i = 0; i < lines.length; i++) {
-                    if (i > 0) {
-                        document.execCommand('insertLineBreak');
-                    }
-                    if (lines[i]) {
-                        document.execCommand('insertText', false, lines[i]);
+                const lineCount = lines.length;
+                
+                // Show info for large pastes
+                if (lineCount > 100) {
+                    console.log(`[大量コード貼り付け] ${lineCount}行のコードを貼り付けています...`);
+                }
+                
+                // Use chunked processing for large pastes
+                if (lineCount > 100) {
+                    await pasteTextInChunks(lines, node);
+                } else {
+                    // Small paste: use direct insertion
+                    for (let i = 0; i < lines.length; i++) {
+                        if (i > 0) {
+                            document.execCommand('insertLineBreak');
+                        }
+                        if (lines[i]) {
+                            document.execCommand('insertText', false, lines[i]);
+                        }
                     }
                 }
+                
                 markModified();
                 debouncedHighlightCodeAtCursor();
+                
+                if (lineCount > 100) {
+                    const skipMsg = lineCount > 500 ? '（500行超えのためハイライトはスキップされます）' : '';
+                    console.log(`[大量コード貼り付け] 完了しました。${skipMsg}`);
+                }
                 return;
             }
             if (node.tagName === 'PRE') {
                 e.preventDefault();
                 const text = e.clipboardData.getData('text/plain');
                 const lines = text.split('\n');
-                for (let i = 0; i < lines.length; i++) {
-                    if (i > 0) {
-                        document.execCommand('insertLineBreak');
-                    }
-                    if (lines[i]) {
-                        document.execCommand('insertText', false, lines[i]);
+                const lineCount = lines.length;
+                
+                if (lineCount > 100) {
+                    console.log(`[大量コード貼り付け] ${lineCount}行のコードを貼り付けています...`);
+                }
+                
+                // Use chunked processing for large pastes
+                if (lineCount > 100) {
+                    await pasteTextInChunks(lines, node);
+                } else {
+                    // Small paste: use direct insertion
+                    for (let i = 0; i < lines.length; i++) {
+                        if (i > 0) {
+                            document.execCommand('insertLineBreak');
+                        }
+                        if (lines[i]) {
+                            document.execCommand('insertText', false, lines[i]);
+                        }
                     }
                 }
+                
                 markModified();
                 debouncedHighlightCodeAtCursor();
+                
+                if (lineCount > 100) {
+                    const skipMsg = lineCount > 500 ? '（500行超えのためハイライトはスキップされます）' : '';
+                    console.log(`[大量コード貼り付け] 完了しました。${skipMsg}`);
+                }
                 return;
             }
             node = node.parentElement;
