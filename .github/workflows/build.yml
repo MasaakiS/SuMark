@@ -10,14 +10,98 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  # macOS ビルド専用ジョブ（必要最小限）
+  build_macos:
+    runs-on: macos-latest
+    name: Build (macOS)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Extract changelog for release
+        id: changelog
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Extracting changelog for version: ${VERSION}"
+          awk "/^## \[v${VERSION}\]/{found=1; next} /^## \[v/{if(found) exit} found" CHANGELOG.md > /tmp/changelog_body.txt
+          {
+            echo "body<<CHANGELOG_DELIM_EOF"
+            cat /tmp/changelog_body.txt
+            echo "CHANGELOG_DELIM_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build Tauri app (macOS)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'SuMark ${{ github.ref_name }}'
+          releaseBody: |
+            ## Changes
+
+            ${{ steps.changelog.outputs.body }}
+
+            ## Downloads
+
+            ### Installer (recommended)
+            | OS | File |
+            |---|---|
+            | macOS | `.dmg` |
+            | Windows | `.msi` |
+            | Linux / Chromebook (x86_64) | `.deb` |
+            | Linux / Chromebook (ARM64) | `.deb` (arm64) |
+
+            ### Portable (no install required)
+            | OS | File |
+            |---|---|
+            | macOS | `SuMark-portable-macos-${{ github.ref_name }}.zip` |
+            | Windows | `SuMark-portable-windows-${{ github.ref_name }}.zip` |
+            | Linux / Chromebook (x86_64) | `SuMark-linux-x86_64-${{ github.ref_name }}.AppImage` |
+          releaseDraft: true
+          prerelease: false
+          args: '--target universal-apple-darwin'
+
+      - name: Create portable zip (macOS)
+        run: |
+          APP_PATH=$(find src-tauri/target -name "SuMark.app" -type d | head -1)
+          if [ -n "$APP_PATH" ]; then
+            ditto -c -k --sequesterRsrc "$APP_PATH" "SuMark-portable-macos-${{ github.ref_name }}.zip"
+          fi
+
+      - name: Upload portable zip (macOS)
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          files: SuMark-portable-macos-${{ github.ref_name }}.zip
+
+  # Linux / Windows 用のビルド（安いランナーのみ）
+  build_others:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
-            target: universal-apple-darwin
-            name: macOS
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             name: Windows
@@ -55,7 +139,6 @@ jobs:
       - name: Install ARM64 cross-compilation dependencies
         if: matrix.platform == 'ubuntu-22.04' && matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
-          # Install base build tools
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
@@ -65,11 +148,7 @@ jobs:
             patchelf \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu
-
-          # Add arm64 architecture
           sudo dpkg --add-architecture arm64
-
-          # Properly configure apt sources for multiarch
           sudo bash -c 'cat > /etc/apt/sources.list << EOF
           deb [arch=amd64] http://archive.ubuntu.com/ubuntu jammy main restricted universe multiverse
           deb [arch=amd64] http://archive.ubuntu.com/ubuntu jammy-updates main restricted universe multiverse
@@ -78,7 +157,6 @@ jobs:
           deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
           deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
           EOF'
-
           sudo apt-get update
           sudo apt-get install -y \
             libexpat1-dev:arm64 \
@@ -97,7 +175,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
+          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -117,77 +195,18 @@ jobs:
           echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
           echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
 
-      - name: Extract changelog for release
-        id: changelog
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Extracting changelog for version: ${VERSION}"
-          
-          # Extract the section for this version from CHANGELOG.md to a temp file
-          awk "/^## \[v${VERSION}\]/{found=1; next} /^## \[v/{if(found) exit} found" CHANGELOG.md > /tmp/changelog_body.txt
-          
-          echo "--- Extracted changelog ---"
-          cat /tmp/changelog_body.txt
-          echo "--- End changelog ---"
-          
-          # Set as multiline output using unique delimiter
-          {
-            echo "body<<CHANGELOG_DELIM_EOF"
-            cat /tmp/changelog_body.txt
-            echo "CHANGELOG_DELIM_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build Tauri app
+      - name: Build Tauri app (Windows / Linux)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'SuMark ${{ github.ref_name }}'
-          releaseBody: |
-            ## Changes
-
-            ${{ steps.changelog.outputs.body }}
-
-            ## Downloads
-
-            ### Installer (recommended)
-            | OS | File |
-            |---|---|
-            | macOS | `.dmg` |
-            | Windows | `.msi` |
-            | Linux / Chromebook (x86_64) | `.deb` |
-            | Linux / Chromebook (ARM64) | `.deb` (arm64) |
-
-            ### Portable (no install required)
-            | OS | File |
-            |---|---|
-            | macOS | `SuMark-portable-macos-${{ github.ref_name }}.zip` |
-            | Windows | `SuMark-portable-windows-${{ github.ref_name }}.zip` |
-            | Linux / Chromebook (x86_64) | `SuMark-linux-${{ github.ref_name }}.AppImage` |
+          # macOS 用の releaseBody は build_macos 側で設定済みなのでここでは省略も可
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '--target aarch64-unknown-linux-gnu --bundles deb' || format('--target {0}', matrix.target) }}
 
-      # Create portable zip for macOS
-      - name: Create portable zip (macOS)
-        if: matrix.platform == 'macos-latest'
-        run: |
-          APP_PATH=$(find src-tauri/target -name "SuMark.app" -type d | head -1)
-          if [ -n "$APP_PATH" ]; then
-            ditto -c -k --sequesterRsrc "$APP_PATH" "SuMark-portable-macos-${{ github.ref_name }}.zip"
-          fi
-
-      - name: Upload portable zip (macOS)
-        if: matrix.platform == 'macos-latest'
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          tag_name: ${{ github.ref_name }}
-          files: SuMark-portable-macos-${{ github.ref_name }}.zip
-
-      # Create portable zip for Windows
       - name: Create portable zip (Windows)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
@@ -205,19 +224,18 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: SuMark-portable-windows-${{ github.ref_name }}.zip
 
-      # Upload AppImage for Linux
       - name: Upload AppImage (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-22.04' && matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           APPIMAGE=$(find src-tauri/target -name "*.AppImage" -type f | head -1)
           if [ -n "$APPIMAGE" ]; then
-            cp "$APPIMAGE" "SuMark-linux-${{ github.ref_name }}.AppImage"
+            cp "$APPIMAGE" "SuMark-linux-x86_64-${{ github.ref_name }}.AppImage"
           fi
 
       - name: Upload AppImage artifact (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-22.04' && matrix.target == 'x86_64-unknown-linux-gnu'
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           tag_name: ${{ github.ref_name }}
-          files: SuMark-linux-${{ github.ref_name }}.AppImage
+          files: SuMark-linux-x86_64-${{ github.ref_name }}.AppImage

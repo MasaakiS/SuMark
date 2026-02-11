@@ -8,6 +8,7 @@ dist/
 .idea/
 *.backup
 要件.md
+test_data/
 
 # E2E Test outputs
 test/screenshots/*
