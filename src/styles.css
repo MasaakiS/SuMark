@@ -468,6 +468,36 @@ body {
     border-radius: 4px;
 }
 
+/* Image error container */
+.img-error-container {
+    display: inline-block;
+    padding: 16px 20px;
+    margin: 16px 0;
+    background-color: #fff5f5;
+    border: 2px dashed #ff6b6b;
+    border-radius: 6px;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.img-error-text {
+    font-size: 14px;
+    color: #333;
+    font-weight: 600;
+    margin-bottom: 6px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.img-error-src {
+    font-size: 11px;
+    color: #888;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+}
+
 .markdown-body a {
     color: #0366d6;
     text-decoration: none;

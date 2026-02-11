@@ -168,6 +168,7 @@ function init() {
     setupTableContextMenu();
     setupImageResize();
     setupCodeCopyButtons();
+    setupImageErrorHandling();
     console.log('[DEBUG] Event listeners setup complete');
 
     // Initialize Mermaid (may load asynchronously via defer)
@@ -334,6 +335,24 @@ function configureTurndown() {
         }
     });
 
+    // Image error containers: convert back to markdown image syntax
+    turndownService.addRule('imageErrorContainer', {
+        filter: function(node) {
+            return node.classList && node.classList.contains('img-error-container');
+        },
+        replacement: function(content, node) {
+            const altTextEl = node.querySelector('.img-error-text');
+            const srcTextEl = node.querySelector('.img-error-src');
+            const alt = altTextEl ? altTextEl.textContent : '画像を読み込めません';
+            let src = '';
+            if (srcTextEl) {
+                const srcMatch = srcTextEl.textContent.match(/\(画像パス: (.+)\)/);
+                if (srcMatch) src = srcMatch[1];
+            }
+            return '![' + alt + '](' + src + ')';
+        }
+    });
+
     // Toggle (details/summary) blocks: preserve as HTML
     turndownService.addRule('detailsBlock', {
         filter: function(node) {
@@ -445,6 +464,9 @@ function setMarkdown(md) {
 
     // Setup toggle blocks
     setupToggleBlocks();
+    
+    // Setup image error handling to display alt text
+    setupImageErrorHandling();
 }
 
 // ========== Code Block Live Highlighting ==========
@@ -4771,6 +4793,52 @@ function addCopyButtonsToCodeBlocks() {
     });
 }
 
+// ========== Image Error Handling ==========
+function setupImageErrorHandling() {
+    // Handle image load errors and display alt text
+    editor.querySelectorAll('img').forEach(img => {
+        // Skip if already processed
+        if (img.dataset.errorHandled) return;
+        img.dataset.errorHandled = 'true';
+        
+        // Add error event listener
+        img.addEventListener('error', function() {
+            // Skip if already showing alt text
+            if (this.classList.contains('img-error')) return;
+            
+            const alt = this.getAttribute('alt') || '画像を読み込めません';
+            const src = this.getAttribute('src') || '';
+            
+            // Create a container to display alt text
+            const container = document.createElement('div');
+            container.className = 'img-error-container';
+            container.setAttribute('contenteditable', 'false');
+            
+            const altText = document.createElement('div');
+            altText.className = 'img-error-text';
+            altText.textContent = alt;
+            
+            const srcText = document.createElement('div');
+            srcText.className = 'img-error-src';
+            srcText.textContent = '(画像パス: ' + src + ')';
+            
+            container.appendChild(altText);
+            container.appendChild(srcText);
+            
+            // Replace image with error container
+            this.parentNode.replaceChild(container, this);
+            
+            markModified();
+        });
+        
+        // Check if image is already in error state (e.g., cached failed load)
+        if (img.complete && img.naturalWidth === 0) {
+            img.dispatchEvent(new Event('error'));
+        }
+    });
+}
+
+// ========== Image Resize ==========
 function setupImageResize() {
     let activeImage = null;
     let resizeHandle = document.createElement('div');
