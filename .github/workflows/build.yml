@@ -122,12 +122,21 @@ jobs:
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # Extract the section for this version from CHANGELOG.md
-          CHANGELOG=$(awk "/^## \[v${VERSION}\]/{found=1; next} /^## \[v/{if(found) exit} found" CHANGELOG.md)
-          # Set as multiline output
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "Extracting changelog for version: ${VERSION}"
+          
+          # Extract the section for this version from CHANGELOG.md to a temp file
+          awk "/^## \[v${VERSION}\]/{found=1; next} /^## \[v/{if(found) exit} found" CHANGELOG.md > /tmp/changelog_body.txt
+          
+          echo "--- Extracted changelog ---"
+          cat /tmp/changelog_body.txt
+          echo "--- End changelog ---"
+          
+          # Set as multiline output using unique delimiter
+          {
+            echo "body<<CHANGELOG_DELIM_EOF"
+            cat /tmp/changelog_body.txt
+            echo "CHANGELOG_DELIM_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
