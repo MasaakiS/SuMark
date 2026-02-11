@@ -804,8 +804,8 @@ function setupEventListeners() {
         { id: 'h1Btn',        handler: () => applyHeading(1) },
         { id: 'h2Btn',        handler: () => applyHeading(2) },
         { id: 'h3Btn',        handler: () => applyHeading(3) },
-        { id: 'ulBtn',        handler: () => document.execCommand('insertUnorderedList') },
-        { id: 'olBtn',        handler: () => document.execCommand('insertOrderedList') },
+        { id: 'ulBtn',        handler: insertUnorderedList },
+        { id: 'olBtn',        handler: insertOrderedList },
         { id: 'taskBtn',      handler: insertTaskList },
         { id: 'tableBtn',     handler: insertTable },
         { id: 'codeBlockBtn', handler: insertCodeBlock },
@@ -2503,6 +2503,72 @@ function applyHeading(level) {
     document.execCommand('formatBlock', false, tag);
 }
 
+function insertUnorderedList() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    
+    const block = getParentBlock(sel.anchorNode);
+    if (!block) {
+        document.execCommand('insertUnorderedList');
+        return;
+    }
+    
+    // Special handling for headings: convert heading to list item
+    if (/^H[1-6]$/.test(block.tagName)) {
+        const textContent = block.textContent.trim();
+        
+        // Create list and list item
+        const ul = document.createElement('ul');
+        const li = document.createElement('li');
+        li.textContent = textContent;
+        ul.appendChild(li);
+        
+        // Replace heading with list
+        block.parentNode.insertBefore(ul, block);
+        block.remove();
+        
+        // Set cursor in the list item
+        setCursorTo(li);
+        return;
+    }
+    
+    // For other block types, use the standard command
+    document.execCommand('insertUnorderedList');
+}
+
+function insertOrderedList() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    
+    const block = getParentBlock(sel.anchorNode);
+    if (!block) {
+        document.execCommand('insertOrderedList');
+        return;
+    }
+    
+    // Special handling for headings: convert heading to list item
+    if (/^H[1-6]$/.test(block.tagName)) {
+        const textContent = block.textContent.trim();
+        
+        // Create list and list item
+        const ol = document.createElement('ol');
+        const li = document.createElement('li');
+        li.textContent = textContent;
+        ol.appendChild(li);
+        
+        // Replace heading with list
+        block.parentNode.insertBefore(ol, block);
+        block.remove();
+        
+        // Set cursor in the list item
+        setCursorTo(li);
+        return;
+    }
+    
+    // For other block types, use the standard command
+    document.execCommand('insertOrderedList');
+}
+
 function ensureToggleDeleteButton(summary) {
     if (!summary) return;
     if (!summary.querySelector('.toggle-delete-btn')) {
@@ -3084,7 +3150,44 @@ function doInsertCodeBlock(lang, savedRange, selectedText) {
 
 function insertTaskList() {
     const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    
     const selectedText = sel.toString().trim();
+
+    // Check if we're in a heading
+    const block = getParentBlock(sel.anchorNode);
+    if (block && /^H[1-6]$/.test(block.tagName) && !selectedText) {
+        // Convert heading to task list item
+        const textContent = block.textContent.trim();
+        
+        // Create task list
+        const ul = document.createElement('ul');
+        ul.className = 'contains-task-list';
+        const li = document.createElement('li');
+        li.className = 'task-list-item';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        li.appendChild(cb);
+        if (textContent) {
+            li.appendChild(document.createTextNode(' ' + textContent));
+        } else {
+            li.appendChild(document.createTextNode('\u00A0'));
+        }
+        ul.appendChild(li);
+        
+        // Replace heading with task list
+        block.parentNode.insertBefore(ul, block);
+        block.remove();
+        
+        // Set cursor in the list item
+        setCursorTo(li);
+        
+        // Make checkboxes interactive
+        cb.removeAttribute('disabled');
+        
+        saveEditorState();
+        return;
+    }
 
     if (selectedText) {
         // Convert selected lines to task list items
@@ -3120,17 +3223,17 @@ function insertTaskList() {
         const range = sel.getRangeAt(0);
         range.deleteContents();
 
-        let block = range.startContainer;
-        while (block && block !== editor && block.parentNode !== editor) {
-            block = block.parentNode;
+        let block2 = range.startContainer;
+        while (block2 && block2 !== editor && block2.parentNode !== editor) {
+            block2 = block2.parentNode;
         }
 
-        if (block && block !== editor) {
-            block.parentNode.insertBefore(ul, block.nextSibling);
+        if (block2 && block2 !== editor) {
+            block2.parentNode.insertBefore(ul, block2.nextSibling);
             ul.parentNode.insertBefore(p, ul.nextSibling);
             // Remove empty placeholder block
-            if (block.textContent.trim() === '' && block.tagName === 'P') {
-                block.remove();
+            if (block2.textContent.trim() === '' && block2.tagName === 'P') {
+                block2.remove();
             }
         } else {
             editor.appendChild(ul);
