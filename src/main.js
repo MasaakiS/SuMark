@@ -1165,6 +1165,35 @@ function handleBlockAutoConversion() {
         console.log('[DEBUG] handleBlockAutoConversion: not P or DIV, tag=', tag);
         return;
     }
+    
+    // Prevent list auto-conversion inside table cells
+    if (isInsideTableCell(range.startContainer)) {
+        console.log('[DEBUG] handleBlockAutoConversion: inside table cell, skipping list conversions');
+        // Allow only non-list conversions (headings, blockquotes, HR) - skip list patterns
+        let text = block.textContent;
+        // Normalize text
+        text = text.replace(/\u00A0/g, ' ');
+        text = text.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+        text = text.replace(/　/g, ' ');
+        text = text.replace(/．/g, '.');
+        text = text.replace(/[ー－―−]/g, '-');
+        text = text.replace(/＃/g, '#');
+        text = text.replace(/＞/g, '>');
+        text = text.replace(/＊/g, '*');
+        text = text.replace(/［/g, '[').replace(/］/g, ']');
+        
+        // Only allow heading conversion in table cells
+        const headingMatch = text.match(/^(#{1,6}) (.+)$/);
+        if (headingMatch) {
+            const level = headingMatch[1].length;
+            const content = headingMatch[2];
+            const heading = document.createElement('h' + level);
+            heading.textContent = content;
+            block.parentNode.replaceChild(heading, block);
+            setCursorToEnd(heading);
+        }
+        return;
+    }
 
     let text = block.textContent;
     console.log('[DEBUG] handleBlockAutoConversion: text="' + text + '"');
@@ -2507,6 +2536,12 @@ function insertUnorderedList() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
     
+    // Prevent list insertion inside table cells
+    if (isInsideTableCell(sel.anchorNode)) {
+        alert('表のセル内ではリストを作成できません。');
+        return;
+    }
+    
     const block = getParentBlock(sel.anchorNode);
     if (!block) {
         document.execCommand('insertUnorderedList');
@@ -2539,6 +2574,12 @@ function insertUnorderedList() {
 function insertOrderedList() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
+    
+    // Prevent list insertion inside table cells
+    if (isInsideTableCell(sel.anchorNode)) {
+        alert('表のセル内ではリストを作成できません。');
+        return;
+    }
     
     const block = getParentBlock(sel.anchorNode);
     if (!block) {
@@ -3152,42 +3193,13 @@ function insertTaskList() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
     
-    const selectedText = sel.toString().trim();
-
-    // Check if we're in a heading
-    const block = getParentBlock(sel.anchorNode);
-    if (block && /^H[1-6]$/.test(block.tagName) && !selectedText) {
-        // Convert heading to task list item
-        const textContent = block.textContent.trim();
-        
-        // Create task list
-        const ul = document.createElement('ul');
-        ul.className = 'contains-task-list';
-        const li = document.createElement('li');
-        li.className = 'task-list-item';
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        li.appendChild(cb);
-        if (textContent) {
-            li.appendChild(document.createTextNode(' ' + textContent));
-        } else {
-            li.appendChild(document.createTextNode('\u00A0'));
-        }
-        ul.appendChild(li);
-        
-        // Replace heading with task list
-        block.parentNode.insertBefore(ul, block);
-        block.remove();
-        
-        // Set cursor in the list item
-        setCursorTo(li);
-        
-        // Make checkboxes interactive
-        cb.removeAttribute('disabled');
-        
-        saveEditorState();
+    // Prevent list insertion inside table cells
+    if (isInsideTableCell(sel.anchorNode)) {
+        alert('表のセル内ではリストを作成できません。');
         return;
     }
+    
+    const selectedText = sel.toString().trim();
 
     if (selectedText) {
         // Convert selected lines to task list items
@@ -3223,17 +3235,17 @@ function insertTaskList() {
         const range = sel.getRangeAt(0);
         range.deleteContents();
 
-        let block2 = range.startContainer;
-        while (block2 && block2 !== editor && block2.parentNode !== editor) {
-            block2 = block2.parentNode;
+        let block = range.startContainer;
+        while (block && block !== editor && block.parentNode !== editor) {
+            block = block.parentNode;
         }
 
-        if (block2 && block2 !== editor) {
-            block2.parentNode.insertBefore(ul, block2.nextSibling);
+        if (block && block !== editor) {
+            block.parentNode.insertBefore(ul, block.nextSibling);
             ul.parentNode.insertBefore(p, ul.nextSibling);
             // Remove empty placeholder block
-            if (block2.textContent.trim() === '' && block2.tagName === 'P') {
-                block2.remove();
+            if (block.textContent.trim() === '' && block.tagName === 'P') {
+                block.remove();
             }
         } else {
             editor.appendChild(ul);
@@ -4222,6 +4234,18 @@ function getParentBlock(node) {
         current = current.parentNode;
     }
     return null;
+}
+
+// Check if the current selection or node is inside a table cell
+function isInsideTableCell(node) {
+    let current = node;
+    while (current && current !== editor) {
+        if (current.tagName === 'TD' || current.tagName === 'TH') {
+            return true;
+        }
+        current = current.parentNode;
+    }
+    return false;
 }
 
 function setCursorTo(element) {
