@@ -265,6 +265,28 @@ function configureTurndown() {
         }
     });
 
+    // Keep <br> in table cells as HTML (Markdown tables don't support native line breaks)
+    turndownService.addRule('tableCellBr', {
+        filter: function(node) {
+            if (node.nodeName !== 'BR') return false;
+            // Check if inside a table cell
+            let parent = node.parentNode;
+            while (parent) {
+                if (parent.nodeName === 'TD' || parent.nodeName === 'TH') {
+                    return true;
+                }
+                if (parent.nodeName === 'TABLE') {
+                    return false; // Reached table but not inside a cell
+                }
+                parent = parent.parentNode;
+            }
+            return false;
+        },
+        replacement: function() {
+            return '<br>';
+        }
+    });
+
     // Remove copy buttons from Turndown output
     turndownService.addRule('codeCopyBtn', {
         filter: function(node) {
@@ -424,11 +446,9 @@ function getMarkdown() {
         return editor.textContent || '';
     }
 
-    // Before Turndown conversion, clean <br> inside table cells
+    // Clone the editor content for conversion
+    // No need to remove <br> from table cells - Turndown rule will preserve them as HTML
     const clone = editor.cloneNode(true);
-    clone.querySelectorAll('th br, td br').forEach(br => {
-        br.parentNode.removeChild(br);
-    });
 
     let md = turndownService.turndown(clone.innerHTML);
 
@@ -1885,6 +1905,33 @@ function handleEnterKey(e) {
     // The Enter key during composition is for confirming the conversion, not for creating new lines
     if (isComposing) {
         return; // Let the default IME behavior handle it
+    }
+    
+    // Shift+Enter: Insert soft line break (space space + newline for Markdown)
+    if (e.shiftKey) {
+        e.preventDefault();
+        const sel = window.getSelection();
+        if (!sel.rangeCount) return;
+        
+        const range = sel.getRangeAt(0);
+        
+        // Insert two spaces followed by a line break
+        // This creates a <br> in Markdown when rendered
+        const textNode = document.createTextNode('  ');
+        range.insertNode(textNode);
+        
+        // Move cursor after the spaces
+        range.setStartAfter(textNode);
+        range.setEndAfter(textNode);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        
+        // Insert line break
+        document.execCommand('insertLineBreak');
+        
+        markModified();
+        saveEditorState();
+        return;
     }
     
     const sel = window.getSelection();
