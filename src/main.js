@@ -383,7 +383,14 @@ function configureTurndown() {
         },
         replacement: function(content, node) {
             const summary = node.querySelector('summary');
-            const summaryText = summary ? summary.textContent.trim() : 'トグル';
+            // Get summary text excluding delete button
+            let summaryText = 'トグル';
+            if (summary) {
+                const clone = summary.cloneNode(true);
+                const deleteBtn = clone.querySelector('.toggle-delete-btn');
+                if (deleteBtn) deleteBtn.remove();
+                summaryText = clone.textContent.trim() || 'トグル';
+            }
             // Get toggle-content div or all content after summary
             const contentDiv = node.querySelector('.toggle-content');
             let innerMd = '';
@@ -2409,7 +2416,20 @@ function handleTabKey(e) {
     // In lists: indent/outdent
     if (block && block.tagName === 'LI') {
         if (e.shiftKey) {
-            document.execCommand('outdent');
+            const list = block.parentNode;
+            const parentLi = list ? list.closest('li') : null;
+            const parentList = parentLi ? parentLi.parentNode : null;
+
+            if (parentList && (parentList.tagName === 'UL' || parentList.tagName === 'OL')) {
+                const insertBefore = parentLi.nextSibling;
+                parentList.insertBefore(block, insertBefore);
+                if (list.children.length === 0) {
+                    list.remove();
+                }
+                setCursorTo(block);
+            } else {
+                document.execCommand('outdent');
+            }
         } else {
             document.execCommand('indent');
         }
@@ -2782,8 +2802,10 @@ function insertUnorderedList() {
     }
     
     const block = getParentBlock(sel.anchorNode);
+    const toggleContent = block ? block.closest('.toggle-content') : null;
     if (!block) {
         document.execCommand('insertUnorderedList');
+        if (toggleContent) ensureToggleContentEditable(toggleContent);
         return;
     }
     
@@ -2803,11 +2825,13 @@ function insertUnorderedList() {
         
         // Set cursor in the list item
         setCursorTo(li);
+        if (toggleContent) ensureToggleContentEditable(toggleContent);
         return;
     }
     
     // For other block types, use the standard command
     document.execCommand('insertUnorderedList');
+    if (toggleContent) ensureToggleContentEditable(toggleContent);
 }
 
 function insertOrderedList() {
@@ -2821,8 +2845,10 @@ function insertOrderedList() {
     }
     
     const block = getParentBlock(sel.anchorNode);
+    const toggleContent = block ? block.closest('.toggle-content') : null;
     if (!block) {
         document.execCommand('insertOrderedList');
+        if (toggleContent) ensureToggleContentEditable(toggleContent);
         return;
     }
     
@@ -2842,11 +2868,13 @@ function insertOrderedList() {
         
         // Set cursor in the list item
         setCursorTo(li);
+        if (toggleContent) ensureToggleContentEditable(toggleContent);
         return;
     }
     
     // For other block types, use the standard command
     document.execCommand('insertOrderedList');
+    if (toggleContent) ensureToggleContentEditable(toggleContent);
 }
 
 function ensureToggleDeleteButton(summary) {
@@ -2979,17 +3007,20 @@ function insertToggle() {
 
 function applyBlockquote() {
     const block = getParentBlock(window.getSelection().anchorNode);
+    const toggleContent = block ? block.closest('.toggle-content') : null;
     // Check if already in blockquote
     let node = block;
     while (node && node !== editor) {
         if (node.tagName === 'BLOCKQUOTE') {
             // Exit blockquote
             document.execCommand('formatBlock', false, 'p');
+            if (toggleContent) ensureToggleContentEditable(toggleContent);
             return;
         }
         node = node.parentNode;
     }
     document.execCommand('formatBlock', false, 'blockquote');
+    if (toggleContent) ensureToggleContentEditable(toggleContent);
 }
 
 function applyInlineCode() {
@@ -3173,11 +3204,46 @@ function insertLink() {
 }
 
 async function insertImage() {
-    // Save selection before opening dialog
     const sel = window.getSelection();
     let savedRange = null;
     if (sel.rangeCount) {
         savedRange = sel.getRangeAt(0).cloneRange();
+    }
+
+    let selectedImg = null;
+    if (sel.rangeCount) {
+        const range = sel.getRangeAt(0);
+        let node = range.startContainer.nodeType === Node.TEXT_NODE
+            ? range.startContainer.parentNode
+            : range.startContainer;
+
+        if (node && node.tagName === 'IMG') {
+            selectedImg = node;
+        } else if (node && node.closest) {
+            selectedImg = node.closest('img');
+        }
+
+        if (!selectedImg && !range.collapsed) {
+            const common = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+                ? range.commonAncestorContainer.parentNode
+                : range.commonAncestorContainer;
+            if (common && common.querySelector) {
+                selectedImg = common.querySelector('img');
+            }
+        }
+    }
+
+    if (selectedImg) {
+        const currentAlt = selectedImg.getAttribute('alt') || '';
+        showModal('代替テキストを編集', [
+            { name: 'alt', label: '代替テキスト', type: 'text', value: currentAlt }
+        ], (values) => {
+            const altText = (values.alt || '').trim();
+            selectedImg.setAttribute('alt', altText);
+            markModified();
+            saveEditorState();
+        });
+        return;
     }
 
     try {
@@ -3219,10 +3285,15 @@ async function insertImage() {
             }
 
             const filename = selected.split('/').pop().split('\\').pop();
-            const html = '<img src="data:' + mime + ';base64,' + base64 + '" alt="' + escapeHtml(filename) + '">';
-            document.execCommand('insertHTML', false, html);
-            markModified();
-            saveEditorState(); // Save state after inserting image
+            showModal('画像を挿入', [
+                { name: 'alt', label: '代替テキスト', type: 'text', value: filename }
+            ], (values) => {
+                const altText = (values.alt || filename).trim();
+                const html = '<img src="data:' + mime + ';base64,' + base64 + '" alt="' + escapeHtml(altText) + '">';
+                document.execCommand('insertHTML', false, html);
+                markModified();
+                saveEditorState(); // Save state after inserting image
+            });
         }
     } catch (err) {
         console.error('Error loading image:', err);
@@ -3284,6 +3355,7 @@ function insertTable() {
             toggleContent.appendChild(table);
         }
         toggleContent.insertBefore(afterP, table.nextSibling);
+        ensureToggleContentEditable(toggleContent);
     } else if (block && block !== editor && block.parentNode) {
         block.parentNode.insertBefore(table, block.nextSibling);
         block.parentNode.insertBefore(afterP, table.nextSibling);
@@ -3397,6 +3469,7 @@ function doInsertCodeBlock(lang, savedRange, selectedText) {
 
         // Make sure we're inserting at block level
         const block = getParentBlock(range.startContainer);
+        const toggleContent = block ? block.closest('.toggle-content') : null;
         if (block && block !== editor) {
             block.parentNode.insertBefore(pre, block.nextSibling);
             const p = document.createElement('p');
@@ -3408,6 +3481,10 @@ function doInsertCodeBlock(lang, savedRange, selectedText) {
             const p = document.createElement('p');
             p.innerHTML = '<br>';
             editor.appendChild(p);
+        }
+        // Ensure editable lines at start/end of toggle-content
+        if (toggleContent) {
+            ensureToggleContentEditable(toggleContent);
         }
 
         // Select the code content (whether placeholder or selected text)
@@ -3438,6 +3515,8 @@ function insertTaskList() {
         return;
     }
     
+    const block = getParentBlock(sel.anchorNode);
+    const toggleContent = block ? block.closest('.toggle-content') : null;
     const selectedText = sel.toString().trim();
 
     if (selectedText) {
@@ -3474,21 +3553,40 @@ function insertTaskList() {
         const range = sel.getRangeAt(0);
         range.deleteContents();
 
-        let block = range.startContainer;
-        while (block && block !== editor && block.parentNode !== editor) {
-            block = block.parentNode;
+        const findDirectChild = (container, node) => {
+            let current = node;
+            while (current && current !== container && current.parentNode !== container) {
+                current = current.parentNode;
+            }
+            return current && current.parentNode === container ? current : null;
+        };
+
+        let insertParent = editor;
+        let insertAfter = null;
+
+        if (toggleContent) {
+            insertParent = toggleContent;
+            insertAfter = findDirectChild(toggleContent, range.startContainer);
+        } else {
+            let rootBlock = range.startContainer;
+            while (rootBlock && rootBlock !== editor && rootBlock.parentNode !== editor) {
+                rootBlock = rootBlock.parentNode;
+            }
+            if (rootBlock && rootBlock !== editor) {
+                insertAfter = rootBlock;
+            }
         }
 
-        if (block && block !== editor) {
-            block.parentNode.insertBefore(ul, block.nextSibling);
-            ul.parentNode.insertBefore(p, ul.nextSibling);
-            // Remove empty placeholder block
-            if (block.textContent.trim() === '' && block.tagName === 'P') {
-                block.remove();
+        if (insertAfter && insertAfter.parentNode === insertParent) {
+            insertParent.insertBefore(ul, insertAfter.nextSibling);
+            insertParent.insertBefore(p, ul.nextSibling);
+            // Remove empty placeholder block in the same container
+            if (insertAfter.tagName === 'P' && insertAfter.textContent.trim() === '') {
+                insertAfter.remove();
             }
         } else {
-            editor.appendChild(ul);
-            editor.appendChild(p);
+            insertParent.appendChild(ul);
+            insertParent.appendChild(p);
         }
 
         // Position cursor right after the non-breaking space (beside checkbox)
@@ -3506,6 +3604,7 @@ function insertTaskList() {
         cb.removeAttribute('disabled');
     });
     
+    if (toggleContent) ensureToggleContentEditable(toggleContent);
     saveEditorState(); // Save state after inserting task list
 }
 
@@ -4324,6 +4423,18 @@ function switchTab(id) {
     // Render Mermaid diagrams
     renderMermaidBlocks();
 
+    // Setup toggle blocks (open, contenteditable, toggle-content wrapper, delete buttons)
+    setupToggleBlocks();
+
+    // Add delete buttons to TOC containers
+    setupTocDeleteButtons();
+
+    // Add line numbers to code blocks
+    updateAllLineNumbers();
+
+    // Setup image error handling
+    setupImageErrorHandling();
+
     renderTabs();
     updateWordCount();
     updateStatusBar();
@@ -4822,6 +4933,28 @@ function unwrapToggle(details) {
     markModified();
 }
 
+/**
+ * Ensure toggle-content has editable paragraphs at start and end
+ * so users can always add content before/after block elements (tables, code blocks, etc.)
+ * Call this after inserting block elements into toggle-content.
+ */
+function ensureToggleContentEditable(contentDiv) {
+    if (!contentDiv) return;
+    const blockElements = ['PRE', 'TABLE', 'UL', 'OL', 'BLOCKQUOTE', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'DETAILS'];
+    const firstChild = contentDiv.firstElementChild;
+    if (firstChild && blockElements.includes(firstChild.tagName)) {
+        const p = document.createElement('p');
+        p.innerHTML = '<br>';
+        contentDiv.insertBefore(p, firstChild);
+    }
+    const lastChild = contentDiv.lastElementChild;
+    if (lastChild && blockElements.includes(lastChild.tagName)) {
+        const p = document.createElement('p');
+        p.innerHTML = '<br>';
+        contentDiv.appendChild(p);
+    }
+}
+
 function setupToggleBlocks() {
     editor.querySelectorAll('details').forEach(details => {
         // Ensure details is open in editor for editing
@@ -4856,6 +4989,9 @@ function setupToggleBlocks() {
             }
             details.appendChild(contentDiv);
         }
+
+        // Ensure editable paragraphs at start and end of toggle-content
+        ensureToggleContentEditable(contentDiv);
     });
 }
 
