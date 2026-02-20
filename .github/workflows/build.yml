@@ -10,8 +10,63 @@ permissions:
   contents: write
 
 jobs:
+  # リリースを先に1つだけ作成するジョブ
+  create_release:
+    runs-on: ubuntu-latest
+    name: Create Release
+    outputs:
+      release_id: ${{ steps.create.outputs.id }}
+      upload_url: ${{ steps.create.outputs.upload_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract changelog for release
+        id: changelog
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Extracting changelog for version: ${VERSION}"
+          awk "/^## \[v${VERSION}\]/{found=1; next} /^## \[v/{if(found) exit} found" CHANGELOG.md > /tmp/changelog_body.txt
+          {
+            echo "body<<CHANGELOG_DELIM_EOF"
+            cat /tmp/changelog_body.txt
+            echo "CHANGELOG_DELIM_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release
+        id: create
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: 'SuMark ${{ github.ref_name }}'
+          body: |
+            ## Changes
+
+            ${{ steps.changelog.outputs.body }}
+
+            ## Downloads
+
+            ### Installer (recommended)
+            | OS | File |
+            |---|---|
+            | macOS | `.dmg` |
+            | Windows | `.msi` |
+            | Linux / Chromebook (x86_64) | `.deb` |
+            | Linux / Chromebook (ARM64) | `.deb` (arm64) |
+
+            ### Portable (no install required)
+            | OS | File |
+            |---|---|
+            | macOS | `SuMark-portable-macos-${{ github.ref_name }}.zip` |
+            | Windows | `SuMark-portable-windows-${{ github.ref_name }}.zip` |
+            | Linux / Chromebook (x86_64) | `SuMark-linux-x86_64-${{ github.ref_name }}.AppImage` |
+          draft: true
+          prerelease: false
+
   # macOS ビルド専用ジョブ（必要最小限）
   build_macos:
+    needs: create_release
     runs-on: macos-latest
     name: Build (macOS)
 
@@ -37,19 +92,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Extract changelog for release
-        id: changelog
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Extracting changelog for version: ${VERSION}"
-          awk "/^## \[v${VERSION}\]/{found=1; next} /^## \[v/{if(found) exit} found" CHANGELOG.md > /tmp/changelog_body.txt
-          {
-            echo "body<<CHANGELOG_DELIM_EOF"
-            cat /tmp/changelog_body.txt
-            echo "CHANGELOG_DELIM_EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Build Tauri app (macOS)
         uses: tauri-apps/tauri-action@v0
         env:
@@ -57,27 +99,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'SuMark ${{ github.ref_name }}'
-          releaseBody: |
-            ## Changes
-
-            ${{ steps.changelog.outputs.body }}
-
-            ## Downloads
-
-            ### Installer (recommended)
-            | OS | File |
-            |---|---|
-            | macOS | `.dmg` |
-            | Windows | `.msi` |
-            | Linux / Chromebook (x86_64) | `.deb` |
-            | Linux / Chromebook (ARM64) | `.deb` (arm64) |
-
-            ### Portable (no install required)
-            | OS | File |
-            |---|---|
-            | macOS | `SuMark-portable-macos-${{ github.ref_name }}.zip` |
-            | Windows | `SuMark-portable-windows-${{ github.ref_name }}.zip` |
-            | Linux / Chromebook (x86_64) | `SuMark-linux-x86_64-${{ github.ref_name }}.AppImage` |
           releaseDraft: true
           prerelease: false
           args: '--target universal-apple-darwin'
@@ -96,8 +117,9 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: SuMark-portable-macos-${{ github.ref_name }}.zip
 
-  # Linux / Windows 用のビルド（安いランナーのみ）
+  # Linux / Windows 用のビルド
   build_others:
+    needs: create_release
     strategy:
       fail-fast: false
       matrix:
@@ -202,7 +224,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'SuMark ${{ github.ref_name }}'
-          # macOS 用の releaseBody は build_macos 側で設定済みなのでここでは省略も可
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '--target aarch64-unknown-linux-gnu --bundles deb' || format('--target {0}', matrix.target) }}
