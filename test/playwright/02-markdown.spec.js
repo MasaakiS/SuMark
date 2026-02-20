@@ -129,6 +129,22 @@ test.describe('Markdown 自動変換テスト', () => {
             expect(hasBlockquote).toBe(true);
         });
 
+        test('引用入力後の改行で引用が終了する', async ({ app }) => {
+            await app.helpers.typeInEditor('> Quote text');
+            await app.page.keyboard.press('Enter');
+            await app.helpers.wait(800);
+
+            // blockquoteは削除されている（引用は出現しない）
+            const blockquoteElements = await app.page.locator('blockquote');
+            const count = await blockquoteElements.count();
+            expect(count).toBe(0);
+
+            // 改行後の段落が存在する
+            const pElements = await app.page.locator('p');
+            const pCount = await pElements.count();
+            expect(pCount).toBeGreaterThan(0);
+        });
+
         test('--- から hr に変換される', async ({ app }) => {
             await app.helpers.typeInEditor('---');
             await app.page.keyboard.press('Enter');

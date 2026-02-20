@@ -8,11 +8,18 @@
   },
   "package": {
     "productName": "SuMark",
-    "version": "0.4.2"
+    "version": "0.5.0"
   },
   "tauri": {
     "allowlist": {
       "all": false,
+      "app": {
+        "all": true
+      },
+      "window": {
+        "all": false,
+        "setTitle": true
+      },
       "protocol": {
         "asset": true,
         "assetScope": ["**"]

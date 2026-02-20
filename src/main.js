@@ -2,17 +2,52 @@
 // SuMark - Main Application Logic
 // =====================================================
 
+// Global error banner management
+let errorBanner = null;
+let errorBannerTimeout = null;
+let lastErrorTime = 0;
+const ERROR_THROTTLE_MS = 500;  // Prevent rapid-fire error spam
+
 // Global error handler for debugging
 window.onerror = function(msg, url, line, col, error) {
     console.error('Global error:', msg, 'at', url, ':', line, ':', col);
-    const errDiv = document.createElement('div');
-    errDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:10px;z-index:99999;font-size:14px';
-    errDiv.textContent = 'JS Error: ' + msg + ' (line ' + line + ')';
-    document.body.appendChild(errDiv);
+    
+    // Throttle: ignore errors within ERROR_THROTTLE_MS ms of the last error
+    const now = Date.now();
+    if (now - lastErrorTime < ERROR_THROTTLE_MS) {
+        return;  // Ignore this error
+    }
+    lastErrorTime = now;
+    
+    // Create or reuse error banner
+    if (!errorBanner) {
+        errorBanner = document.createElement('div');
+        errorBanner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc3545;color:white;padding:12px;z-index:99999;font-size:14px;display:flex;justify-content:space-between;align-items:center';
+        errorBanner.innerHTML = '';
+        document.body.appendChild(errorBanner);
+    }
+    
+    // Update error message
+    const errorMsg = 'JS Error: ' + msg + ' (line ' + line + ')';
+    errorBanner.textContent = errorMsg;
+    
+    // Clear existing timeout and set new one
+    if (errorBannerTimeout) {
+        clearTimeout(errorBannerTimeout);
+    }
+    errorBannerTimeout = setTimeout(function() {
+        if (errorBanner && errorBanner.parentNode) {
+            errorBanner.remove();
+            errorBanner = null;
+        }
+        errorBannerTimeout = null;
+    }, 5000);  // Auto-dismiss after 5 seconds
 };
 
 window.addEventListener('unhandledrejection', function(event) {
     console.error('Unhandled promise rejection:', event.reason);
+    // Trigger error handler for unhandled rejections
+    window.onerror('Unhandled Promise Rejection: ' + String(event.reason), window.location.href, 0, 0, event.reason);
 });
 
 // ========== State ==========
@@ -125,6 +160,20 @@ function init() {
             convertFileSrc = window.__TAURI__.tauri.convertFileSrc;
             shellOpen = window.__TAURI__.shell.open;
             console.log('Tauri APIs OK');
+
+            // アプリ名の横にバージョンを表示
+            (async () => {
+                try {
+                    const appName = await window.__TAURI__.app.getName();
+                    const appVersion = await window.__TAURI__.app.getVersion();
+                    document.title = `${appName} v${appVersion}`;
+                    if (window.__TAURI__.window && window.__TAURI__.window.appWindow) {
+                        window.__TAURI__.window.appWindow.setTitle(`${appName} v${appVersion}`);
+                    }
+                } catch (vErr) {
+                    console.warn('Could not set version in title:', vErr);
+                }
+            })();
         }
     } catch (err) {
         console.error('Tauri API init failed:', err);
@@ -163,14 +212,13 @@ function init() {
     editor.innerHTML = '<p><br></p>';
 
     // Setup event listeners
-    console.log('[DEBUG] Setting up event listeners...');
     setupEventListeners();
     setupTableContextMenu();
     setupImageResize();
+    setupImageViewer();
     setupCodeCopyButtons();
     setupImageErrorHandling();
     setupImageMutationObserver(); // Watch for new images added to editor
-    console.log('[DEBUG] Event listeners setup complete');
 
     // Initialize Mermaid (may load asynchronously via defer)
     try {
@@ -190,7 +238,6 @@ function init() {
     // Initial state
     updateWordCount();
     editor.focus();
-    console.log('Initialization complete');
 }
 
 // ========== Turndown Configuration ==========
@@ -199,7 +246,6 @@ function configureTurndown() {
         console.error('[ERROR] Turndown not loaded - TurndownService is undefined');
         return;
     }
-    console.log('[DEBUG] Configuring Turndown...');
 
     turndownService = new TurndownService({
         headingStyle: 'atx',
@@ -382,7 +428,7 @@ function configureTurndown() {
             return node.nodeName === 'DETAILS';
         },
         replacement: function(content, node) {
-            const summary = node.querySelector('summary');
+            const summary = node.querySelector(':scope > summary');
             // Get summary text excluding delete button
             let summaryText = 'トグル';
             if (summary) {
@@ -392,7 +438,7 @@ function configureTurndown() {
                 summaryText = clone.textContent.trim() || 'トグル';
             }
             // Get toggle-content div or all content after summary
-            const contentDiv = node.querySelector('.toggle-content');
+            const contentDiv = node.querySelector(':scope > .toggle-content');
             let innerMd = '';
             if (contentDiv) {
                 innerMd = turndownService.turndown(contentDiv.innerHTML).trim();
@@ -467,7 +513,32 @@ function setMarkdown(md) {
         editor.textContent = md;
         return;
     }
-    editor.innerHTML = marked.parse(md);
+    
+    const dirtyHtml = marked.parse(md);
+    
+    // Sanitize HTML to prevent XSS attacks while preserving custom UI elements
+    const cleanHtml = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(dirtyHtml, {
+        ALLOWED_TAGS: [
+            'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+            'blockquote', 'pre', 'code', 'hr',
+            'br', 'strong', 'em', 'a', 'img',
+            'table', 'thead', 'tbody', 'tr', 'th', 'td',
+            'details', 'summary',  // toggle support
+            'div', 'span', 'input',  // custom elements containers
+        ],
+        ALLOWED_ATTR: [
+            'href', 'title', 'src', 'alt', 'width', 'height',
+            'class', 'id', 'style',
+            'type', 'checked', 'disabled',
+            'open',
+            'contenteditable',
+            'data-mermaid-source', 'data-math',  // custom data attributes
+        ],
+        ALLOW_DATA_ATTR: true,
+    }) : dirtyHtml;
+    
+    editor.innerHTML = cleanHtml;
 
     // Make checkboxes interactive
     editor.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -498,6 +569,11 @@ function setMarkdown(md) {
     setTimeout(() => {
         setupImageErrorHandling();
     }, 100);
+    
+    // Log notice if DOMPurify is not available
+    if (typeof DOMPurify === 'undefined') {
+        console.warn('[WARN] DOMPurify not loaded - XSS protection unavailable');
+    }
 }
 
 // ========== Code Block Live Highlighting ==========
@@ -781,9 +857,7 @@ function isOnEmptyTrailingLine(targetEl, range) {
 function removeTrailingEmptyLines(el) {
     // Remove trailing <br> elements and empty text nodes
     while (el.lastChild) {
-        if (el.lastChild.nodeName === 'BR') {
-            el.removeChild(el.lastChild);
-        } else if (el.lastChild.nodeType === 3 && el.lastChild.textContent.match(/^\n*$/)) {
+        if (el.lastChild.nodeType === 3 && el.lastChild.textContent.match(/^\n*$/)) {
             el.removeChild(el.lastChild);
         } else if (el.lastChild.nodeType === 3) {
             // Trim trailing newlines from the last text node
@@ -2348,26 +2422,30 @@ function handleEnterKey(e) {
         return;
     }
 
-    // In blockquote: check for double Enter (exit blockquote)
+    // In blockquote: Enter always exits blockquote
     if (tag === 'BLOCKQUOTE' || (block.parentNode && block.parentNode.tagName === 'BLOCKQUOTE')) {
+        e.preventDefault();
         const bqBlock = tag === 'BLOCKQUOTE' ? block : block.parentNode;
-        // Check if current line is empty
         const currentBlock = tag === 'BLOCKQUOTE' ? range.startContainer : block;
-        if (currentBlock.textContent.trim() === '') {
-            e.preventDefault();
-            const p = document.createElement('p');
+
+        // blockquote内の全テキストを新しい段落に移動
+        const p = document.createElement('p');
+        
+        // blockquote内の全ノードをクローンしてpに移動
+        const allContent = Array.from(bqBlock.childNodes);
+        allContent.forEach(node => {
+            p.appendChild(node.cloneNode(true));
+        });
+        
+        // コンテンツがない場合は<br>を追加
+        if (p.textContent.trim() === '') {
             p.innerHTML = '<br>';
-            bqBlock.parentNode.insertBefore(p, bqBlock.nextSibling);
-            // Remove empty element from blockquote
-            if (currentBlock !== bqBlock && currentBlock.parentNode) {
-                currentBlock.remove();
-            }
-            if (bqBlock.textContent.trim() === '') {
-                bqBlock.remove();
-            }
-            setCursorTo(p);
-            return;
         }
+        
+        bqBlock.parentNode.insertBefore(p, bqBlock.nextSibling);
+        bqBlock.remove();
+        setCursorTo(p);
+        return;
     }
 
     // Check for code block trigger: ``` followed by Enter
@@ -2896,11 +2974,30 @@ function insertToggle() {
 
     const range = sel.getRangeAt(0);
 
-    // Check if already inside a details element
-    let node = range.startContainer;
-    while (node && node !== editor) {
-        if (node.tagName === 'DETAILS') return;
-        node = node.parentNode;
+    const startElement = range.startContainer.nodeType === Node.ELEMENT_NODE
+        ? range.startContainer
+        : range.startContainer.parentElement;
+    const summaryAncestor = startElement ? startElement.closest('summary') : null;
+    let insertionRoot = editor;
+
+    if (summaryAncestor) {
+        const parentDetails = summaryAncestor.closest('details');
+        if (parentDetails) {
+            let contentDiv = parentDetails.querySelector(':scope > .toggle-content');
+            if (!contentDiv) {
+                contentDiv = document.createElement('div');
+                contentDiv.className = 'toggle-content';
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                contentDiv.appendChild(p);
+                parentDetails.appendChild(contentDiv);
+            }
+            insertionRoot = contentDiv;
+        }
+    } else {
+        const currentBlock = getParentBlock(range.startContainer);
+        const currentToggleContent = currentBlock ? currentBlock.closest('.toggle-content') : null;
+        insertionRoot = currentToggleContent || editor;
     }
 
     const details = document.createElement('details');
@@ -2919,10 +3016,10 @@ function insertToggle() {
         const startBlock = getParentBlock(range.startContainer) || range.startContainer;
         const endBlock = getParentBlock(range.endContainer) || range.endContainer;
 
-        // Walk through direct children of editor to find blocks in selection
+        // Walk through direct children of insertion root to find blocks in selection
         let collecting = false;
-        const editorChildren = Array.from(editor.childNodes);
-        for (const child of editorChildren) {
+        const rootChildren = Array.from(insertionRoot.childNodes);
+        for (const child of rootChildren) {
             if (child.contains(startBlock) || child === startBlock) {
                 collecting = true;
             }
@@ -2954,6 +3051,11 @@ function insertToggle() {
                 const p = document.createElement('p');
                 p.innerHTML = '<br>';
                 contentDiv.appendChild(p);
+            }
+            ensureToggleContentEditable(contentDiv);
+
+            if (insertionRoot.classList && insertionRoot.classList.contains('toggle-content')) {
+                ensureToggleContentEditable(insertionRoot);
             }
 
             // Add a paragraph after details for continuing editing
@@ -2988,13 +3090,17 @@ function insertToggle() {
             block.parentNode.insertBefore(details, block.nextSibling);
         }
     } else {
-        editor.appendChild(details);
+        insertionRoot.appendChild(details);
     }
 
     // Add a paragraph after details for continuing editing
     const afterP = document.createElement('p');
     afterP.innerHTML = '<br>';
     details.parentNode.insertBefore(afterP, details.nextSibling);
+
+    if (insertionRoot.classList && insertionRoot.classList.contains('toggle-content')) {
+        ensureToggleContentEditable(insertionRoot);
+    }
 
     // Select the summary text for editing
     const r = document.createRange();
@@ -3913,6 +4019,7 @@ async function resolveImagesForSave(markdown, mdFilePath) {
     // --- Step 1: Convert asset URLs back to relative paths ---
     // macOS: asset://localhost/ENCODED_PATH
     // Windows: https://asset.localhost/PATH
+    // Both forms need to be handled
     const replacements = [];
 
     function assetUrlToAbsPath(url) {
@@ -3920,7 +4027,7 @@ async function resolveImagesForSave(markdown, mdFilePath) {
         if (url.startsWith('asset://localhost/')) {
             return decodeURIComponent(url.substring('asset://localhost/'.length));
         }
-        // Windows format: https://asset.localhost/path/to/file
+        // Windows format: https://asset.localhost/PATH
         if (url.startsWith('https://asset.localhost/')) {
             return decodeURIComponent(url.substring('https://asset.localhost/'.length));
         }
@@ -4960,13 +5067,13 @@ function setupToggleBlocks() {
         // Ensure details is open in editor for editing
         details.setAttribute('open', '');
         // Ensure summary is editable
-        const summary = details.querySelector('summary');
+        const summary = details.querySelector(':scope > summary');
         if (summary) {
             summary.setAttribute('contenteditable', 'true');
             ensureToggleDeleteButton(summary);
         }
         // Ensure toggle-content div exists
-        let contentDiv = details.querySelector('.toggle-content');
+        let contentDiv = details.querySelector(':scope > .toggle-content');
         if (!contentDiv) {
             contentDiv = document.createElement('div');
             contentDiv.className = 'toggle-content';
@@ -5285,20 +5392,65 @@ function setupImageResize() {
             ctx.drawImage(activeImage, 0, 0, canvas.width, canvas.height);
             const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
             if (blob) {
-                await navigator.clipboard.write([
-                    new ClipboardItem({ 'image/png': blob })
-                ]);
-                copyBtn.textContent = '✅ Copied!';
-                copyBtn.classList.add('copied');
-                setTimeout(() => {
-                    copyBtn.textContent = '📋 Copy';
-                    copyBtn.classList.remove('copied');
-                }, 2000);
+                // --- Hybrid clipboard logic start ---
+                // 1. Try Tauri native clipboard API if available
+                if (window.__TAURI__ && window.__TAURI__.tauri && window.__TAURI__.tauri.invoke) {
+                    try {
+                        // Convert blob to base64
+                        const base64 = await new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                            reader.onerror = reject;
+                            reader.readAsDataURL(blob);
+                        });
+                        await window.__TAURI__.tauri.invoke('copy_image_to_clipboard', { imageData: base64 });
+                        showCopySuccess('(Tauri)');
+                        return;
+                    } catch (tauriErr) {
+                        console.warn('Tauri clipboard failed, fallback to Web API:', tauriErr);
+                    }
+                }
+                // 2. Try Web Clipboard API
+                try {
+                    await navigator.clipboard.write([
+                        new ClipboardItem({ 'image/png': blob })
+                    ]);
+                    showCopySuccess();
+                    return;
+                } catch (clipboardErr) {
+                    console.warn('Clipboard API image write failed, trying text fallback:', clipboardErr);
+                }
+                // 3. Fallback: copy image file name to clipboard as text
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    const imgName = activeImage.alt || activeImage.src.split('/').pop() || '画像';
+                    await navigator.clipboard.writeText(imgName);
+                    showCopySuccess('(ファイル名をコピー)');
+                } else {
+                    showCopyError('クリップボード API がサポートされていません');
+                }
+                // --- Hybrid clipboard logic end ---
             }
         } catch (err) {
             console.error('Image copy failed:', err);
-            copyBtn.textContent = '❌ Failed';
-            setTimeout(() => { copyBtn.textContent = '📋 Copy'; }, 2000);
+            showCopyError();
+        }
+
+        function showCopySuccess(suffix = '') {
+            copyBtn.textContent = '✅ Copied!' + (suffix ? ' ' + suffix : '');
+            copyBtn.classList.add('copied');
+            setTimeout(() => {
+                copyBtn.textContent = '📋 Copy';
+                copyBtn.classList.remove('copied');
+            }, 2500);
+        }
+
+        function showCopyError(msg = 'Failed') {
+            copyBtn.textContent = '❌ ' + msg;
+            copyBtn.classList.add('copied');
+            setTimeout(() => {
+                copyBtn.textContent = '📋 Copy';
+                copyBtn.classList.remove('copied');
+            }, 3000);
         }
     });
 
@@ -5308,6 +5460,14 @@ function setupImageResize() {
             selectImage(e.target);
         } else if (!e.target.closest('.image-resize-handle') && !e.target.closest('.image-copy-btn')) {
             deselectImage();
+        }
+    });
+
+    // Add double-click handler to expand image
+    editor.addEventListener('dblclick', (e) => {
+        if (e.target.tagName === 'IMG') {
+            e.preventDefault();
+            openImageViewer(e.target);
         }
     });
 
@@ -5458,6 +5618,70 @@ function showEmojiPicker() {
         }
     }
     setTimeout(() => document.addEventListener('click', onOutsideClick), 0);
+}
+
+// ========== Image Viewer ==========
+let imageViewerModal = null;
+
+function setupImageViewer() {
+    // Create modal element
+    imageViewerModal = document.createElement('div');
+    imageViewerModal.className = 'image-viewer-modal';
+    imageViewerModal.innerHTML = `
+        <div class="image-viewer-container">
+            <button class="image-viewer-close" title="閉じる (Esc)">✕</button>
+            <img class="image-viewer-img" src="" alt="">
+            <div class="image-viewer-info"></div>
+        </div>
+    `;
+    document.body.appendChild(imageViewerModal);
+
+    // Close button
+    const closeBtn = imageViewerModal.querySelector('.image-viewer-close');
+    closeBtn.addEventListener('click', closeImageViewer);
+
+    // Modal background click to close
+    imageViewerModal.addEventListener('click', (e) => {
+        if (e.target === imageViewerModal) {
+            closeImageViewer();
+        }
+    });
+
+    // Escape key to close
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && imageViewerModal && imageViewerModal.classList.contains('active')) {
+            closeImageViewer();
+        }
+    });
+}
+
+function openImageViewer(img) {
+    if (!imageViewerModal) return;
+
+    const viewerImg = imageViewerModal.querySelector('.image-viewer-img');
+    const infoDiv = imageViewerModal.querySelector('.image-viewer-info');
+
+    viewerImg.src = img.src;
+    viewerImg.alt = img.alt || '画像';
+    
+    // Display image info (alt text or path)
+    if (img.alt) {
+        infoDiv.textContent = 'Alt: ' + img.alt;
+    } else if (img.src) {
+        const fileName = img.src.split('/').pop();
+        infoDiv.textContent = fileName || img.src;
+    } else {
+        infoDiv.textContent = '';
+    }
+
+    imageViewerModal.classList.add('active');
+    document.body.style.overflow = 'hidden';  // Prevent scrolling
+}
+
+function closeImageViewer() {
+    if (!imageViewerModal) return;
+    imageViewerModal.classList.remove('active');
+    document.body.style.overflow = '';  // Restore scrolling
 }
 
 // ========== Bootstrap ==========
