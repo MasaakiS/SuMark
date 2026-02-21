@@ -6,19 +6,21 @@
     <title>SuMark</title>
     <link rel="stylesheet" href="styles.css">
     <!-- Marked.js: Markdown → HTML -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js" integrity="sha384-zbcZAIxlvJtNE3Dp5nxLXdXtXyxwOdnILY1TDPVmKFhl4r4nSUG1r8bcFXGVa4Te" crossorigin="anonymous"></script>
+    <script src="vendor/marked.min.js"></script>
     <!-- Turndown: HTML → Markdown -->
-    <script src="https://cdn.jsdelivr.net/npm/turndown@7.2.0/dist/turndown.js" integrity="sha384-OGauEFaI5hnS8jXK4qdSGShAUAObMBKoLXgcL1ORhRh7ulx5jPZH35qVpacIEA4Z" crossorigin="anonymous"></script>
+    <script src="vendor/turndown.js"></script>
     <!-- Turndown GFM plugin: tables, strikethrough, task lists -->
-    <script src="https://cdn.jsdelivr.net/npm/turndown-plugin-gfm@1.0.2/dist/turndown-plugin-gfm.js" integrity="sha384-2TroN1N6OfLQ+K4qttptnIfMREzUlMa3hW/nZqDZXv7Sm9BkESfGEupDEqCbzyRl" crossorigin="anonymous"></script>
+    <script src="vendor/turndown-plugin-gfm.js"></script>
     <!-- Highlight.js: コードハイライト -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-light.min.css" integrity="sha384-w6Ujm1VWa9HYFqGc89oAPn/DWDi2gUamjNrq9DRvEYm2X3ClItg9Y9xs1ViVo5b5" crossorigin="anonymous">
-    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js" integrity="sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="vendor/atom-one-light.min.css">
+    <script src="vendor/highlight.min.js"></script>
     <!-- Mermaid.js: 図表レンダリング (非同期読み込み) -->
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" integrity="sha384-enVdc7lTHDGtpROV85t9+VqPC2EyyB0hsRD0MrvQnHUsHmTHIz2D8SPP4EnBkstH" crossorigin="anonymous" defer></script>
+    <script src="vendor/mermaid.min.js" defer></script>
     <!-- KaTeX: math rendering -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="vendor/katex/katex.min.css">
+    <script src="vendor/katex/katex.min.js"></script>
+    <!-- DOMPurify: XSS prevention -->
+    <script src="vendor/purify.min.js"></script>
 </head>
 <body>
     <div class="container">
