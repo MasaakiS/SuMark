@@ -522,7 +522,7 @@ function setMarkdown(md) {
             'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
             'ul', 'ol', 'li', 'dl', 'dt', 'dd',
             'blockquote', 'pre', 'code', 'hr',
-            'br', 'strong', 'em', 'a', 'img',
+            'br', 'strong', 'em', 'del', 's', 'a', 'img',
             'table', 'thead', 'tbody', 'tr', 'th', 'td',
             'details', 'summary',  // toggle support
             'div', 'span', 'input',  // custom elements containers
