@@ -2958,6 +2958,11 @@ function ensureToggleDeleteButton(summary) {
 function insertToggle() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
+    // Prevent toggle insertion inside table cells
+    if (isInsideTableCell(sel.anchorNode)) {
+        alert('表のセル内ではトグルを作成できません。');
+        return;
+    }
 
     const range = sel.getRangeAt(0);
 
@@ -3518,6 +3523,11 @@ const CODE_LANGUAGES = [
 function insertCodeBlock() {
     // Save selection and selected text
     const sel = window.getSelection();
+    // Prevent code block insertion inside table cells
+    if (sel.rangeCount && isInsideTableCell(sel.anchorNode)) {
+        alert('表のセル内ではコードブロックを作成できません。');
+        return;
+    }
     let savedRange = null;
     let selectedText = '';
     if (sel.rangeCount) {
@@ -3702,6 +3712,12 @@ function insertTaskList() {
 }
 
 function insertHorizontalRule() {
+    const sel = window.getSelection();
+    // Prevent horizontal rule insertion inside table cells
+    if (sel.rangeCount && isInsideTableCell(sel.anchorNode)) {
+        alert('表のセル内では水平線を挿入できません。');
+        return;
+    }
     document.execCommand('insertHTML', false, '<hr><p><br></p>');
     saveEditorState(); // Save state after inserting HR
 }

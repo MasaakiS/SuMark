@@ -273,4 +273,180 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             expect(secondSave).toBe(firstSave);
         });
     });
+
+    // ─────────────────────────────────────────────
+    // 入れ子コンテンツ
+    // ─────────────────────────────────────────────
+    test.describe('入れ子コンテンツ', () => {
+        test('引用の中のリストが保持される', async ({ app }) => {
+            const md = '> - リストitem1\n> - リストitem2';
+            await roundtrip(app.page, md);
+            const bq = app.page.locator('#editor blockquote');
+            await expect(bq).toHaveCount(1);
+            await expect(bq.locator('li')).toHaveCount(2);
+        });
+
+        test('引用の中のコードブロックが保持される', async ({ app }) => {
+            const md = '> ```javascript\n> console.log("hello");\n> ```';
+            await roundtrip(app.page, md);
+            const bq = app.page.locator('#editor blockquote');
+            await expect(bq).toHaveCount(1);
+            await expect(bq.locator('pre')).toHaveCount(1);
+            await expect(bq.locator('code')).toContainText('console.log');
+        });
+
+        test('ネストリストが保持される', async ({ app }) => {
+            const md = '- 親\n  - 子\n    - 孫';
+            await roundtrip(app.page, md);
+            // 3項目が存在する
+            const items = app.page.locator('#editor li');
+            await expect(items).toHaveCount(3);
+            // 入れ子の ul が存在する
+            const nestedUl = app.page.locator('#editor ul ul');
+            await expect(nestedUl.first()).toBeVisible();
+        });
+
+        test('テーブルセル内のインラインコードが保持される', async ({ app }) => {
+            const md = '| `code` | plain |\n|--------|-------|\n| cell   | cell  |';
+            await roundtrip(app.page, md);
+            // th または td 内に code がある
+            const code = app.page.locator('#editor th code, #editor td code');
+            await expect(code).toHaveCount(1);
+            await expect(code.first()).toContainText('code');
+        });
+
+        test('テーブルセル内の太字が保持される', async ({ app }) => {
+            const md = '| **太字** | plain |\n|----------|-------|\n| cell     | cell  |';
+            await roundtrip(app.page, md);
+            const strong = app.page.locator('#editor th strong, #editor td strong');
+            await expect(strong).toHaveCount(1);
+            await expect(strong.first()).toContainText('太字');
+        });
+
+        test('テーブルセル内の斜体が保持される', async ({ app }) => {
+            const md = '| *斜体* | plain |\n|--------|-------|\n| cell   | cell  |';
+            await roundtrip(app.page, md);
+            const em = app.page.locator('#editor th em, #editor td em');
+            await expect(em).toHaveCount(1);
+            await expect(em.first()).toContainText('斜体');
+        });
+
+        test('テーブルセル内の数式テキストが保持される', async ({ app }) => {
+            // KaTeX はユーザー入力時のみレンダリングされるため、
+            // setMarkdown() は $ をテキストとして保持する
+            const md = '| $E=mc^2$ | plain |\n|----------|-------|\n| cell     | cell  |';
+            await loadMarkdown(app.page, md);
+            const saved = await dumpMarkdown(app.page);
+            expect(saved).toContain('$');
+        });
+    });
+
+    // ─────────────────────────────────────────────
+    // テーブルセル内のブロック要素禁止
+    // ─────────────────────────────────────────────
+    test.describe('テーブルセル内のブロック要素禁止', () => {
+        // ヘルパー：テーブルをロードしてセルにフォーカス
+        async function focusFirstTableCell(page) {
+            await loadMarkdown(page, '| セル |\n|------|\n| 内容 |');
+            await page.locator('#editor td').first().click();
+            await page.waitForTimeout(200);
+        }
+
+        test('コードブロックボタンがテーブルセル内で使用不可（alert確認）', async ({ app }) => {
+            await focusFirstTableCell(app.page);
+
+            // alert が発火することを確認（先にハンドラを登録してから evaluate する）
+            let alertMessage = '';
+            app.page.once('dialog', dialog => {
+                alertMessage = dialog.message();
+                dialog.dismiss();
+            });
+            await app.page.evaluate(() => window.insertCodeBlock());
+            await app.page.waitForTimeout(200);
+
+            expect(alertMessage).toContain('コードブロック');
+            // テーブル内に pre が生成されていないことを確認
+            await expect(app.page.locator('#editor table pre')).toHaveCount(0);
+        });
+
+        test('水平線ボタンがテーブルセル内で使用不可（alert確認）', async ({ app }) => {
+            await focusFirstTableCell(app.page);
+
+            let alertMessage = '';
+            app.page.once('dialog', dialog => {
+                alertMessage = dialog.message();
+                dialog.dismiss();
+            });
+            await app.page.evaluate(() => window.insertHorizontalRule());
+            await app.page.waitForTimeout(200);
+
+            expect(alertMessage).toContain('水平線');
+            // テーブル内に hr が生成されていないことを確認
+            await expect(app.page.locator('#editor table hr')).toHaveCount(0);
+        });
+
+        test('トグルボタンがテーブルセル内で使用不可（alert確認）', async ({ app }) => {
+            await focusFirstTableCell(app.page);
+
+            let alertMessage = '';
+            app.page.once('dialog', dialog => {
+                alertMessage = dialog.message();
+                dialog.dismiss();
+            });
+            await app.page.evaluate(() => window.insertToggle());
+            await app.page.waitForTimeout(200);
+
+            expect(alertMessage).toContain('トグル');
+            // テーブル内に details が生成されていないことを確認
+            await expect(app.page.locator('#editor table details')).toHaveCount(0);
+        });
+
+        test('引用のオートコンバージョンがテーブルセル内で動作しない', async ({ app }) => {
+            await loadMarkdown(app.page, '| |\n|---|\n| |');
+            const td = app.page.locator('#editor td').first();
+            await td.click();
+            await app.page.waitForTimeout(200);
+
+            // "> " を入力して引用への自動変換を試みる
+            await app.page.keyboard.type('> 引用 ');
+            await app.page.waitForTimeout(500);
+
+            // テーブル内に blockquote が生成されていないことを確認
+            await expect(app.page.locator('#editor table blockquote')).toHaveCount(0);
+            // テキストはセル内に残っていること
+            await expect(td).toContainText('引用');
+        });
+
+        test('水平線のオートコンバージョンがテーブルセル内で動作しない', async ({ app }) => {
+            await loadMarkdown(app.page, '| |\n|---|\n| |');
+            const td = app.page.locator('#editor td').first();
+            await td.click();
+            await app.page.waitForTimeout(200);
+
+            // "---" を入力して水平線への自動変換を試みる
+            await app.page.keyboard.type('---');
+            await app.page.waitForTimeout(500);
+
+            // テーブル内に hr が生成されていないことを確認
+            await expect(app.page.locator('#editor table hr')).toHaveCount(0);
+            // セルに --- のテキストが残ること
+            await expect(td).toContainText('---');
+        });
+
+        test('箇条書きオートコンバージョンがテーブルセル内で動作しない', async ({ app }) => {
+            await loadMarkdown(app.page, '| |\n|---|\n| |');
+            const td = app.page.locator('#editor td').first();
+            await td.click();
+            await app.page.waitForTimeout(200);
+
+            // "- " を入力してリストへの自動変換を試みる
+            await app.page.keyboard.type('- アイテム ');
+            await app.page.waitForTimeout(500);
+
+            // テーブル内に ul が生成されていないことを確認
+            await expect(app.page.locator('#editor table ul')).toHaveCount(0);
+            // テキストはセル内に残ること
+            await expect(td).toContainText('アイテム');
+        });
+    });
 });
