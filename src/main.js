@@ -1443,11 +1443,11 @@ function handleBlockAutoConversion() {
         return;
     }
 
-    // Task list: "- [ ] text" or "- [x] text"
-    const taskMatch = text.match(/^- \[([ x])\] (.+)$/);
-    if (taskMatch) {
-        const checked = taskMatch[1] === 'x';
-        const content = taskMatch[2];
+    // Task list (short form): "[] text" or "[x] text"
+    const taskShortMatch = text.match(/^\[([ x]?)\] (.+)$/);
+    if (taskShortMatch) {
+        const checked = taskShortMatch[1] === 'x';
+        const content = taskShortMatch[2];
         const ul = document.createElement('ul');
         ul.className = 'contains-task-list';
         const li = document.createElement('li');
@@ -1462,9 +1462,9 @@ function handleBlockAutoConversion() {
         setCursorToEnd(li);
         return;
     }
-    // Task list prefix only: "- [ ] "
-    if (text === '- [ ] ' || text === '- [x] ') {
-        const checked = text.startsWith('- [x]');
+    // Task list prefix only (short form): "[] " or "[x] "
+    if (text === '[] ' || text === '[ ] ' || text === '[x] ') {
+        const checked = text.startsWith('[x]');
         const ul = document.createElement('ul');
         ul.className = 'contains-task-list';
         const li = document.createElement('li');
@@ -2422,28 +2422,15 @@ function handleEnterKey(e) {
         return;
     }
 
-    // In blockquote: Enter always exits blockquote
+    // In blockquote: Enter exits blockquote, Shift+Enter inserts newline inside
     if (tag === 'BLOCKQUOTE' || (block.parentNode && block.parentNode.tagName === 'BLOCKQUOTE')) {
         e.preventDefault();
         const bqBlock = tag === 'BLOCKQUOTE' ? block : block.parentNode;
-        const currentBlock = tag === 'BLOCKQUOTE' ? range.startContainer : block;
 
-        // blockquote内の全テキストを新しい段落に移動
+        // Exit blockquote: insert a new <p> after the blockquote
         const p = document.createElement('p');
-        
-        // blockquote内の全ノードをクローンしてpに移動
-        const allContent = Array.from(bqBlock.childNodes);
-        allContent.forEach(node => {
-            p.appendChild(node.cloneNode(true));
-        });
-        
-        // コンテンツがない場合は<br>を追加
-        if (p.textContent.trim() === '') {
-            p.innerHTML = '<br>';
-        }
-        
+        p.innerHTML = '<br>';
         bqBlock.parentNode.insertBefore(p, bqBlock.nextSibling);
-        bqBlock.remove();
         setCursorTo(p);
         return;
     }

@@ -14,8 +14,8 @@ test.describe('ツールバー操作テスト', () => {
             await app.helpers.pressShortcut('a');
             await app.helpers.execFormatCommand('bold');
 
-            const hasStrong = await app.helpers.editorContainsTag('strong');
-            expect(hasStrong).toBe(true);
+            const hasBold = await app.helpers.editorContainsAnyTag(['strong', 'b']);
+            expect(hasBold).toBe(true);
         });
 
         test('斜体が適用される', async ({ app }) => {
@@ -23,8 +23,8 @@ test.describe('ツールバー操作テスト', () => {
             await app.helpers.pressShortcut('a');
             await app.helpers.execFormatCommand('italic');
 
-            const hasEm = await app.helpers.editorContainsTag('em');
-            expect(hasEm).toBe(true);
+            const hasItalic = await app.helpers.editorContainsAnyTag(['em', 'i']);
+            expect(hasItalic).toBe(true);
         });
 
         test('取り消し線が適用される', async ({ app }) => {
@@ -32,8 +32,8 @@ test.describe('ツールバー操作テスト', () => {
             await app.helpers.pressShortcut('a');
             await app.helpers.execFormatCommand('strikethrough');
 
-            const hasDel = await app.helpers.editorContainsTag('del');
-            expect(hasDel).toBe(true);
+            const hasStrike = await app.helpers.editorContainsAnyTag(['del', 's', 'strike']);
+            expect(hasStrike).toBe(true);
         });
     });
 

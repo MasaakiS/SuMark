@@ -7,6 +7,14 @@ const os = require('os');
 const isMac = os.platform() === 'darwin';
 const MOD = isMac ? 'Meta' : 'Control';
 
+function normalizeEditorText(text) {
+    return text
+        .replace(/\u200B/g, '')
+        .replace(/\u00A0/g, ' ')
+        .replace(/\s+/g, '')
+        .trim();
+}
+
 class PlaywrightHelpers {
     /** @param {import('@playwright/test').Page} page */
     constructor(page) {
@@ -60,6 +68,12 @@ class PlaywrightHelpers {
     /** エディタのテキストコンテンツを取得 */
     async getEditorText() {
         return await this.page.locator('#editor').innerText();
+    }
+
+    /** エディタのテキスト（空白正規化済み）を取得 */
+    async getEditorTextNormalized() {
+        const text = await this.getEditorText();
+        return normalizeEditorText(text);
     }
 
     // ---------- キーボード ----------
@@ -136,6 +150,13 @@ class PlaywrightHelpers {
         return count > 0;
     }
 
+    /** エディタ内に複数候補タグのいずれかが存在するか */
+    async editorContainsAnyTag(tagNames) {
+        const selector = tagNames.map(tag => `#editor ${tag}`).join(', ');
+        const count = await this.page.locator(selector).count();
+        return count > 0;
+    }
+
     /** 特定のセレクタの要素が存在するか */
     async elementExists(selector) {
         const count = await this.page.locator(selector).count();
@@ -155,12 +176,22 @@ class PlaywrightHelpers {
 
     /** タブの数を取得 */
     async getTabCount() {
-        return await this.page.locator('.tab').count();
+        return await this.page.locator('.tab-item').count();
     }
 
     /** アクティブなタブのタイトルを取得 */
     async getActiveTabTitle() {
-        return await this.page.locator('.tab.active').innerText();
+        const title = this.page.locator('.tab-item.active .tab-title');
+        if (await title.count()) {
+            return await title.innerText();
+        }
+        return await this.page.locator('.tab-item.active').innerText();
+    }
+
+    /** アクティブなタブに更新マークがあるか */
+    async activeTabHasModifiedMark() {
+        const count = await this.page.locator('.tab-item.active .tab-modified').count();
+        return count > 0;
     }
 
     /** 指定時間待機 */

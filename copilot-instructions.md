@@ -28,6 +28,7 @@ npm run dev
 - バグ修正は根本原因を直すことを優先し、表面的な回避策は最小限にする。
 - パフォーマンスや大きなバイナリ処理にはチャンク処理などの安全策を使う。
 - DOM 操作は `getAttribute` / `setAttribute` と生の属性値を意識する（ブラウザが `src` をノーマライズすることがあるため）。
+- インターネット接続できない場所でも動作するよう、外部リソースへの依存しないこと。必要なライブラリはローカルに含める。
 
 ## Markdown / テーブルに関する注意点
 - エディタは `contenteditable` ベースの WYSIWYG。貼り付けや自動変換で「表の中に表」が生成されないよう、挿入前に必ず挿入先が `td` / `th` 内かどうかをチェックすること。
@@ -55,18 +56,76 @@ npm run dev
 | `src-tauri/Cargo.toml` | `version` | Rust バイナリのバージョン情報 |
 
 ### リリース手順チェックリスト
-1. 上記 3 ファイルのバージョンを新しいバージョン（例: `0.4.0`）に更新
-2. `git add -A && git commit -m "chore(release): bump version to vX.Y.Z"`
-3. `git tag vX.Y.Z && git push origin main && git push origin vX.Y.Z`
-4. GitHub Actions が自動でビルド・リリースを作成
 
-### バージョン確認コマンド（リリース前に実行推奨）
-```bash
-echo "package.json: $(jq -r .version package.json)"
-echo "tauri.conf.json: $(jq -r .package.version src-tauri/tauri.conf.json)"
-echo "Cargo.toml: $(grep '^version' src-tauri/Cargo.toml | head -1)"
-```
-3 つの出力が一致していることを確認してからタグを作成すること。
+#### 準備フェーズ
+1. **CHANGELOG.md を更新**
+   - 最新の `## [vX.Y.Z] - YYYY-MM-DD` セクションを追加
+   - 改良点・修正点・テスト結果などを記載
+   - 例：
+     ```markdown
+     ## [v0.5.1] - 2026-02-21
+     ### 改良
+     - 外部CDN依存を排除し、全ライブラリをローカルバンドルに変更
+     - GitHub Actions ワークフローのリリース重複問題を修正
+     ```
+
+2. **バージョン同期確認** — 上記 3 ファイルを同一バージョンに更新
+   ```bash
+   # 確認コマンド
+   echo "package.json: $(jq -r .version package.json)"
+   echo "tauri.conf.json: $(jq -r .package.version src-tauri/tauri.conf.json)"
+   echo "Cargo.toml: $(grep '^version' src-tauri/Cargo.toml | head -1)"
+   ```
+   3 つの出力が一致していることを確認してからタグを作成すること。
+
+3. **ローカル動作確認**
+   ```bash
+   npm run dev
+   # 機能を手動で軽く検証（テーブル、画像、Markdown変換など）
+   ```
+
+#### コミット・プッシュフェーズ
+4. **変更をステージ・コミット**
+   ```bash
+   git add CHANGELOG.md package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json [その他変更ファイル]
+   git commit -m "v0.5.1: [簡潔な説明]"
+   # または commit -m "chore(release): bump version to vX.Y.Z"
+   ```
+
+5. **main ブランチにプッシュ**
+   ```bash
+   git push origin main
+   ```
+
+#### リリースタグフェーズ
+6. **タグ作成・プッシュ** — CI が自動トリガーされます
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+7. **CI ビルド進捗確認**
+   ```bash
+   gh run list --limit 5
+   # または
+   gh run watch [RUN_ID]
+   ```
+
+#### リリース完了フェーズ
+8. **GitHub Release ページを確認・公開**
+   - Draft ステータスのリリースが自動作成されます
+   - アセット数やノート内容を確認
+   - 必要に応じて "Publish release" ボタンで公開（デフォルトは Draft）
+
+### 注意点
+- **重複リリース防止**: Build & Release ワークフローは `create_release` ジョブで単一のドラフトリリースを作成し、各プラットフォーム（macOS/Windows/Linux）のビルドジョブはアセットアップロードのみを行います。レースコンディションは発生しません。
+- **オフラインサポート**: v0.5.1 以降、全ライブラリが `src/vendor/` にローカルバンドルされているため、CDN によるダウンロードは不要です。
+- **タグ削除の場合**: 誤ってタグやリリースを作成した場合は以下で削除可能です：
+  ```bash
+  git push --delete origin vX.Y.Z  # リモートタグ削除
+  git tag -d vX.Y.Z               # ローカルタグ削除
+  gh api -X DELETE repos/{owner}/{repo}/releases/[RELEASE_ID]  # リリース削除（オプション）
+  ```
 
 ## 禁止事項 / 注意事項
 - 無断で大きなファイルフォーマットの置換や他コンポーネントの大改造は行わない。

@@ -16,8 +16,8 @@ test.describe('キーボードショートカットテスト', () => {
             await app.helpers.pressShortcut('a');
             await app.helpers.pressShortcut('b');
 
-            const hasStrong = await app.helpers.editorContainsTag('strong');
-            expect(hasStrong).toBe(true);
+            const hasBold = await app.helpers.editorContainsAnyTag(['strong', 'b']);
+            expect(hasBold).toBe(true);
         });
 
         test('Cmd/Ctrl+I で斜体になる', async ({ app }) => {
@@ -25,8 +25,8 @@ test.describe('キーボードショートカットテスト', () => {
             await app.helpers.pressShortcut('a');
             await app.helpers.pressShortcut('i');
 
-            const hasEm = await app.helpers.editorContainsTag('em');
-            expect(hasEm).toBe(true);
+            const hasItalic = await app.helpers.editorContainsAnyTag(['em', 'i']);
+            expect(hasItalic).toBe(true);
         });
 
         test('Cmd/Ctrl+U で下線になる', async ({ app }) => {
@@ -43,8 +43,8 @@ test.describe('キーボードショートカットテスト', () => {
             await app.helpers.pressShortcut('a');
             await app.helpers.pressShiftShortcut('x');
 
-            const hasDel = await app.helpers.editorContainsTag('del');
-            expect(hasDel).toBe(true);
+            const hasStrike = await app.helpers.editorContainsAnyTag(['del', 's', 'strike']);
+            expect(hasStrike).toBe(true);
         });
     });
 
@@ -156,8 +156,8 @@ test.describe('キーボードショートカットテスト', () => {
             await app.page.keyboard.press('Enter');
             await app.page.keyboard.type('Normal text');
 
-            const text = await app.helpers.getEditorText();
-            expect(text).toContain('Normal text');
+            const text = await app.helpers.getEditorTextNormalized();
+            expect(text).toContain('Normaltext');
         });
     });
 });

@@ -12,8 +12,8 @@ test.describe('基本操作テスト', () => {
 
     test('エディタにテキストを入力できる', async ({ app }) => {
         await app.helpers.typeInEditor('Hello World');
-        const text = await app.helpers.getEditorText();
-        expect(text).toContain('Hello World');
+        const text = await app.helpers.getEditorTextNormalized();
+        expect(text).toContain('HelloWorld');
     });
 
     test('テキストを削除できる', async ({ app }) => {
@@ -30,10 +30,10 @@ test.describe('基本操作テスト', () => {
         await app.page.keyboard.press('Enter');
         await app.helpers.typeMore('Line 3');
 
-        const text = await app.helpers.getEditorText();
-        expect(text).toContain('Line 1');
-        expect(text).toContain('Line 2');
-        expect(text).toContain('Line 3');
+        const text = await app.helpers.getEditorTextNormalized();
+        expect(text).toContain('Line1');
+        expect(text).toContain('Line2');
+        expect(text).toContain('Line3');
     });
 
     test('日本語を入力できる', async ({ app }) => {

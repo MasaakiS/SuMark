@@ -147,7 +147,7 @@ test.describe('タブ操作テスト', () => {
         await app.helpers.pressShortcut('n');
         await app.helpers.wait(500);
 
-        await expect(app.page.locator('.tab.active')).toBeVisible();
+        await expect(app.page.locator('.tab-item.active')).toBeVisible();
     });
 
     test('タブタイトルが表示される', async ({ app }) => {
@@ -156,11 +156,11 @@ test.describe('タブ操作テスト', () => {
         expect(title.length).toBeGreaterThan(0);
     });
 
-    test('編集したタブには * マークが付く', async ({ app }) => {
+    test('編集したタブには更新マークが付く', async ({ app }) => {
         await app.helpers.typeInEditor('Modified content');
         await app.helpers.wait(500);
 
-        const title = await app.helpers.getActiveTabTitle();
-        expect(title).toContain('*');
+        const hasMark = await app.helpers.activeTabHasModifiedMark();
+        expect(hasMark).toBe(true);
     });
 });
