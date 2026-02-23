@@ -50,6 +50,44 @@ window.addEventListener('unhandledrejection', function(event) {
     window.onerror('Unhandled Promise Rejection: ' + String(event.reason), window.location.href, 0, 0, event.reason);
 });
 
+// ========== Toast Banner ==========
+// type: 'warn' (yellow, 3s) | 'error' (red, 5s)
+function showBanner(message, type) {
+    const isWarn = type !== 'error';
+    const bg = isWarn ? '#ffc107' : '#dc3545';
+    const color = isWarn ? '#333' : '#fff';
+    const duration = isWarn ? 3000 : 5000;
+
+    const banner = document.createElement('div');
+    banner.setAttribute('data-banner-type', type || 'warn');
+    banner.style.cssText = [
+        'position:fixed',
+        'top:8px',
+        'left:50%',
+        'transform:translateX(-50%)',
+        'background:' + bg,
+        'color:' + color,
+        'padding:10px 20px',
+        'border-radius:6px',
+        'z-index:99998',
+        'font-size:14px',
+        'box-shadow:0 2px 8px rgba(0,0,0,0.25)',
+        'min-width:200px',
+        'max-width:480px',
+        'text-align:center',
+        'pointer-events:none',
+    ].join(';');
+    banner.textContent = message;
+    document.body.appendChild(banner);
+
+    setTimeout(function() {
+        if (banner.parentNode) banner.remove();
+    }, duration);
+}
+
+function showWarn(message) { showBanner(message, 'warn'); }
+function showError(message) { showBanner(message, 'error'); }
+
 // ========== State ==========
 let isConverting = false; // Guard for auto-conversion recursion
 let codeHighlightTimer = null; // Debounce timer for code block highlighting
@@ -1045,7 +1083,7 @@ function setupEventListeners() {
                             console.log('[DEBUG] Successfully opened:', filePath);
                         } catch (err) {
                             console.error('Error opening dropped file:', err);
-                            alert('ファイルを開けませんでした: ' + filePath);
+                            showError('ファイルを開けませんでした: ' + filePath);
                         }
                     } else {
                         console.log('[INFO] Skipping non-Markdown file:', filePath);
@@ -2862,7 +2900,7 @@ function insertUnorderedList() {
     
     // Prevent list insertion inside table cells
     if (isInsideTableCell(sel.anchorNode)) {
-        alert('表のセル内ではリストを作成できません。');
+        showWarn('表のセル内ではリストを作成できません。');
         return;
     }
     
@@ -2905,7 +2943,7 @@ function insertOrderedList() {
     
     // Prevent list insertion inside table cells
     if (isInsideTableCell(sel.anchorNode)) {
-        alert('表のセル内ではリストを作成できません。');
+        showWarn('表のセル内ではリストを作成できません。');
         return;
     }
     
@@ -2960,7 +2998,7 @@ function insertToggle() {
     if (!sel.rangeCount) return;
     // Prevent toggle insertion inside table cells
     if (isInsideTableCell(sel.anchorNode)) {
-        alert('表のセル内ではトグルを作成できません。');
+        showWarn('表のセル内ではトグルを作成できません。');
         return;
     }
 
@@ -3107,7 +3145,7 @@ function applyBlockquote() {
     const sel = window.getSelection();
     // Prevent blockquote insertion inside table cells
     if (sel.rangeCount && isInsideTableCell(sel.anchorNode)) {
-        alert('表のセル内では引用を作成できません。');
+        showWarn('表のセル内では引用を作成できません。');
         return;
     }
     const block = getParentBlock(sel.anchorNode);
@@ -3531,7 +3569,7 @@ function insertCodeBlock() {
     const sel = window.getSelection();
     // Prevent code block insertion inside table cells
     if (sel.rangeCount && isInsideTableCell(sel.anchorNode)) {
-        alert('表のセル内ではコードブロックを作成できません。');
+        showWarn('表のセル内ではコードブロックを作成できません。');
         return;
     }
     let savedRange = null;
@@ -3620,7 +3658,7 @@ function insertTaskList() {
     
     // Prevent list insertion inside table cells
     if (isInsideTableCell(sel.anchorNode)) {
-        alert('表のセル内ではリストを作成できません。');
+        showWarn('表のセル内ではリストを作成できません。');
         return;
     }
     
@@ -3721,7 +3759,7 @@ function insertHorizontalRule() {
     const sel = window.getSelection();
     // Prevent horizontal rule insertion inside table cells
     if (sel.rangeCount && isInsideTableCell(sel.anchorNode)) {
-        alert('表のセル内では水平線を挿入できません。');
+        showWarn('表のセル内では水平線を挿入できません。');
         return;
     }
     document.execCommand('insertHTML', false, '<hr><p><br></p>');
@@ -3778,7 +3816,7 @@ async function openFile() {
         }
     } catch (err) {
         console.error('Error opening file:', err);
-        alert('ファイルを開けませんでした: ' + err);
+        showError('ファイルを開けませんでした: ' + err);
     }
 }
 
@@ -3986,7 +4024,7 @@ async function saveFile() {
         }
     } catch (err) {
         console.error('Error saving file:', err);
-        alert('ファイルを保存できませんでした: ' + err);
+        showError('ファイルを保存できませんでした: ' + err);
     }
 }
 
@@ -4014,7 +4052,7 @@ async function saveAsFile() {
         }
     } catch (err) {
         console.error('Error saving file as:', err);
-        alert('ファイルを保存できませんでした: ' + err);
+        showError('ファイルを保存できませんでした: ' + err);
     }
 }
 
@@ -4476,7 +4514,7 @@ window.onload = function() {
         await invoke('open_in_browser', { path: savePath });
     } catch (err) {
         console.error('PDF export error:', err);
-        alert('PDF出力に失敗しました: ' + err);
+        showError('PDF出力に失敗しました: ' + err);
     }
 }
 

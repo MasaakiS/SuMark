@@ -352,67 +352,55 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             await page.waitForTimeout(200);
         }
 
-        test('コードブロックボタンがテーブルセル内で使用不可（alert確認）', async ({ app }) => {
+        test('コードブロックボタンがテーブルセル内で使用不可（警告バナー確認）', async ({ app }) => {
             await focusFirstTableCell(app.page);
 
-            // alert が発火することを確認（先にハンドラを登録してから evaluate する）
-            let alertMessage = '';
-            app.page.once('dialog', dialog => {
-                alertMessage = dialog.message();
-                dialog.dismiss();
-            });
             await app.page.evaluate(() => window.insertCodeBlock());
             await app.page.waitForTimeout(200);
 
-            expect(alertMessage).toContain('コードブロック');
+            // 警告バナーが表示され、メッセージにコードブロックが含まれる
+            const banner = app.page.locator('[data-banner-type="warn"]');
+            await expect(banner).toBeVisible();
+            await expect(banner).toContainText('コードブロック');
             // テーブル内に pre が生成されていないことを確認
             await expect(app.page.locator('#editor table pre')).toHaveCount(0);
         });
 
-        test('水平線ボタンがテーブルセル内で使用不可（alert確認）', async ({ app }) => {
+        test('水平線ボタンがテーブルセル内で使用不可（警告バナー確認）', async ({ app }) => {
             await focusFirstTableCell(app.page);
 
-            let alertMessage = '';
-            app.page.once('dialog', dialog => {
-                alertMessage = dialog.message();
-                dialog.dismiss();
-            });
             await app.page.evaluate(() => window.insertHorizontalRule());
             await app.page.waitForTimeout(200);
 
-            expect(alertMessage).toContain('水平線');
+            const banner = app.page.locator('[data-banner-type="warn"]');
+            await expect(banner).toBeVisible();
+            await expect(banner).toContainText('水平線');
             // テーブル内に hr が生成されていないことを確認
             await expect(app.page.locator('#editor table hr')).toHaveCount(0);
         });
 
-        test('トグルボタンがテーブルセル内で使用不可（alert確認）', async ({ app }) => {
+        test('トグルボタンがテーブルセル内で使用不可（警告バナー確認）', async ({ app }) => {
             await focusFirstTableCell(app.page);
 
-            let alertMessage = '';
-            app.page.once('dialog', dialog => {
-                alertMessage = dialog.message();
-                dialog.dismiss();
-            });
             await app.page.evaluate(() => window.insertToggle());
             await app.page.waitForTimeout(200);
 
-            expect(alertMessage).toContain('トグル');
+            const banner = app.page.locator('[data-banner-type="warn"]');
+            await expect(banner).toBeVisible();
+            await expect(banner).toContainText('トグル');
             // テーブル内に details が生成されていないことを確認
             await expect(app.page.locator('#editor table details')).toHaveCount(0);
         });
 
-        test('引用ボタンがテーブルセル内で使用不可（alert確認）', async ({ app }) => {
+        test('引用ボタンがテーブルセル内で使用不可（警告バナー確認）', async ({ app }) => {
             await focusFirstTableCell(app.page);
 
-            let alertMessage = '';
-            app.page.once('dialog', dialog => {
-                alertMessage = dialog.message();
-                dialog.dismiss();
-            });
             await app.page.evaluate(() => window.applyBlockquote());
             await app.page.waitForTimeout(200);
 
-            expect(alertMessage).toContain('引用');
+            const banner = app.page.locator('[data-banner-type="warn"]');
+            await expect(banner).toBeVisible();
+            await expect(banner).toContainText('引用');
             // テーブル内に blockquote が生成されていないことを確認
             await expect(app.page.locator('#editor table blockquote')).toHaveCount(0);
         });
