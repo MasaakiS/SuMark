@@ -453,4 +453,113 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             await expect(td).toContainText('アイテム');
         });
     });
+
+    // ─────────────────────────────────────────────
+    // Notion エクスポート形式のインポート
+    // ─────────────────────────────────────────────
+    test.describe('Notion エクスポート形式のインポート', () => {
+        test('単純な複数行テーブルセルが正しく表示される', async ({ app }) => {
+            // Notion エクスポート形式: セル内で改行を使う
+            const md = [
+                '| 列1 | 列2 |',
+                '| --- | --- |',
+                '| 通常セル | 複数行セル',
+                '2行目',
+                '3行目 |',
+            ].join('\n');
+            await loadMarkdown(app.page, md);
+
+            // テーブルが1つ表示される
+            await expect(app.page.locator('#editor table')).toHaveCount(1);
+            // セルが正しく存在する
+            const cells = app.page.locator('#editor td');
+            await expect(cells).toHaveCount(2);
+            // 複数行セルの内容に <br> が含まれて表示される
+            await expect(cells.nth(1)).toContainText('複数行セル');
+            await expect(cells.nth(1)).toContainText('2行目');
+            await expect(cells.nth(1)).toContainText('3行目');
+        });
+
+        test('Notion の • 箇条書きがセル内に表示される', async ({ app }) => {
+            const md = [
+                '| 項目 |',
+                '| --- |',
+                '| • リストA',
+                '• リストB',
+                '• リストC |',
+            ].join('\n');
+            await loadMarkdown(app.page, md);
+
+            const cell = app.page.locator('#editor td').first();
+            await expect(cell).toContainText('リストA');
+            await expect(cell).toContainText('リストB');
+            await expect(cell).toContainText('リストC');
+        });
+
+        test('Notion の [] タスクが ☐ に変換される', async ({ app }) => {
+            const md = [
+                '| タスク |',
+                '| --- |',
+                '| [] 未完了タスク',
+                '[x] 完了済みタスク |',
+            ].join('\n');
+            await loadMarkdown(app.page, md);
+
+            const cell = app.page.locator('#editor td').first();
+            await expect(cell).toContainText('☐');
+            await expect(cell).toContainText('☑');
+        });
+
+        test('セル内の —- 区切りが — に変換される', async ({ app }) => {
+            const md = [
+                '| 内容 |',
+                '| --- |',
+                '| 上の内容',
+                '—-',
+                '下の内容 |',
+            ].join('\n');
+            await loadMarkdown(app.page, md);
+
+            const cell = app.page.locator('#editor td').first();
+            await expect(cell).toContainText('上の内容');
+            await expect(cell).toContainText('—');
+            await expect(cell).toContainText('下の内容');
+            // テーブル内に hr が生成されていないことを確認
+            await expect(app.page.locator('#editor table hr')).toHaveCount(0);
+        });
+
+        test('テーブル途中の | でセルが分割される（Notion 形式）', async ({ app }) => {
+            const md = [
+                '| A | B | C |',
+                '| --- | --- | --- |',
+                '| セル1 | セル2の1行目',
+                '2行目',
+                'セル2の末尾 | セル3 |',
+            ].join('\n');
+            await loadMarkdown(app.page, md);
+
+            const cells = app.page.locator('#editor td');
+            await expect(cells).toHaveCount(3);
+            // セル2が複数行内容を持つ
+            await expect(cells.nth(1)).toContainText('セル2の1行目');
+            await expect(cells.nth(1)).toContainText('2行目');
+            // セル3が独立している
+            await expect(cells.nth(2)).toContainText('セル3');
+        });
+
+        test('通常の Markdown テーブルは前処理後も正常に表示される', async ({ app }) => {
+            const md = [
+                '| 名前 | 年齢 |',
+                '| --- | --- |',
+                '| 田中 | 30 |',
+                '| 山田 | 25 |',
+            ].join('\n');
+            await roundtrip(app.page, md);
+
+            await expect(app.page.locator('#editor table')).toHaveCount(1);
+            const rows = app.page.locator('#editor tbody tr');
+            await expect(rows).toHaveCount(2);
+            await expect(app.page.locator('#editor td').nth(0)).toContainText('田中');
+        });
+    });
 });

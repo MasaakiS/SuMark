@@ -546,14 +546,150 @@ function getMarkdown() {
     return md;
 }
 
+// ========== Notion Markdown Preprocessor ==========
+/**
+ * Notion エクスポート形式の Markdown を正規化する。
+ *
+ * Notion はテーブルセルの複数行コンテンツをリテラル改行で出力するため、
+ * 標準の GFM パーサー（marked.js）では正しく解析できない。
+ * このプリプロセッサは:
+ *   1. テーブル内の複数行セルを <br> で結合して単一行の GFM テーブルに変換
+ *   2. セル途中の | を次のセルの開始として解釈
+ *   3. Notion 固有の記号を変換:
+ *        •        → そのまま保持（Unicode 箇条書き）
+ *        —- / ——  → — (区切り線の代替）
+ *        []       → ☐ (未チェックチェックボックス)
+ *        [x]      → ☑ (チェック済みチェックボックス)
+ */
+function preprocessNotionMarkdown(md) {
+    const lines = md.split('\n');
+    const output = [];
+    let i = 0;
+
+    while (i < lines.length) {
+        const trimmed = lines[i].trim();
+
+        if (trimmed.startsWith('|')) {
+            // テーブルブロックを収集（空行まで）
+            const block = [];
+            while (i < lines.length && lines[i].trim() !== '') {
+                block.push(lines[i]);
+                i++;
+            }
+            // セパレータ行があれば Notion 形式のテーブルとして処理
+            const hasSep = block.some(l => /^\|[\s\-:|]+\|/.test(l.trim()));
+            if (hasSep) {
+                output.push(..._normalizeNotionTable(block));
+            } else {
+                output.push(...block);
+            }
+        } else {
+            output.push(lines[i]);
+            i++;
+        }
+    }
+
+    return output.join('\n');
+}
+
+/**
+ * Notion 形式の複数行テーブルブロックを、
+ * 単一行の GFM テーブル行の配列に変換する。
+ */
+function _normalizeNotionTable(lines) {
+    const result = [];
+    let cells = null;   // 現在の行のセル文字列配列
+    let sepDone = false;
+
+    function flushRow() {
+        if (cells === null) return;
+        const normalized = cells.map(c => _convertNotionCellContent(c.trim()));
+        result.push('| ' + normalized.join(' | ') + ' |');
+        cells = null;
+    }
+
+    for (const line of lines) {
+        const t = line.trim();
+
+        // セパレータ行（--- 行）の検出
+        if (!sepDone && /^\|[\s\-:|]+\|$/.test(t)) {
+            const parts = t.slice(1, -1).split('|');
+            if (parts.every(p => /^\s*:?-+:?\s*$/.test(p))) {
+                flushRow();
+                sepDone = true;
+                result.push(t);
+                continue;
+            }
+        }
+
+        if (t.startsWith('|')) {
+            // 新しい行の開始
+            flushRow();
+            cells = _splitTableRow(t);
+        } else if (cells !== null) {
+            // 継続行: | が含まれる場合は新しいセルの開始も兼ねる
+            if (t.includes('|')) {
+                const parts = t.split('|');
+                // | より前の部分は現在の最後のセルに追加
+                if (cells.length > 0) {
+                    cells[cells.length - 1] += '\n' + parts[0];
+                }
+                // | より後の部分は次のセルとなる（末尾の空要素は除外）
+                for (let k = 1; k < parts.length; k++) {
+                    if (k === parts.length - 1 && parts[k].trim() === '') continue;
+                    cells.push(parts[k]);
+                }
+            } else {
+                // 純粋な継続行（最後のセルに追加）
+                if (cells.length > 0) {
+                    cells[cells.length - 1] += '\n' + t;
+                }
+            }
+        } else {
+            result.push(line);
+        }
+    }
+    flushRow();
+    return result;
+}
+
+/** `| cell1 | cell2 |` 形式を文字列配列に分割 */
+function _splitTableRow(rowLine) {
+    const inner = rowLine.trim().replace(/^\|/, '').replace(/\|$/, '');
+    return inner.split('|');
+}
+
+/**
+ * セル内コンテンツを整形する。
+ * 複数行を <br> で結合し、Notion 固有の記号を変換する。
+ */
+function _convertNotionCellContent(content) {
+    return content
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l !== '')
+        .map(l => {
+            // Notion の区切り: —- / —— → em dash
+            if (/^[—\-]{2,}$/.test(l)) return '—';
+            // タスクリスト
+            l = l.replace(/^\[\] /, '☐\u00A0');
+            l = l.replace(/^\[x\] /i, '☑\u00A0');
+            return l;
+        })
+        .join('<br>');
+}
+
 function setMarkdown(md) {
     if (typeof marked === 'undefined') {
         editor.textContent = md;
         return;
     }
-    
-    const dirtyHtml = marked.parse(md);
-    
+
+    // Notion エクスポート形式の複数行テーブルセルを正規化
+    const preprocessed = preprocessNotionMarkdown(md);
+
+    const dirtyHtml = marked.parse(preprocessed);
+
     // Sanitize HTML to prevent XSS attacks while preserving custom UI elements
     const cleanHtml = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(dirtyHtml, {
         ALLOWED_TAGS: [
