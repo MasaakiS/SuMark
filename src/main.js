@@ -3104,7 +3104,13 @@ function insertToggle() {
 }
 
 function applyBlockquote() {
-    const block = getParentBlock(window.getSelection().anchorNode);
+    const sel = window.getSelection();
+    // Prevent blockquote insertion inside table cells
+    if (sel.rangeCount && isInsideTableCell(sel.anchorNode)) {
+        alert('表のセル内では引用を作成できません。');
+        return;
+    }
+    const block = getParentBlock(sel.anchorNode);
     const toggleContent = block ? block.closest('.toggle-content') : null;
     // Check if already in blockquote
     let node = block;

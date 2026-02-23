@@ -401,6 +401,22 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             await expect(app.page.locator('#editor table details')).toHaveCount(0);
         });
 
+        test('引用ボタンがテーブルセル内で使用不可（alert確認）', async ({ app }) => {
+            await focusFirstTableCell(app.page);
+
+            let alertMessage = '';
+            app.page.once('dialog', dialog => {
+                alertMessage = dialog.message();
+                dialog.dismiss();
+            });
+            await app.page.evaluate(() => window.applyBlockquote());
+            await app.page.waitForTimeout(200);
+
+            expect(alertMessage).toContain('引用');
+            // テーブル内に blockquote が生成されていないことを確認
+            await expect(app.page.locator('#editor table blockquote')).toHaveCount(0);
+        });
+
         test('引用のオートコンバージョンがテーブルセル内で動作しない', async ({ app }) => {
             await loadMarkdown(app.page, '| |\n|---|\n| |');
             const td = app.page.locator('#editor td').first();
