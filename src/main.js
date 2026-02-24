@@ -598,7 +598,8 @@ function preprocessNotionMarkdown(md) {
  */
 function _normalizeNotionTable(lines) {
     const result = [];
-    let cells = null;   // 現在の行のセル文字列配列
+    let cells = null;     // 現在の行のセル文字列配列
+    let inMultiLine = false; // 先頭|あり・末尾|なしの複数行モード中か
     let sepDone = false;
 
     function flushRow() {
@@ -606,13 +607,14 @@ function _normalizeNotionTable(lines) {
         const normalized = cells.map(c => _convertNotionCellContent(c.trim()));
         result.push('| ' + normalized.join(' | ') + ' |');
         cells = null;
+        inMultiLine = false;
     }
 
     for (const line of lines) {
         const t = line.trim();
 
-        // セパレータ行（--- 行）の検出
-        if (!sepDone && /^\|[\s\-:|]+\|$/.test(t)) {
+        // セパレータ行（--- 行）の検出：複数行モード外でのみ判定
+        if (!inMultiLine && !sepDone && /^\|[\s\-:|]+\|$/.test(t)) {
             const parts = t.slice(1, -1).split('|');
             if (parts.every(p => /^\s*:?-+:?\s*$/.test(p))) {
                 flushRow();
@@ -622,28 +624,40 @@ function _normalizeNotionTable(lines) {
             }
         }
 
-        if (t.startsWith('|')) {
+        if (!inMultiLine && t.startsWith('|')) {
             // 新しい行の開始
             flushRow();
             cells = _splitTableRow(t);
-        } else if (cells !== null) {
-            // 継続行: | が含まれる場合は新しいセルの開始も兼ねる
+
+            if (!t.endsWith('|') || t.length < 2) {
+                // 末尾が | で終わっていない → 複数行モード開始
+                inMultiLine = true;
+            }
+        } else if (inMultiLine) {
+            // 複数行モード: | で終わる行まで継続して蓄積する
             if (t.includes('|')) {
+                // 行内の | はセル区切りとして扱う
                 const parts = t.split('|');
-                // | より前の部分は現在の最後のセルに追加
-                if (cells.length > 0) {
+                // | の手前は現在の最後のセルに追加
+                if (cells && cells.length > 0) {
                     cells[cells.length - 1] += '\n' + parts[0];
                 }
-                // | より後の部分は次のセルとなる（末尾の空要素は除外）
+                // | の後ろは次のセル（末尾の空要素は除外）
                 for (let k = 1; k < parts.length; k++) {
                     if (k === parts.length - 1 && parts[k].trim() === '') continue;
                     cells.push(parts[k]);
                 }
             } else {
                 // 純粋な継続行（最後のセルに追加）
-                if (cells.length > 0) {
+                if (cells && cells.length > 0) {
                     cells[cells.length - 1] += '\n' + t;
                 }
+            }
+
+            // 末尾が | で終わっていれば複数行モード終了
+            if (t.endsWith('|')) {
+                inMultiLine = false;
+                flushRow();
             }
         } else {
             result.push(line);
