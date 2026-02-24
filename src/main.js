@@ -2853,7 +2853,7 @@ async function handlePaste(e) {
 
     // 5. Check if markdown
     if (looksLikeMarkdown(text)) {
-        const html = marked.parse(text);
+        const html = marked.parse(preprocessNotionMarkdown(text));
         document.execCommand('insertHTML', false, html);
         editor.querySelectorAll('input[type="checkbox"][disabled]').forEach(cb => {
             cb.removeAttribute('disabled');
@@ -3911,6 +3911,9 @@ async function openFileFromPath(filePath) {
         const fileDir = filePath.substring(0, lastSlash);
         contents = resolveRelativeImages(contents, fileDir);
         contents = await resolveRelativeCsvLinks(contents, fileDir);
+
+        // Notion エクスポート形式の複数行テーブルセルを正規化
+        contents = preprocessNotionMarkdown(contents);
 
         const filename = filePath.split('/').pop().split('\\').pop();
         const html = (typeof marked !== 'undefined') ? marked.parse(contents) : contents;
