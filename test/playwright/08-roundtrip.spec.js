@@ -496,38 +496,6 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             await expect(cell).toContainText('リストC');
         });
 
-        test('Notion の [] タスクが ☐ に変換される', async ({ app }) => {
-            const md = [
-                '| タスク |',
-                '| --- |',
-                '| [] 未完了タスク',
-                '[x] 完了済みタスク |',
-            ].join('\n');
-            await loadMarkdown(app.page, md);
-
-            const cell = app.page.locator('#editor td').first();
-            await expect(cell).toContainText('☐');
-            await expect(cell).toContainText('☑');
-        });
-
-        test('セル内の —- 区切りが — に変換される', async ({ app }) => {
-            const md = [
-                '| 内容 |',
-                '| --- |',
-                '| 上の内容',
-                '—-',
-                '下の内容 |',
-            ].join('\n');
-            await loadMarkdown(app.page, md);
-
-            const cell = app.page.locator('#editor td').first();
-            await expect(cell).toContainText('上の内容');
-            await expect(cell).toContainText('—');
-            await expect(cell).toContainText('下の内容');
-            // テーブル内に hr が生成されていないことを確認
-            await expect(app.page.locator('#editor table hr')).toHaveCount(0);
-        });
-
         test('テーブル途中の | でセルが分割される（Notion 形式）', async ({ app }) => {
             const md = [
                 '| A | B | C |',

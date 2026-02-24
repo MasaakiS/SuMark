@@ -619,8 +619,7 @@ function _normalizeNotionTable(lines) {
                 if (next.endsWith('|')) break;
             }
             const joined = parts.join('<br>');
-            // | で分割して各セルの Notion 記号を変換
-            result.push(_convertNotionRow(joined));
+            result.push(joined);
         } else {
             result.push(t);
             i++;
@@ -630,39 +629,7 @@ function _normalizeNotionTable(lines) {
     return result;
 }
 
-/**
- * テーブル行内の各セルに対して Notion 固有の記号変換を行う。
- * 入力例: "| cell1 | cell2<br>continued | cell3 |"
- */
-function _convertNotionRow(row) {
-    const parts = row.split('|');
-    const converted = parts.map(part => {
-        const trimmed = part.trim();
-        if (trimmed === '') return part; // 行頭/行末の空要素はそのまま
-        return ' ' + _convertNotionCellContent(trimmed) + ' ';
-    });
-    return converted.join('|');
-}
 
-/**
- * セル内コンテンツの Notion 固有記号を変換する。
- * <br> 区切りの各行に対して変換を適用。
- */
-function _convertNotionCellContent(content) {
-    return content
-        .split('<br>')
-        .map(l => l.trim())
-        .filter(l => l !== '')
-        .map(l => {
-            // Notion の区切り: —- / —— → em dash
-            if (/^[—\-]{2,}$/.test(l)) return '—';
-            // タスクリスト
-            l = l.replace(/^\[\] /, '☐\u00A0');
-            l = l.replace(/^\[x\] /i, '☑\u00A0');
-            return l;
-        })
-        .join('<br>');
-}
 
 function setMarkdown(md) {
     if (typeof marked === 'undefined') {
