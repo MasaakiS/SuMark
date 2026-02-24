@@ -595,91 +595,62 @@ function preprocessNotionMarkdown(md) {
 /**
  * Notion 形式の複数行テーブルブロックを、
  * 単一行の GFM テーブル行の配列に変換する。
+ *
+ * 判定: 先頭に | があり末尾に | がない行を複数行セルの開始とし、
+ *       末尾が | の行まで収集して改行を <br> に変換する。
  */
 function _normalizeNotionTable(lines) {
     const result = [];
-    let cells = null;     // 現在の行のセル文字列配列
-    let inMultiLine = false; // 先頭|あり・末尾|なしの複数行モード中か
-    let sepDone = false;
+    let i = 0;
 
-    function flushRow() {
-        if (cells === null) return;
-        const normalized = cells.map(c => _convertNotionCellContent(c.trim()));
-        result.push('| ' + normalized.join(' | ') + ' |');
-        cells = null;
-        inMultiLine = false;
-    }
+    while (i < lines.length) {
+        const t = lines[i].trim();
 
-    for (const line of lines) {
-        const t = line.trim();
-
-        // セパレータ行（--- 行）の検出：複数行モード外でのみ判定
-        if (!inMultiLine && !sepDone && /^\|[\s\-:|]+\|$/.test(t)) {
-            const parts = t.slice(1, -1).split('|');
-            if (parts.every(p => /^\s*:?-+:?\s*$/.test(p))) {
-                flushRow();
-                sepDone = true;
-                result.push(t);
-                continue;
+        if (t.startsWith('|') && !t.endsWith('|')) {
+            // 先頭に | があるが末尾に | がない → 複数行セルの開始
+            // | で終わる行まで収集し、間の改行を全て <br> に変換
+            const parts = [t];
+            i++;
+            while (i < lines.length) {
+                const next = lines[i].trim();
+                if (next === '') break; // 安全策: 空行で打ち切り
+                parts.push(next);
+                i++;
+                if (next.endsWith('|')) break;
             }
-        }
-
-        if (!inMultiLine && t.startsWith('|')) {
-            // 新しい行の開始
-            flushRow();
-            cells = _splitTableRow(t);
-
-            if (!t.endsWith('|') || t.length < 2) {
-                // 末尾が | で終わっていない → 複数行モード開始
-                inMultiLine = true;
-            }
-        } else if (inMultiLine) {
-            // 複数行モード: | で終わる行まで継続して蓄積する
-            if (t.includes('|')) {
-                // 行内の | はセル区切りとして扱う
-                const parts = t.split('|');
-                // | の手前は現在の最後のセルに追加
-                if (cells && cells.length > 0) {
-                    cells[cells.length - 1] += '\n' + parts[0];
-                }
-                // | の後ろは次のセル（末尾の空要素は除外）
-                for (let k = 1; k < parts.length; k++) {
-                    if (k === parts.length - 1 && parts[k].trim() === '') continue;
-                    cells.push(parts[k]);
-                }
-            } else {
-                // 純粋な継続行（最後のセルに追加）
-                if (cells && cells.length > 0) {
-                    cells[cells.length - 1] += '\n' + t;
-                }
-            }
-
-            // 末尾が | で終わっていれば複数行モード終了
-            if (t.endsWith('|')) {
-                inMultiLine = false;
-                flushRow();
-            }
+            const joined = parts.join('<br>');
+            // | で分割して各セルの Notion 記号を変換
+            result.push(_convertNotionRow(joined));
         } else {
-            result.push(line);
+            result.push(t);
+            i++;
         }
     }
-    flushRow();
+
     return result;
 }
 
-/** `| cell1 | cell2 |` 形式を文字列配列に分割 */
-function _splitTableRow(rowLine) {
-    const inner = rowLine.trim().replace(/^\|/, '').replace(/\|$/, '');
-    return inner.split('|');
+/**
+ * テーブル行内の各セルに対して Notion 固有の記号変換を行う。
+ * 入力例: "| cell1 | cell2<br>continued | cell3 |"
+ */
+function _convertNotionRow(row) {
+    const parts = row.split('|');
+    const converted = parts.map(part => {
+        const trimmed = part.trim();
+        if (trimmed === '') return part; // 行頭/行末の空要素はそのまま
+        return ' ' + _convertNotionCellContent(trimmed) + ' ';
+    });
+    return converted.join('|');
 }
 
 /**
- * セル内コンテンツを整形する。
- * 複数行を <br> で結合し、Notion 固有の記号を変換する。
+ * セル内コンテンツの Notion 固有記号を変換する。
+ * <br> 区切りの各行に対して変換を適用。
  */
 function _convertNotionCellContent(content) {
     return content
-        .split('\n')
+        .split('<br>')
         .map(l => l.trim())
         .filter(l => l !== '')
         .map(l => {
