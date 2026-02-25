@@ -316,6 +316,9 @@ function configureTurndown() {
             // Remove the checkbox from content - GFM plugin adds it as text
             // Also remove any leading/trailing whitespace and [ ] or [x] patterns
             let text = content.replace(/^\s*\[([ x])\]\s*/, '').trim();
+            // GFM requires a space after [x]/[ ] for task list recognition
+            // Use non-breaking space for empty items to preserve the trailing space
+            if (!text) text = '\u00A0';
             return (checked ? '- [x] ' : '- [ ] ') + text + '\n';
         }
     });
@@ -651,6 +654,10 @@ function setMarkdown(md) {
         editor.textContent = md;
         return;
     }
+
+    // Normalize task list items: GFM requires a space after [x]/[ ]
+    // e.g. "- [x]" (no space) → "- [x] " (with space)
+    md = md.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
 
     // Notion エクスポート形式の複数行テーブルセルを正規化
     const preprocessed = preprocessNotionMarkdown(md);
@@ -2835,7 +2842,9 @@ async function handlePaste(e) {
 
     // 5. Check if markdown
     if (looksLikeMarkdown(text)) {
-        const html = marked.parse(preprocessNotionMarkdown(text));
+        // Normalize task list items: GFM requires a space after [x]/[ ]
+        const normalizedText = text.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
+        const html = marked.parse(preprocessNotionMarkdown(normalizedText));
         document.execCommand('insertHTML', false, html);
         editor.querySelectorAll('input[type="checkbox"][disabled]').forEach(cb => {
             cb.removeAttribute('disabled');
@@ -3896,6 +3905,9 @@ async function openFileFromPath(filePath) {
 
         // Notion エクスポート形式の複数行テーブルセルを正規化
         contents = preprocessNotionMarkdown(contents);
+
+        // Normalize task list items: GFM requires a space after [x]/[ ]
+        contents = contents.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
 
         const filename = filePath.split('/').pop().split('\\').pop();
         const html = (typeof marked !== 'undefined') ? marked.parse(contents) : contents;

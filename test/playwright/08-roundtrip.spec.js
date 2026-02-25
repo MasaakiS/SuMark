@@ -166,6 +166,37 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             const listItems = app.page.locator('#editor li');
             await expect(listItems).toHaveCount(1);
         });
+
+        test('テキストなしのタスクリストが正しく保持される', async ({ app }) => {
+            // テキストありとテキストなしの混合タスクリスト
+            const md = '- [x] fdfd\n- [x] ';
+            await app.page.evaluate((markdown) => window.setMarkdown(markdown), md);
+            await app.helpers.wait(500);
+
+            // 両方チェックボックスとして表示されること
+            const checkboxes = app.page.locator('#editor input[type="checkbox"]');
+            await expect(checkboxes).toHaveCount(2);
+
+            // getMarkdown() して再度読み込み
+            const savedMd = await app.page.evaluate(() => window.getMarkdown());
+            await app.page.evaluate((markdown) => window.setMarkdown(markdown), savedMd);
+            await app.helpers.wait(500);
+
+            // 再オープン後も両方チェックボックスとして表示されること
+            const checkboxes2 = app.page.locator('#editor input[type="checkbox"]');
+            await expect(checkboxes2).toHaveCount(2);
+        });
+
+        test('- [x] (スペースなし)が正しくタスクリストとして表示される', async ({ app }) => {
+            // 外部ファイルから読み込まれる可能性のある形式
+            const md = '- [x] fdfd\n- [x]';
+            await app.page.evaluate((markdown) => window.setMarkdown(markdown), md);
+            await app.helpers.wait(500);
+
+            // 両方チェックボックスとして表示されること
+            const checkboxes = app.page.locator('#editor input[type="checkbox"]');
+            await expect(checkboxes).toHaveCount(2);
+        });
     });
 
     // ─────────────────────────────────────────────
