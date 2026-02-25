@@ -303,7 +303,8 @@ function configureTurndown() {
         },
         replacement: function(content, node) {
             const cb = node.querySelector('input[type="checkbox"]');
-            const checked = cb && cb.checked;
+            // Check both property and attribute - property for runtime state, attribute for serialized HTML
+            const checked = cb && (cb.checked || cb.hasAttribute('checked'));
             // Remove the checkbox from content - GFM plugin adds it as text
             // Also remove any leading/trailing whitespace and [ ] or [x] patterns
             let text = content.replace(/^\s*\[([ x])\]\s*/, '').trim();
@@ -538,8 +539,22 @@ function getMarkdown() {
     }
 
     // Clone the editor content for conversion
-    // No need to remove <br> from table cells - Turndown rule will preserve them as HTML
     const clone = editor.cloneNode(true);
+
+    // Sync checkbox checked property to checked attribute
+    // When innerHTML is serialized, only attributes are preserved, not properties
+    const originalCheckboxes = editor.querySelectorAll('input[type="checkbox"]');
+    const clonedCheckboxes = clone.querySelectorAll('input[type="checkbox"]');
+    originalCheckboxes.forEach((original, i) => {
+        const cloned = clonedCheckboxes[i];
+        if (cloned) {
+            if (original.checked) {
+                cloned.setAttribute('checked', '');
+            } else {
+                cloned.removeAttribute('checked');
+            }
+        }
+    });
 
     let md = turndownService.turndown(clone.innerHTML);
 

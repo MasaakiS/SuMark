@@ -112,6 +112,40 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             await expect(checkboxes.nth(0)).toBeChecked();
             await expect(checkboxes.nth(1)).not.toBeChecked();
         });
+
+        test('チェックボックスのクリックがMarkdownに反映される', async ({ app }) => {
+            // 未チェックのタスクを作成
+            const md = '- [ ] タスク';
+            await app.page.evaluate((markdown) => window.setMarkdown(markdown), md);
+            await app.helpers.wait(500);
+
+            // チェックボックスをクリック
+            const cb = app.page.locator('#editor input[type="checkbox"]').first();
+            await expect(cb).not.toBeChecked();
+            await cb.click();
+            await app.helpers.wait(300);
+
+            // Markdownを取得してチェック状態が反映されているか確認
+            const resultMd = await app.page.evaluate(() => window.getMarkdown());
+            expect(resultMd).toContain('- [x] タスク');
+        });
+
+        test('チェック済みタスクのチェックを外すとMarkdownに反映される', async ({ app }) => {
+            // チェック済みタスクを作成
+            const md = '- [x] 完了タスク';
+            await app.page.evaluate((markdown) => window.setMarkdown(markdown), md);
+            await app.helpers.wait(500);
+
+            // チェックボックスをクリックしてチェックを外す
+            const cb = app.page.locator('#editor input[type="checkbox"]').first();
+            await expect(cb).toBeChecked();
+            await cb.click();
+            await app.helpers.wait(300);
+
+            // Markdownを取得してチェックが外れているか確認
+            const resultMd = await app.page.evaluate(() => window.getMarkdown());
+            expect(resultMd).toContain('- [ ] 完了タスク');
+        });
     });
 
     // ─────────────────────────────────────────────
