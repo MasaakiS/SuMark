@@ -3785,13 +3785,55 @@ function insertTaskList() {
     const selectedText = sel.toString().trim();
 
     if (selectedText) {
-        // Convert selected lines to task list items
-        const lines = selectedText.split('\n').filter(l => l.trim());
-        const items = lines.map(line =>
-            '<li class="task-list-item"><input type="checkbox"> ' + escapeHtml(line.trim()) + '</li>'
-        ).join('');
-        const html = '<ul class="contains-task-list">' + items + '</ul><p><br></p>';
-        document.execCommand('insertHTML', false, html);
+        // Convert selected block elements to task list items (preserves <br> within blocks)
+        const range = sel.getRangeAt(0);
+        const container = toggleContent || editor;
+        const blocks = Array.from(container.children).filter(child =>
+            range.intersectsNode(child) && child.textContent.trim()
+        );
+
+        if (blocks.length > 0) {
+            const ul = document.createElement('ul');
+            ul.className = 'contains-task-list';
+
+            blocks.forEach(blk => {
+                const li = document.createElement('li');
+                li.className = 'task-list-item';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                li.appendChild(cb);
+                li.appendChild(document.createTextNode(' '));
+                // Move inline content from block to li, preserving <br>
+                while (blk.firstChild) {
+                    li.appendChild(blk.firstChild);
+                }
+                ul.appendChild(li);
+            });
+
+            // Insert ul where first block was
+            const firstBlock = blocks[0];
+            firstBlock.parentNode.insertBefore(ul, firstBlock);
+
+            // Remove original blocks
+            blocks.forEach(b => b.remove());
+
+            // Add trailing paragraph for continuing editing after the list
+            const p = document.createElement('p');
+            p.innerHTML = '<br>';
+            ul.parentNode.insertBefore(p, ul.nextSibling);
+
+            // Position cursor in the first list item
+            const firstLi = ul.querySelector('li');
+            if (firstLi) setCursorTo(firstLi);
+        } else {
+            // Fallback: no block elements found, use text splitting
+            const lines = selectedText.split('\n').filter(l => l.trim());
+            const items = lines.map(line =>
+                '<li class="task-list-item"><input type="checkbox"> ' + escapeHtml(line.trim()) + '</li>'
+            ).join('');
+            const html = '<ul class="contains-task-list">' + items + '</ul><p><br></p>';
+            document.execCommand('insertHTML', false, html);
+        }
     } else {
         // Build task list via DOM manipulation for precise structure control
         const ul = document.createElement('ul');
