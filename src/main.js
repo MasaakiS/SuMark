@@ -317,8 +317,8 @@ function configureTurndown() {
             // Also remove any leading/trailing whitespace and [ ] or [x] patterns
             let text = content.replace(/^\s*\[([ x])\]\s*/, '').trim();
             // GFM requires a space after [x]/[ ] for task list recognition
-            // Use non-breaking space for empty items to preserve the trailing space
-            if (!text) text = '\u00A0';
+            // Use zero-width space for empty items (marked ignores trailing whitespace/NBSP)
+            if (!text) text = '\u200B';
             return (checked ? '- [x] ' : '- [ ] ') + text + '\n';
         }
     });
@@ -658,6 +658,8 @@ function setMarkdown(md) {
     // Normalize task list items: GFM requires a space after [x]/[ ]
     // e.g. "- [x]" (no space) → "- [x] " (with space)
     md = md.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
+    // Empty task items (only whitespace/NBSP after [x]) need ZWSP for marked to recognize
+    md = md.replace(/^(\s*[-*+]\s+\[[ xX]\])\s*$/gm, '$1 \u200B');
 
     // Notion エクスポート形式の複数行テーブルセルを正規化
     const preprocessed = preprocessNotionMarkdown(md);
@@ -2843,7 +2845,8 @@ async function handlePaste(e) {
     // 5. Check if markdown
     if (looksLikeMarkdown(text)) {
         // Normalize task list items: GFM requires a space after [x]/[ ]
-        const normalizedText = text.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
+        let normalizedText = text.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
+        normalizedText = normalizedText.replace(/^(\s*[-*+]\s+\[[ xX]\])\s*$/gm, '$1 \u200B');
         const html = marked.parse(preprocessNotionMarkdown(normalizedText));
         document.execCommand('insertHTML', false, html);
         editor.querySelectorAll('input[type="checkbox"][disabled]').forEach(cb => {
@@ -3908,6 +3911,8 @@ async function openFileFromPath(filePath) {
 
         // Normalize task list items: GFM requires a space after [x]/[ ]
         contents = contents.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
+        // Empty task items need ZWSP for marked to recognize them as task list
+        contents = contents.replace(/^(\s*[-*+]\s+\[[ xX]\])\s*$/gm, '$1 \u200B');
 
         const filename = filePath.split('/').pop().split('\\').pop();
         const html = (typeof marked !== 'undefined') ? marked.parse(contents) : contents;
