@@ -310,19 +310,32 @@ function configureTurndown() {
     turndownService.addRule('taskListCheckbox', {
         filter: function(node) {
             return node.nodeName === 'LI' &&
-                   node.querySelector('input[type="checkbox"]');
+                   node.querySelector(':scope > input[type="checkbox"]');
         },
         replacement: function(content, node) {
-            const cb = node.querySelector('input[type="checkbox"]');
+            const cb = node.querySelector(':scope > input[type="checkbox"]');
             // Check both property and attribute - property for runtime state, attribute for serialized HTML
             const checked = cb && (cb.checked || cb.hasAttribute('checked'));
-            // Remove the checkbox from content - GFM plugin adds it as text
-            // Also remove any leading/trailing whitespace and [ ] or [x] patterns
+
+            // Remove the checkbox marker from content (GFM plugin adds [ ]/[x] as text)
             let text = content.replace(/^\s*\[([ x])\]\s*/, '').trim();
             // GFM requires a space after [x]/[ ] for task list recognition
             // Use zero-width space for empty items (marked ignores trailing whitespace/NBSP)
             if (!text) text = '\u200B';
-            return (checked ? '- [x] ' : '- [ ] ') + text + '\n';
+
+            // Calculate nesting depth (count ancestor <ul>/<ol> elements inside editor)
+            let depth = 0;
+            let parent = node.parentElement;
+            while (parent && parent.id !== 'editor') {
+                if (parent.nodeName === 'UL' || parent.nodeName === 'OL') {
+                    depth++;
+                }
+                parent = parent.parentElement;
+            }
+            // depth 1 = top-level list, no indent; depth 2 = one level nested, 4-space indent; etc.
+            const indent = '    '.repeat(Math.max(0, depth - 1));
+
+            return indent + (checked ? '- [x] ' : '- [ ] ') + text + '\n';
         }
     });
 
@@ -2640,25 +2653,73 @@ function handleTabKey(e) {
         return;
     }
 
-    // In lists: indent/outdent
+    // In lists: indent/outdent via proper DOM manipulation
+    // (execCommand('indent') creates malformed HTML: <ul> directly inside <ul> without <li> wrapper)
     if (block && block.tagName === 'LI') {
         if (e.shiftKey) {
+            // Outdent: move this LI from sub-list to parent list
             const list = block.parentNode;
             const parentLi = list ? list.closest('li') : null;
             const parentList = parentLi ? parentLi.parentNode : null;
 
             if (parentList && (parentList.tagName === 'UL' || parentList.tagName === 'OL')) {
-                const insertBefore = parentLi.nextSibling;
-                parentList.insertBefore(block, insertBefore);
+                // Move any remaining siblings in the sub-list into a new sub-list under this LI
+                const remainingSiblings = [];
+                let sib = block.nextElementSibling;
+                while (sib) {
+                    remainingSiblings.push(sib);
+                    sib = sib.nextElementSibling;
+                }
+                if (remainingSiblings.length > 0) {
+                    const newSubList = document.createElement(list.tagName);
+                    // Copy task-list classes if applicable
+                    if (list.classList.contains('contains-task-list')) {
+                        newSubList.classList.add('contains-task-list');
+                    }
+                    remainingSiblings.forEach(s => newSubList.appendChild(s));
+                    block.appendChild(newSubList);
+                }
+
+                // Insert this LI after parentLi in the parent list
+                parentList.insertBefore(block, parentLi.nextSibling);
+
+                // Remove empty sub-list
                 if (list.children.length === 0) {
                     list.remove();
                 }
                 setCursorTo(block);
-            } else {
-                document.execCommand('outdent');
             }
         } else {
-            document.execCommand('indent');
+            // Indent: move this LI into the previous sibling's sub-list
+            const prevLi = block.previousElementSibling;
+            if (!prevLi || prevLi.tagName !== 'LI') {
+                // Can't indent the first item in a list
+                return;
+            }
+
+            const parentList = block.parentNode; // UL or OL
+            const listTag = parentList.tagName;   // 'UL' or 'OL'
+
+            // Check if prevLi already has a child sub-list of the same type
+            let subList = null;
+            for (let i = prevLi.children.length - 1; i >= 0; i--) {
+                if (prevLi.children[i].tagName === listTag) {
+                    subList = prevLi.children[i];
+                    break;
+                }
+            }
+
+            if (!subList) {
+                subList = document.createElement(listTag);
+                // Copy task-list classes if applicable
+                if (parentList.classList.contains('contains-task-list')) {
+                    subList.classList.add('contains-task-list');
+                }
+                prevLi.appendChild(subList);
+            }
+
+            subList.appendChild(block);
+            setCursorTo(block);
         }
         return;
     }
