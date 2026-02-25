@@ -197,6 +197,91 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             const checkboxes = app.page.locator('#editor input[type="checkbox"]');
             await expect(checkboxes).toHaveCount(2);
         });
+
+        test('タスクリスト内の改行(BR)が保存後も保持される', async ({ app }) => {
+            // BR を含むタスクリストの HTML をセット
+            const html = '<ul><li><input type="checkbox"> 1</li><li><input type="checkbox"> 2<br>3</li><li><input type="checkbox"> 4</li></ul>';
+            await app.page.evaluate((h) => {
+                document.getElementById('editor').innerHTML = h;
+            }, html);
+            await app.helpers.wait(300);
+
+            // Markdown に変換
+            const md = await app.page.evaluate(() => getMarkdown());
+
+            // Markdown にバックスラッシュ改行が含まれること
+            expect(md).toContain('2\\\n3');
+
+            // Markdown を再セット（ファイル保存→再オープンを模擬）
+            await app.page.evaluate((m) => setMarkdown(m), md);
+            await app.helpers.wait(300);
+
+            // チェックボックスが 3 つ保持されること
+            const checkboxes = app.page.locator('#editor input[type="checkbox"]');
+            await expect(checkboxes).toHaveCount(3);
+
+            // アイテム 2 に BR が保持されること
+            const item2 = app.page.locator('#editor li:nth-child(2)');
+            const hasBr = await item2.evaluate(el => !!el.querySelector('br'));
+            expect(hasBr).toBe(true);
+        });
+    });
+
+    // ─────────────────────────────────────────────
+    // 改行 (BR) ラウンドトリップ
+    // ─────────────────────────────────────────────
+    test.describe('改行 (BR) ラウンドトリップ', () => {
+        test('通常リスト内の改行が保持される', async ({ app }) => {
+            const html = '<ul><li>item1<br>continued</li><li>item2</li></ul>';
+            await app.page.evaluate((h) => {
+                document.getElementById('editor').innerHTML = h;
+            }, html);
+            await app.helpers.wait(300);
+
+            const md = await app.page.evaluate(() => getMarkdown());
+            await app.page.evaluate((m) => setMarkdown(m), md);
+            await app.helpers.wait(300);
+
+            const item1 = app.page.locator('#editor li').first();
+            const hasBr = await item1.evaluate(el => !!el.querySelector('br'));
+            expect(hasBr).toBe(true);
+            await expect(item1).toContainText('item1');
+            await expect(item1).toContainText('continued');
+        });
+
+        test('引用内の改行が保持される', async ({ app }) => {
+            const html = '<blockquote><p>line1<br>line2</p></blockquote>';
+            await app.page.evaluate((h) => {
+                document.getElementById('editor').innerHTML = h;
+            }, html);
+            await app.helpers.wait(300);
+
+            const md = await app.page.evaluate(() => getMarkdown());
+            await app.page.evaluate((m) => setMarkdown(m), md);
+            await app.helpers.wait(300);
+
+            const hasBr = await app.page.evaluate(() => {
+                return !!document.querySelector('#editor blockquote br');
+            });
+            expect(hasBr).toBe(true);
+        });
+
+        test('段落内の改行が保持される', async ({ app }) => {
+            const html = '<p>line1<br>line2</p>';
+            await app.page.evaluate((h) => {
+                document.getElementById('editor').innerHTML = h;
+            }, html);
+            await app.helpers.wait(300);
+
+            const md = await app.page.evaluate(() => getMarkdown());
+            await app.page.evaluate((m) => setMarkdown(m), md);
+            await app.helpers.wait(300);
+
+            const hasBr = await app.page.evaluate(() => {
+                return !!document.querySelector('#editor p br');
+            });
+            expect(hasBr).toBe(true);
+        });
     });
 
     // ─────────────────────────────────────────────

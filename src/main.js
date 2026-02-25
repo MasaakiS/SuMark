@@ -293,6 +293,9 @@ function configureTurndown() {
         fence: '```',
         emDelimiter: '*',
         strongDelimiter: '**',
+        // Use backslash line break instead of trailing spaces (  )
+        // Trailing spaces are fragile and can be stripped during file save/reload
+        br: '\\',
     });
 
     // Load GFM plugin (tables, strikethrough, task lists) FIRST
