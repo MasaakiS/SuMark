@@ -562,6 +562,15 @@ function getMarkdown() {
         }
     });
 
+    // Clean up contenteditable empty paragraph placeholders.
+    // Browsers insert <br> as caret placeholder in empty blocks;
+    // these should not serialize as backslash line breaks (\).
+    clone.querySelectorAll('p').forEach(p => {
+        if (p.childNodes.length === 1 && p.firstChild.nodeName === 'BR') {
+            p.removeChild(p.firstChild);
+        }
+    });
+
     let md = turndownService.turndown(clone.innerHTML);
 
     return md;
