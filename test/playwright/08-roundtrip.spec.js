@@ -146,6 +146,26 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             const resultMd = await app.page.evaluate(() => window.getMarkdown());
             expect(resultMd).toContain('- [ ] 完了タスク');
         });
+
+        test('チェック済みタスクを保存して再オープンしても重複しない', async ({ app }) => {
+            // チェック済みタスクを作成してMarkdownを取得（保存相当）
+            const md = '- [x] 完了タスク';
+            await app.page.evaluate((markdown) => window.setMarkdown(markdown), md);
+            await app.helpers.wait(500);
+            const savedMd = await app.page.evaluate(() => window.getMarkdown());
+            
+            // 再度読み込み（再オープン相当）
+            await app.page.evaluate((markdown) => window.setMarkdown(markdown), savedMd);
+            await app.helpers.wait(500);
+            
+            // チェックボックスが1つだけ存在することを確認（重複していない）
+            const checkboxes = app.page.locator('#editor input[type="checkbox"]');
+            await expect(checkboxes).toHaveCount(1);
+            
+            // リストアイテムも1つだけ
+            const listItems = app.page.locator('#editor li');
+            await expect(listItems).toHaveCount(1);
+        });
     });
 
     // ─────────────────────────────────────────────

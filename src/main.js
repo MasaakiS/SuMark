@@ -295,7 +295,15 @@ function configureTurndown() {
         strongDelimiter: '**',
     });
 
-    // Custom rule: task list items with checkboxes (must be BEFORE GFM plugin)
+    // Load GFM plugin (tables, strikethrough, task lists) FIRST
+    const gfmPlugin = (typeof TurndownPluginGfm !== 'undefined') ? TurndownPluginGfm :
+                       (typeof turndownPluginGfm !== 'undefined') ? turndownPluginGfm : null;
+    if (gfmPlugin && gfmPlugin.gfm) {
+        turndownService.use(gfmPlugin.gfm);
+        console.log('Turndown GFM plugin loaded');
+    }
+
+    // Custom rule: task list items with checkboxes (must be AFTER GFM plugin to override)
     turndownService.addRule('taskListCheckbox', {
         filter: function(node) {
             return node.nodeName === 'LI' &&
@@ -311,14 +319,6 @@ function configureTurndown() {
             return (checked ? '- [x] ' : '- [ ] ') + text + '\n';
         }
     });
-
-    // Load GFM plugin (tables, strikethrough, task lists)
-    const gfmPlugin = (typeof TurndownPluginGfm !== 'undefined') ? TurndownPluginGfm :
-                       (typeof turndownPluginGfm !== 'undefined') ? turndownPluginGfm : null;
-    if (gfmPlugin && gfmPlugin.gfm) {
-        turndownService.use(gfmPlugin.gfm);
-        console.log('Turndown GFM plugin loaded');
-    }
 
     // Custom rule: always convert <pre><code>...</code></pre> to fenced code blocks
     turndownService.addRule('fencedCodeBlock', {
