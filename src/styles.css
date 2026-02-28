@@ -544,16 +544,23 @@ body {
     padding-left: 0;
 }
 
+
 .markdown-body .task-list-item {
     position: relative;
     padding-left: 1.6em;
+    display: flex;
+    align-items: center;
+    /* テキストを少し上に上げる */
+    gap: 0.5em;
 }
 
 .markdown-body .task-list-item input[type="checkbox"] {
-    position: absolute;
+    position: relative;
     left: 0;
-    top: 0.25em;
-    margin: 0;
+    top: 0;
+    margin: 0 0.5em 0 0;
+    vertical-align: middle;
+    align-self: center;
 }
 
 /* Defensive: hide bullet for any li containing a checkbox (even if parent lacks contains-task-list) */
@@ -561,13 +568,18 @@ body {
     list-style-type: none;
     position: relative;
     padding-left: 1.6em;
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
 }
 
 .markdown-body li:has(> input[type="checkbox"]) > input[type="checkbox"] {
-    position: absolute;
+    position: relative;
     left: 0;
-    top: 0.25em;
-    margin: 0;
+    top: 0;
+    margin: 0 0.5em 0 0;
+    vertical-align: middle;
+    align-self: center;
 }
 
 /* ========== Status Bar ========== */
@@ -1224,4 +1236,20 @@ body {
     overflow: hidden;
     white-space: nowrap;
 }
+
+/* 強制的に左端に寄せる */
+.no-indent {
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+    text-indent: 0 !important;
+}
+
+/* 箇条書きの階層ごとにマーカーを変更 */
+.markdown-body ul { list-style-type: disc; }
+.markdown-body ul ul { list-style-type: circle; }
+.markdown-body ul ul ul { list-style-type: square; }
+.markdown-body ul ul ul ul { list-style-type: disc; }
+.markdown-body ul ul ul ul ul { list-style-type: circle; }
+.markdown-body ul ul ul ul ul ul { list-style-type: square; }
+/* 必要に応じてさらに追加 */
 
