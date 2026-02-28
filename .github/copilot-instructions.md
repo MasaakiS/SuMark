@@ -131,5 +131,35 @@ npm run dev
 - 無断で大きなファイルフォーマットの置換や他コンポーネントの大改造は行わない。
 - ユーザー環境に依存するパスや個人情報をコミットしない（絶対パス等）。
 
----
-もしこのプロジェクトに合わせて追記してほしいルールがあれば教えてください。
+## JSとCSSの連携・UI修正時の注意
+
+### JSとCSSの関係性
+- JSで操作・生成するDOM要素のクラス/IDは、必ずCSSで定義・調整すること。
+- クラス/ID名の変更時は、JS・CSS両方の影響範囲を必ず確認する。
+- 特に`.markdown-body`配下の要素（h1〜h6, blockquote, table, code等）はMarkdown変換後のHTML構造に依存し、影響範囲が広い。
+- UI部品追加・修正時は、下記の主要クラス/ID対応表を参考にすること。
+
+### 主要クラス/IDと用途対応表
+| クラス/ID | 用途・説明 |
+|---|---|
+| `#editor` | メインのエディタ領域。WYSIWYG編集、Markdown表示 |
+| `.toolbar-btn` | ツールバーの各ボタン |
+| `.tab-bar`, `.tab-list`, `.tab-item` | タブUI。ファイル切替など |
+| `.code-copy-btn`, `.code-copy-container` | コードブロックのコピー用ボタン |
+| `.image-copy-btn` | 画像コピー用ボタン |
+| `.line-numbers-gutter` | コードブロックの行番号表示 |
+| `.img-error-container`, `.img-error-text`, `.img-error-src` | 画像読み込みエラー時の表示 |
+| `.mermaid-container` | Mermaidダイアグラムのラッパー |
+| `.toggle-content`, `.toggle-delete-btn` | トグル（details/summary）ブロック |
+| `.toc-container`, `.toc-delete-btn`, `.toc-link` | 目次（TOC）ブロック |
+| `.task-list-item`, `.contains-task-list` | タスクリスト（チェックボックス付きリスト） |
+| `.image-viewer-modal`, `.image-viewer-close`, `.image-viewer-img`, `.image-viewer-info` | 画像拡大ビュー用モーダル |
+| `.modal-overlay`, `.modal-dialog`, `.modal-title`, `.modal-btn`, `.modal-btn-ok`, `.modal-btn-cancel` | モーダルダイアログ |
+| `#modalOverlay`, `#modalTitle`, `#modalFields`, `#modalOk`, `#modalCancel` | モーダルダイアログの各要素 |
+| `#currentFile`, `#wordCount`, `#tabList`, `#emojiBtn` | ステータスバーやタブ、絵文字ボタン |
+
+### 修正時の推奨フロー
+1. JSで新たなクラス/IDを追加・変更した場合、CSS側にも必ず定義・調整が必要。
+2. CSSでクラス名を変更した場合、JSのDOM操作が動作しなくなるため、両者の整合性を常に確認する。
+3. UI部品の追加・修正時は、上記対応表を参考に影響範囲を洗い出す。
+

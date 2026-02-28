@@ -16,6 +16,28 @@ function normalizeEditorText(text) {
 }
 
 class PlaywrightHelpers {
+        /** 画像挿入: 画像挿入ボタンをクリックし、パスを入力してOK */
+        async insertImage(path) {
+            // 画像挿入ボタン（id="imageBtn"）をクリック
+            await this.clickToolbarButton('imageBtn');
+            // モーダルが開くまで待機
+            await this.waitForModal();
+            // 入力欄にパスを入力
+            await this.setModalInput(0, path);
+            // OKボタンをクリック
+            await this.clickModalOK();
+            // 画像が挿入されるまで少し待機
+            await this.page.waitForTimeout(500);
+        }
+
+        /** 設定ファイル破損: localStorageの設定値を破損させる */
+        async corruptSettings() {
+            // localStorageの設定キー（例: 'sumark-settings'）を破損値で上書き
+            await this.page.evaluate(() => {
+                localStorage.setItem('sumark-settings', '{ broken json');
+            });
+            await this.page.waitForTimeout(100);
+        }
     /** @param {import('@playwright/test').Page} page */
     constructor(page) {
         this.page = page;
@@ -49,9 +71,24 @@ class PlaywrightHelpers {
 
     /** エディタにテキストを入力（フォーカスを取得してから入力する） */
     async typeInEditor(text) {
-        await this.focusEditor();
-        await this.page.keyboard.type(text, { delay: 20 });
-        await this.page.waitForTimeout(300);
+        try {
+            console.log('[typeInEditor] called, text.length:', text.length);
+            await this.focusEditor();
+            console.log('[typeInEditor] focusEditor done');
+            for (let i = 0; i < text.length; i++) {
+                await this.page.keyboard.type(text[i], { delay: 20 });
+                if (i % 10 === 0) {
+                    const val = await this.page.evaluate(() => document.getElementById('editor')?.innerText?.length);
+                    console.log(`[typeInEditor] progress: ${i+1}/${text.length}, editor.innerText.length:`, val);
+                }
+            }
+            await this.page.waitForTimeout(300);
+            const finalVal = await this.page.evaluate(() => document.getElementById('editor')?.innerText);
+            console.log('[typeInEditor] done, final editor.innerText.length:', finalVal?.length);
+        } catch (e) {
+            console.error('[typeInEditor] Exception:', e);
+            throw e;
+        }
     }
 
     /** エディタにテキストを追加入力（フォーカスせずに直接タイプ） */

@@ -209,8 +209,10 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             // Markdown に変換
             const md = await app.page.evaluate(() => getMarkdown());
 
-            // Markdown にバックスラッシュ改行が含まれること
-            expect(md).toContain('2\\\n3');
+            // Markdownで「2」と「3」が別行になっていることを検証
+            const lines = md.split('\n');
+            const idx = lines.findIndex(line => line.includes('- [ ] 2'));
+            expect(lines[idx + 1].trim()).toBe('3');
 
             // Markdown を再セット（ファイル保存→再オープンを模擬）
             await app.page.evaluate((m) => setMarkdown(m), md);

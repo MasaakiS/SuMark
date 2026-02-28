@@ -1,3 +1,56 @@
+// Mermaid挿入ボタンの処理
+document.addEventListener('DOMContentLoaded', () => {
+    const mermaidBtn = document.getElementById('mermaidBtn');
+    if (mermaidBtn) {
+        mermaidBtn.addEventListener('click', () => {
+            showMermaidInsertDialog();
+        });
+    }
+});
+
+function showMermaidInsertDialog() {
+    // シンプルなテンプレートを初期値に
+    const template = [
+        'graph TD',
+        '  A[Start] --> B{Is it working?}',
+        '  B -- Yes --> C[Great!]',
+        '  B -- No --> D[Check again]'
+    ].join('\n');
+    showModal('Mermaid記法を挿入', [
+        { key: 'mermaid', label: 'Mermaid記法', type: 'textarea', value: template }
+    ], (values) => {
+        if (!values.mermaid) return;
+        insertMermaidBlock(values.mermaid);
+    });
+}
+
+function insertMermaidBlock(source) {
+    // カーソル位置にMermaidコードブロックを挿入
+    const block = `\n\`\`\`mermaid\n${source}\n\`\`\`\n`;
+    insertTextAtCursor(block);
+    markModified();
+    saveEditorState && saveEditorState();
+    // 挿入後に再描画
+    setTimeout(() => {
+        if (typeof renderMermaidBlocks === 'function') renderMermaidBlocks();
+    }, 100);
+}
+
+// insertTextAtCursor: カーソル位置にテキストを挿入するユーティリティ
+function insertTextAtCursor(text) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    const textNode = document.createTextNode(text);
+    range.insertNode(textNode);
+    // 挿入したテキストの後ろにカーソルを移動
+    range.setStartAfter(textNode);
+    range.setEndAfter(textNode);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    editor.focus();
+}
 // =====================================================
 // SuMark - Main Application Logic
 // =====================================================
@@ -5,6 +58,65 @@
 // Global error banner management
 let errorBanner = null;
 let errorBannerTimeout = null;
+// ===============================
+// Editor Zoom (倍率変更) 機能
+// ===============================
+let editorZoom = 1.0;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 2.0;
+const ZOOM_STEP = 0.1;
+
+function applyEditorZoom() {
+    if (!editor) return;
+    editor.style.transform = `scale(${editorZoom})`;
+    editor.style.transformOrigin = 'top left';
+    // スクロール位置補正（ズーム時に左上基準で）
+    editor.parentElement && (editor.parentElement.scrollLeft = 0);
+}
+
+function changeEditorZoom(delta) {
+    editorZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round((editorZoom + delta) * 100) / 100));
+    applyEditorZoom();
+}
+
+function resetEditorZoom() {
+    editorZoom = 1.0;
+    applyEditorZoom();
+}
+
+// ショートカット・マウスホイール対応
+window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        // Mac配列対応: Ctrl+Shift+; も+になる。Ctrl+= も+として扱う。
+        if (
+            e.code === 'Equal' ||
+            e.key === '+' ||
+            (e.shiftKey && (e.key === ';' || e.key === '=')) ||
+            e.key === '='
+        ) {
+            changeEditorZoom(ZOOM_STEP);
+            e.preventDefault();
+        } else if (e.code === 'Minus' || e.key === '-') {
+            changeEditorZoom(-ZOOM_STEP);
+            e.preventDefault();
+        } else if (e.code === 'Digit0' || e.key === '0') {
+            resetEditorZoom();
+            e.preventDefault();
+        }
+    }
+});
+
+// Ctrl+マウスホイール
+window.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+        if (e.deltaY < 0) {
+            changeEditorZoom(ZOOM_STEP);
+        } else if (e.deltaY > 0) {
+            changeEditorZoom(-ZOOM_STEP);
+        }
+        e.preventDefault();
+    }
+}, { passive: false });
 let lastErrorTime = 0;
 const ERROR_THROTTLE_MS = 500;  // Prevent rapid-fire error spam
 
@@ -105,6 +217,7 @@ let currentState = null;   // Current editor state
 const MAX_UNDO_STACK = 100; // Maximum undo history size
 let isUndoRedoOperation = false; // Guard to prevent recording during undo/redo
 let saveStateTimer = null; // Debounce timer for saving editor state
+let inputCharCount = 0; // 連続入力カウンタ
 
 // ========== Emoji Map ==========
 const EMOJI_MAP = {
@@ -295,7 +408,7 @@ function configureTurndown() {
         strongDelimiter: '**',
         // Use backslash line break instead of trailing spaces (  )
         // Trailing spaces are fragile and can be stripped during file save/reload
-        br: '\\',
+        br: '',
     });
 
     // Load GFM plugin (tables, strikethrough, task lists) FIRST
@@ -675,6 +788,7 @@ function _normalizeNotionTable(lines) {
 
 
 function setMarkdown(md) {
+        console.log('[setMarkdown] called, md.length:', md.length);
     if (typeof marked === 'undefined') {
         editor.textContent = md;
         return;
@@ -713,7 +827,12 @@ function setMarkdown(md) {
         ALLOW_DATA_ATTR: true,
     }) : dirtyHtml;
     
-    editor.innerHTML = cleanHtml;
+    try {
+        editor.innerHTML = cleanHtml;
+        console.log('[setMarkdown] editor.innerHTML length:', editor.innerHTML.length);
+    } catch (e) {
+        console.error('[setMarkdown] Exception:', e);
+    }
 
     // Make checkboxes interactive
     editor.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -1392,8 +1511,17 @@ function performUndo() {
     const previousState = undoStack.pop();
     currentState = previousState;
     
-    // Restore editor content
-    editor.innerHTML = previousState.html;
+    try {
+        console.log('[Undo] Restoring state:', previousState);
+        if (typeof DOMPurify !== 'undefined') {
+            editor.innerHTML = DOMPurify.sanitize(previousState.html);
+        } else {
+            editor.innerHTML = previousState.html;
+        }
+        console.log('[Undo] editor.innerHTML length:', editor.innerHTML.length);
+    } catch (e) {
+        console.error('[Undo] Exception:', e);
+    }
     
     // Ensure editor starts with an editable element
     ensureEditableStart();
@@ -1438,8 +1566,17 @@ function performRedo() {
     const nextState = redoStack.pop();
     currentState = nextState;
     
-    // Restore editor content
-    editor.innerHTML = nextState.html;
+    try {
+        console.log('[Redo] Restoring state:', nextState);
+        if (typeof DOMPurify !== 'undefined') {
+            editor.innerHTML = DOMPurify.sanitize(nextState.html);
+        } else {
+            editor.innerHTML = nextState.html;
+        }
+        console.log('[Redo] editor.innerHTML length:', editor.innerHTML.length);
+    } catch (e) {
+        console.error('[Redo] Exception:', e);
+    }
     
     // Ensure editor starts with an editable element
     ensureEditableStart();
@@ -1479,7 +1616,23 @@ function onEditorInput() {
     updateWordCount();
     markModified();
     
-    // Save state for undo (debounced to avoid too many snapshots)
+    // Undo履歴粒度: 3文字ごと or Enter押下時
+    // IME変換中はカウントしない
+    if (!isComposing) {
+        // 入力文字数をカウント
+        const text = editor.innerText || '';
+        // 前回状態との差分を計算（追加文字数のみカウント）
+        if (currentState && text.length > currentState.html.replace(/<[^>]+>/g, '').length) {
+            inputCharCount += text.length - currentState.html.replace(/<[^>]+>/g, '').length;
+        } else {
+            inputCharCount = 1;
+        }
+        if (inputCharCount >= 3) {
+            saveEditorState();
+            inputCharCount = 0;
+        }
+    }
+    // 3文字未満のときは従来通りデバウンスで積む（保険）
     debouncedSaveEditorState();
 
     // Re-highlight code block if cursor is inside one
@@ -2044,6 +2197,11 @@ function applyInlineAutoConvert(textNode, match, tag, cursorPos) {
 
 // ========== Keyboard Shortcuts ==========
 function handleKeyDown(e) {
+        // エンター押下時は即座に履歴を積む
+        if (e.key === 'Enter' && !isComposing) {
+            saveEditorState();
+            inputCharCount = 0;
+        }
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const mod = isMac ? e.metaKey : e.ctrlKey;
     
@@ -2483,23 +2641,31 @@ function handleEnterKey(e) {
         return;
     }
 
-    // In list item: if empty, exit the list
+    // In list item: if empty, outdent one level per Enter, finally exit list
     if (tag === 'LI') {
         const text = block.textContent.trim();
-        // Ignore checkbox content for task lists
         const hasCheckbox = block.querySelector('input[type="checkbox"]');
         const effectiveText = hasCheckbox ? text.replace(/^\s*/, '') : text;
 
         if (effectiveText === '' || (hasCheckbox && block.textContent.replace(/\s/g, '') === '')) {
             e.preventDefault();
             const list = block.parentNode;
-            const p = document.createElement('p');
-            p.innerHTML = '<br>';
-            list.parentNode.insertBefore(p, list.nextSibling);
-            block.remove();
-            if (list.children.length === 0) list.remove();
-            setCursorTo(p);
-            return;
+            const parentLi = list.closest('li');
+            if (parentLi) {
+                // 親liの直後に空liを移動（アウトデント）
+                parentLi.parentNode.insertBefore(block, parentLi.nextSibling);
+                setCursorTo(block);
+                return;
+            } else {
+                // 最上位リストならli→p変換
+                const p = document.createElement('p');
+                p.innerHTML = '<br>';
+                list.parentNode.insertBefore(p, list.nextSibling);
+                block.remove();
+                if (list.children.length === 0) list.remove();
+                setCursorTo(p);
+                return;
+            }
         }
 
         // Task list: create a new task list item with checkbox on Enter
@@ -2722,6 +2888,45 @@ function handleTabKey(e) {
             setCursorTo(block);
         }
         return;
+    }
+
+
+    // --- 空行でShift+Tabを押した場合は、リストの最上位まで一気に抜けてリスト全体の直後に移動 ---
+    if (e.shiftKey && block && block.tagName === 'P' && block.childNodes.length === 1 && block.firstChild.nodeName === 'BR') {
+        let parent = block.parentElement;
+        // editor直下なら何もしない
+        if (parent === editor) {
+            block.style.marginLeft = '';
+            block.style.paddingLeft = '';
+            block.style.textIndent = '';
+            return;
+        }
+        // 親がリストなら、最上位リストまで遡る
+        let topList = null;
+        let cur = parent;
+        while (cur && (cur.tagName === 'UL' || cur.tagName === 'OL')) {
+            topList = cur;
+            cur = cur.parentElement;
+        }
+        if (topList && topList.parentElement) {
+            // 最上位リストの直後に空行を移動
+              topList.parentElement.insertBefore(block, topList.nextSibling);
+              block.classList.add('no-indent');
+              block.style.marginLeft = '';
+              block.style.paddingLeft = '';
+              block.style.textIndent = '';
+              return;
+        }
+        // それ以外は従来通り1段階外へ
+        const grandParent = parent.parentElement;
+        if (grandParent) {
+              grandParent.insertBefore(block, parent.nextSibling);
+              block.classList.add('no-indent');
+              block.style.marginLeft = '';
+              block.style.paddingLeft = '';
+              block.style.textIndent = '';
+              return;
+        }
     }
 
     // Default: insert 4 spaces
@@ -4253,7 +4458,12 @@ async function saveFile() {
         if (filePath) {
             let markdown = getMarkdown();
             markdown = await resolveImagesForSave(markdown, filePath);
+            const start = Date.now();
             await writeTextFile(filePath, markdown);
+            const elapsed = (Date.now() - start) / 1000;
+            if (elapsed >= 30) {
+                showError('保存に30秒以上かかりました（' + elapsed.toFixed(1) + '秒）。ファイルサイズやストレージの状態をご確認ください。');
+            }
             tab.filePath = filePath;
             tab.title = filePath.split('/').pop().split('\\').pop();
             tab.isModified = false;
@@ -4789,8 +4999,17 @@ function switchTab(id) {
     const tab = getActiveTab();
     if (!tab) return;
 
-    // Restore tab content
-    editor.innerHTML = tab.content;
+    try {
+        console.log('[TabSwitch] Restoring tab content:', tab);
+        if (typeof DOMPurify !== 'undefined') {
+            editor.innerHTML = DOMPurify.sanitize(tab.content);
+        } else {
+            editor.innerHTML = tab.content;
+        }
+        console.log('[TabSwitch] editor.innerHTML length:', editor.innerHTML.length);
+    } catch (e) {
+        console.error('[TabSwitch] Exception:', e);
+    }
     editor.parentElement.scrollTop = tab.scrollTop;
     
     // Ensure editor starts with an editable element
@@ -5196,7 +5415,18 @@ function createTableRow(colCount, tag) {
 
 // ========== Mermaid Rendering ==========
 async function renderMermaidBlocks() {
-    if (typeof mermaid === 'undefined') return;
+    // Mermaidライブラリがまだロードされていない場合は、最大10回まで再試行
+    if (typeof mermaid === 'undefined') {
+        if (!renderMermaidBlocks.retryCount) renderMermaidBlocks.retryCount = 0;
+        if (renderMermaidBlocks.retryCount < 10) {
+            renderMermaidBlocks.retryCount++;
+            setTimeout(renderMermaidBlocks, 200);
+        } else {
+            console.error('Mermaidライブラリのロードに失敗しました。');
+        }
+        return;
+    }
+    renderMermaidBlocks.retryCount = 0;
 
     // Ensure mermaid is initialized
     try {
@@ -5207,7 +5437,7 @@ async function renderMermaidBlocks() {
     for (let i = 0; i < codeBlocks.length; i++) {
         const code = codeBlocks[i];
         const pre = code.parentElement;
-        const source = code.textContent;
+        const source = code.textContent.trim(); // 先頭・末尾の空白・空行を除去
 
         try {
             const id = 'mermaid-' + Date.now() + '-' + i;
@@ -5470,13 +5700,44 @@ function addCopyButtonsToCodeBlocks() {
         // Skip Mermaid containers
         if (pre.closest('.mermaid-container')) return;
 
+        const code = pre.querySelector('code');
+        // 言語選択ドロップダウンを作成
+        const langSelect = document.createElement('select');
+        langSelect.className = 'code-lang-select';
+        // CODE_LANGUAGESはグローバル定義
+        CODE_LANGUAGES.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            langSelect.appendChild(option);
+        });
+        // 現在の言語を初期値に
+        let currentLang = '';
+        if (code && code.className) {
+            const m = code.className.match(/language-([\w-]+)/);
+            if (m) currentLang = m[1];
+        }
+        langSelect.value = currentLang;
+
+        // 言語変更時の処理
+        langSelect.addEventListener('change', e => {
+            if (!code) return;
+            // クラスを書き換え
+            code.className = langSelect.value ? 'language-' + langSelect.value : '';
+            // 再ハイライト
+            if (typeof hljs !== 'undefined') hljs.highlightElement(code);
+        });
+
+        // ドロップダウンをpreの先頭に追加
+        pre.insertBefore(langSelect, pre.firstChild);
+
+        // 既存のコピーボタンUI
         const container = document.createElement('div');
         container.className = 'code-copy-container';
         container.setAttribute('contenteditable', 'false');
 
         // Helper: get raw code text
         function getRawText() {
-            const code = pre.querySelector('code');
             return code ? code.textContent : pre.textContent;
         }
 
