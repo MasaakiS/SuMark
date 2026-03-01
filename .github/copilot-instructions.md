@@ -127,6 +127,42 @@ npm run dev
   gh api -X DELETE repos/{owner}/{repo}/releases/[RELEASE_ID]  # リリース削除（オプション）
   ```
 
+## バグ予防対策（実装済み）
+
+### A. Husky プリコミットフック
+- `npm install --save-dev husky` でインストール済み
+- `.husky/pre-commit` で自動検証スクリプトを実行
+- コミット前に CSS-JS 整合性チェックを実施
+
+実行コマンド:
+```bash
+npm run prepare  # husky hooks をセットアップ
+```
+
+### B. CSS-JS 検証スクリプト
+- `scripts/validate-css-js-sync.js` を実装
+- JS で使用しているクラス/ID が CSS で定義されているか自動チェック
+- 動的生成クラス（`.math-*`, `.language-*`, `#mermaid-*` など）は自動除外
+
+実行コマンド:
+```bash
+npm run test:lint  # CSS-JS 検証実行
+```
+
+### C. テスト拡充（08-roundtrip.spec.js）
+- **CSS適用状態の検証**: 修正後のスタイルが保持されるか確認（3テスト）
+- **DOM構造の整合性**: HTML タグペアの対応、要素数の変化がないか確認（3テスト）
+- **複数要素の同時保存**: 複数形式混在コンテンツの保持確認（2テスト）
+- **エラー耐性**: 空のコンテンツ、不正な HTML への耐性確認（2テスト）
+- **合計**: 55テスト全てパス済み
+
+実行コマンド:
+```bash
+npm run test:e2e -- test/playwright/08-roundtrip.spec.js
+```
+
+---
+
 ## 禁止事項 / 注意事項
 - 無断で大きなファイルフォーマットの置換や他コンポーネントの大改造は行わない。
 - ユーザー環境に依存するパスや個人情報をコミットしない（絶対パス等）。
