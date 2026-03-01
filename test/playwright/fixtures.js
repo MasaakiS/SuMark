@@ -62,6 +62,14 @@ const test = base.extend({
         await page.goto(_serverURL, { waitUntil: 'load' });
         // エディタ要素が表示されるまで待つ
         await page.locator('#editor').waitFor({ state: 'visible', timeout: 15000 });
+        
+        // グローバル状態をリセット（複数テスト連続実行時のメモリリーク防止）
+        await page.evaluate(() => {
+            if (typeof renderMermaidBlocks !== 'undefined') {
+                renderMermaidBlocks.retryCount = 0;
+            }
+        });
+        
         // 初期化完了を少し待つ (Mermaid / KaTeX ロード等)
         await page.waitForTimeout(1000);
 

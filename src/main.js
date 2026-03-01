@@ -16,30 +16,107 @@ function showMermaidInsertDialog() {
         '  B -- Yes --> C[Great!]',
         '  B -- No --> D[Check again]'
     ].join('\n');
-    showModal('Mermaid記法を挿入', [
-        { key: 'mermaid', label: 'Mermaid記法', type: 'textarea', value: template }
-    ], (values) => {
-        if (!values.mermaid) return;
-        insertMermaidBlock(values.mermaid);
+    
+    // モーダルダイアログを直接作成（ラジオボタンが必要なため）
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+
+    overlay.innerHTML = 
+        '<div class="modal-dialog" style="min-width:500px">' +
+        '<div class="modal-title">Mermaid図を挿入</div>' +
+        '<div class="modal-field">' +
+        '<label>Mermaid記法</label>' +
+        '<textarea id="mermaidInput" style="width:100%;height:200px;font-family:monospace;padding:8px;border:1px solid #ccc;border-radius:4px;resize:vertical;font-size:13px;line-height:1.5;box-sizing:border-box">' + template + '</textarea>' +
+        '</div>' +
+        '<div class="modal-buttons">' +
+        '<button class="modal-btn modal-btn-cancel" id="mermaidCancel">キャンセル</button>' +
+        '<button class="modal-btn modal-btn-ok" id="mermaidOk">OK</button>' +
+        '</div></div>';
+
+    document.body.appendChild(overlay);
+
+    const textarea = overlay.querySelector('#mermaidInput');
+    setTimeout(() => textarea.focus(), 50);
+
+    overlay.querySelector('#mermaidOk').addEventListener('click', () => {
+        const source = textarea.value.trim();
+        overlay.remove();
+        if (!source) return;
+        insertMermaidBlock(source, 'code-and-diagram');
     });
+
+    overlay.querySelector('#mermaidCancel').addEventListener('click', () => {
+        overlay.remove();
+    });
+
+    // Escキーでキャンセル
+    const escHandler = (e) => {
+        if (e.key === 'Escape') {
+            overlay.remove();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
 }
 
-function insertMermaidBlock(source) {
-    // カーソル位置にMermaidコードブロックを挿入
-    const block = `\n\`\`\`mermaid\n${source}\n\`\`\`\n`;
-    insertTextAtCursor(block);
+function insertMermaidBlock(source, mode = 'code-and-diagram') {
+    // コンテナを直接作成してエディタに挿入する
+    // （setMarkdown経由だとrenderMermaidBlocksとのレースコンディションが発生するため）
+    let container;
+
+    if (mode === 'diagram-only') {
+        container = document.createElement('div');
+        container.className = 'mermaid-diagram-only';
+        container.setAttribute('data-mermaid-source', source);
+        container.setAttribute('contenteditable', 'false');
+    } else {
+        container = document.createElement('div');
+        container.className = 'mermaid-code-and-diagram';
+        container.setAttribute('data-mermaid-source', source);
+        container.setAttribute('contenteditable', 'false');
+        container.innerHTML = '<div class="mermaid-display"></div><pre><code class="language-mermaid"></code></pre>';
+        container.querySelector('code').textContent = source;
+    }
+
+    // エディタの末尾に挿入
+    editor.appendChild(container);
+
+    // コンテナの前に空の段落を確保（前方にカーソルを置けるようにする）
+    if (!container.previousElementSibling) {
+        const pBefore = document.createElement('p');
+        pBefore.innerHTML = '<br>';
+        container.parentNode.insertBefore(pBefore, container);
+    }
+
+    // コンテナの後ろに空の段落を確保（後方にカーソルを置けるようにする）
+    if (!container.nextElementSibling) {
+        const pAfter = document.createElement('p');
+        pAfter.innerHTML = '<br>';
+        container.parentNode.insertBefore(pAfter, container.nextSibling);
+    }
+
+    // Mermaidをレンダリング
+    renderMermaidBlocks();
+
     markModified();
     saveEditorState && saveEditorState();
-    // 挿入後に再描画
-    setTimeout(() => {
-        if (typeof renderMermaidBlocks === 'function') renderMermaidBlocks();
-    }, 100);
 }
 
 // insertTextAtCursor: カーソル位置にテキストを挿入するユーティリティ
 function insertTextAtCursor(text) {
     const sel = window.getSelection();
-    if (!sel.rangeCount) return;
+
+    // 選択範囲がない場合は editor 末尾へ挿入
+    if (!sel.rangeCount) {
+        editor.focus();
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+
     const range = sel.getRangeAt(0);
     range.deleteContents();
     const textNode = document.createTextNode(text);
@@ -562,6 +639,30 @@ function configureTurndown() {
         }
     });
 
+    // Mermaid diagram only mode: 図形のみ表示モード
+    turndownService.addRule('mermaidDiagramOnly', {
+        filter: function(node) {
+            return node.classList && node.classList.contains('mermaid-diagram-only');
+        },
+        replacement: function(content, node) {
+            const source = node.getAttribute('data-mermaid-source') || '';
+            // 標準的なMarkdown形式で保存
+            return '\n```mermaid\n' + source + '\n```\n';
+        }
+    });
+
+    // Mermaid code and diagram mode: コード＋図形表示モード
+    turndownService.addRule('mermaidCodeAndDiagram', {
+        filter: function(node) {
+            return node.classList && node.classList.contains('mermaid-code-and-diagram');
+        },
+        replacement: function(content, node) {
+            const source = node.getAttribute('data-mermaid-source') || '';
+            // 標準的なMarkdown形式で保存
+            return '\n```mermaid\n' + source + '\n```\n';
+        }
+    });
+
     // Images with custom size: preserve width in HTML output
     turndownService.addRule('imageWithSize', {
         filter: function(node) {
@@ -789,6 +890,9 @@ function _normalizeNotionTable(lines) {
 
 function setMarkdown(md) {
         console.log('[setMarkdown] called, md.length:', md.length);
+    // リセット: グローバル状態をクリア（複数ページロード時のメモリリーク防止）
+    renderMermaidBlocks.retryCount = 0;
+    
     if (typeof marked === 'undefined') {
         editor.textContent = md;
         return;
@@ -848,6 +952,9 @@ function setMarkdown(md) {
 
     // Render Mermaid diagrams
     renderMermaidBlocks();
+
+    // Render KaTeX math expressions
+    renderMathBlocks();
 
     // Add delete buttons to TOC containers
     setupTocDeleteButtons();
@@ -2092,46 +2199,58 @@ function handleInlineAutoConversion() {
         }
     }
 
-    // Display math: $$...$$
-    const displayMathMatch = before.match(/\$\$([\s\S]+?)\$\$$/);
+    // Display math: $$...$$ (must match before inline math to avoid conflict)
+    // Use negative lookahead/lookbehind to avoid matching inline math
+    const displayMathMatch = before.match(/\$\$([^$]+?)\$\$$/);
     if (displayMathMatch && window.katex) {
         const math = displayMathMatch[1];
         const fullMatch = displayMathMatch[0];
         const startIdx = pos - fullMatch.length;
-        const beforeText = textNode.textContent.substring(0, startIdx);
-        const afterText = textNode.textContent.substring(pos);
-        const parent = textNode.parentNode;
+        
+        // Safety check: make sure we actually matched $$...$$, not $...$
+        if (fullMatch.startsWith('$$') && fullMatch.endsWith('$$')) {
+            const beforeText = textNode.textContent.substring(0, startIdx);
+            const afterText = textNode.textContent.substring(pos);
+            const parent = textNode.parentNode;
 
-        const frag = document.createDocumentFragment();
-        if (beforeText) frag.appendChild(document.createTextNode(beforeText));
-        const div = document.createElement('div');
-        div.className = 'math-display';
-        div.setAttribute('data-math', math);
-        try {
-            div.innerHTML = katex.renderToString(math, {displayMode: true, throwOnError: false});
-        } catch (err) {
-            div.textContent = '$$' + math + '$$';
+            const frag = document.createDocumentFragment();
+            if (beforeText) frag.appendChild(document.createTextNode(beforeText));
+            const div = document.createElement('div');
+            div.className = 'math-display';
+            div.setAttribute('data-math', math);
+            div.setAttribute('contenteditable', 'false');
+            try {
+                div.innerHTML = katex.renderToString(math, {displayMode: true, throwOnError: false});
+            } catch (err) {
+                div.textContent = '$$' + math + '$$';
+            }
+            frag.appendChild(div);
+            const cursorText = document.createTextNode('\u200B' + afterText);
+            frag.appendChild(cursorText);
+            parent.replaceChild(frag, textNode);
+
+            const newSel = window.getSelection();
+            const newRange = document.createRange();
+            newRange.setStart(cursorText, 1);
+            newRange.collapse(true);
+            newSel.removeAllRanges();
+            newSel.addRange(newRange);
+            return;
         }
-        frag.appendChild(div);
-        const cursorText = document.createTextNode('\u200B' + afterText);
-        frag.appendChild(cursorText);
-        parent.replaceChild(frag, textNode);
-
-        const newSel = window.getSelection();
-        const newRange = document.createRange();
-        newRange.setStart(cursorText, 1);
-        newRange.collapse(true);
-        newSel.removeAllRanges();
-        newSel.addRange(newRange);
-        return;
     }
 
-    // Inline math: $...$
-    const inlineMathMatch = before.match(/\$([^\$]+?)\$$/);
+    // Inline math: $...$ (but not preceded by $ to avoid conflict with $$)
+    const inlineMathMatch = before.match(/\$([^$]+?)\$$/);
     if (inlineMathMatch && window.katex) {
         const math = inlineMathMatch[1];
         const fullMatch = inlineMathMatch[0];
         const startIdx = pos - fullMatch.length;
+        
+        // Check if there's a $ just before this match (would be part of $$)
+        if (startIdx > 0 && textNode.textContent[startIdx - 1] === '$') {
+            return; // Skip - likely part of $$...$$
+        }
+        
         const beforeText = textNode.textContent.substring(0, startIdx);
         const afterText = textNode.textContent.substring(pos);
         const parent = textNode.parentNode;
@@ -2141,6 +2260,7 @@ function handleInlineAutoConversion() {
         const span = document.createElement('span');
         span.className = 'math-inline';
         span.setAttribute('data-math', math);
+        span.setAttribute('contenteditable', 'false');
         try {
             span.innerHTML = katex.renderToString(math, {displayMode: false, throwOnError: false});
         } catch (err) {
@@ -2710,16 +2830,22 @@ function handleEnterKey(e) {
 
             // Set cursor after the checkbox space in new item
             const textNode = newLi.lastChild;
-            const newRange = document.createRange();
-            // Position cursor at the end of the text node (after the space)
-            const cursorPos = afterText.trim() ? textNode.textContent.length : 1;
-            newRange.setStart(textNode, cursorPos);
-            newRange.collapse(true);
-            sel2.removeAllRanges();
-            sel2.addRange(newRange);
-            
-            // Focus the new list item to ensure cursor visibility
-            newLi.focus();
+            if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+                const newRange = document.createRange();
+                // Position cursor at the end of the text node
+                // If afterText is empty (typical case), textNode contains only ' ' (space), so length is 1
+                // If afterText has content, position at the end
+                const cursorPos = afterText.trim() ? textNode.textContent.length : 1;
+                newRange.setStart(textNode, cursorPos);
+                newRange.collapse(true);
+                sel2.removeAllRanges();
+                sel2.addRange(newRange);
+                // Ensure editor focus
+                editor.focus();
+            } else {
+                // Fallback: use setCursorTo if text node not found
+                setCursorTo(newLi);
+            }
             
             return;
         }
@@ -3625,6 +3751,11 @@ function showModal(title, fields, callback) {
                 if ((field.value || '') === option.value) option.selected = true;
                 inputEl.appendChild(option);
             });
+        } else if (field.type === 'textarea') {
+            inputEl = document.createElement('textarea');
+            inputEl.id = 'modalInput' + i;
+            inputEl.value = field.value || '';
+            inputEl.placeholder = field.placeholder || '';
         } else {
             inputEl = document.createElement('input');
             inputEl.type = 'text';
@@ -5034,6 +5165,9 @@ function switchTab(id) {
     // Render Mermaid diagrams
     renderMermaidBlocks();
 
+    // Render KaTeX math expressions
+    renderMathBlocks();
+
     // Setup toggle blocks (open, contenteditable, toggle-content wrapper, delete buttons)
     setupToggleBlocks();
 
@@ -5413,6 +5547,180 @@ function createTableRow(colCount, tag) {
     return tr;
 }
 
+// ========== KaTeX Math Rendering ==========
+/**
+ * Render all math expressions in the editor.
+ * This is called after loading a Markdown file to convert $$...$$ and $...$ to rendered math.
+ */
+function renderMathBlocks() {
+    if (typeof katex === 'undefined') {
+        return;
+    }
+
+    // Find all text nodes containing $$...$$ or $...$ patterns
+    const walker = document.createTreeWalker(
+        editor,
+        NodeFilter.SHOW_TEXT,
+        {
+            acceptNode: function(node) {
+                // Skip if already inside a math element
+                let parent = node.parentNode;
+                while (parent && parent !== editor) {
+                    if (parent.classList && (parent.classList.contains('math-display') || parent.classList.contains('math-inline'))) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    parent = parent.parentNode;
+                }
+                // Accept if contains $ pattern
+                if (node.textContent.includes('$')) {
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+                return NodeFilter.FILTER_REJECT;
+            }
+        }
+    );
+
+    const nodesToProcess = [];
+    let node;
+    while (node = walker.nextNode()) {
+        nodesToProcess.push(node);
+    }
+
+    // Process display math first ($$...$$)
+    nodesToProcess.forEach(textNode => {
+        if (!textNode.parentNode || !editor.contains(textNode)) return;
+        
+        const text = textNode.textContent;
+        const displayMathRegex = /\$\$([^$]+?)\$\$/g;
+        let match;
+        const replacements = [];
+
+        while ((match = displayMathRegex.exec(text)) !== null) {
+            replacements.push({
+                start: match.index,
+                end: match.index + match[0].length,
+                math: match[1],
+                type: 'display'
+            });
+        }
+        
+        if (replacements.length > 0) {
+            // Process replacements in reverse order to maintain indices
+            replacements.reverse().forEach(rep => {
+                const beforeText = text.substring(0, rep.start);
+                const afterText = text.substring(rep.end);
+                const parent = textNode.parentNode;
+                
+                const frag = document.createDocumentFragment();
+                if (beforeText) frag.appendChild(document.createTextNode(beforeText));
+                
+                const div = document.createElement('div');
+                div.className = 'math-display';
+                div.setAttribute('data-math', rep.math);
+                div.setAttribute('contenteditable', 'false');
+                try {
+                    div.innerHTML = katex.renderToString(rep.math, {displayMode: true, throwOnError: false});
+                } catch (err) {
+                    console.error('[Math] KaTeX render error:', err);
+                    div.textContent = '$$' + rep.math + '$$';
+                }
+                frag.appendChild(div);
+                
+                const afterNode = document.createTextNode(afterText);
+                frag.appendChild(afterNode);
+                
+                parent.replaceChild(frag, textNode);
+                
+                // Update textNode reference for next iteration
+                if (afterText) {
+                    textNode = afterNode;
+                }
+            });
+        }
+    });
+
+    // Process inline math ($...$) - need to re-collect nodes after display math processing
+    const walker2 = document.createTreeWalker(
+        editor,
+        NodeFilter.SHOW_TEXT,
+        {
+            acceptNode: function(node) {
+                let parent = node.parentNode;
+                while (parent && parent !== editor) {
+                    if (parent.classList && (parent.classList.contains('math-display') || parent.classList.contains('math-inline'))) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+                    parent = parent.parentNode;
+                }
+                if (node.textContent.includes('$')) {
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+                return NodeFilter.FILTER_REJECT;
+            }
+        }
+    );
+
+    const inlineNodesToProcess = [];
+    while (node = walker2.nextNode()) {
+        inlineNodesToProcess.push(node);
+    }
+
+    inlineNodesToProcess.forEach(textNode => {
+        if (!textNode.parentNode || !editor.contains(textNode)) return;
+        
+        const text = textNode.textContent;
+        const inlineMathRegex = /\$([^$]+?)\$/g;
+        let match;
+        const replacements = [];
+        
+        while ((match = inlineMathRegex.exec(text)) !== null) {
+            // Make sure it's not part of $$
+            if (match.index > 0 && text[match.index - 1] === '$') continue;
+            if (match.index + match[0].length < text.length && text[match.index + match[0].length] === '$') continue;
+            
+            replacements.push({
+                start: match.index,
+                end: match.index + match[0].length,
+                math: match[1],
+                type: 'inline'
+            });
+        }
+        
+        if (replacements.length > 0) {
+            replacements.reverse().forEach(rep => {
+                const beforeText = text.substring(0, rep.start);
+                const afterText = text.substring(rep.end);
+                const parent = textNode.parentNode;
+                
+                const frag = document.createDocumentFragment();
+                if (beforeText) frag.appendChild(document.createTextNode(beforeText));
+                
+                const span = document.createElement('span');
+                span.className = 'math-inline';
+                span.setAttribute('data-math', rep.math);
+                span.setAttribute('contenteditable', 'false');
+                try {
+                    span.innerHTML = katex.renderToString(rep.math, {displayMode: false, throwOnError: false});
+                } catch (err) {
+                    console.error('[Math] KaTeX render error:', err);
+                    span.textContent = '$' + rep.math + '$';
+                }
+                frag.appendChild(span);
+                
+                const afterNode = document.createTextNode(afterText);
+                frag.appendChild(afterNode);
+                
+                parent.replaceChild(frag, textNode);
+                
+                if (afterText) {
+                    textNode = afterNode;
+                }
+            });
+        }
+    });
+
+}
+
 // ========== Mermaid Rendering ==========
 async function renderMermaidBlocks() {
     // Mermaidライブラリがまだロードされていない場合は、最大10回まで再試行
@@ -5433,11 +5741,15 @@ async function renderMermaidBlocks() {
         mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
     } catch (e) { /* already initialized */ }
 
+    // 1. コード表示のみモード（通常の言語ブロック）
+    // ※ .mermaid-code-and-diagram 内部のコードブロックは除外する
     const codeBlocks = editor.querySelectorAll('pre code.language-mermaid');
     for (let i = 0; i < codeBlocks.length; i++) {
         const code = codeBlocks[i];
         const pre = code.parentElement;
-        const source = code.textContent.trim(); // 先頭・末尾の空白・空行を除去
+        // .mermaid-code-and-diagram 内のコードブロックはスキップ（セクション3で処理）
+        if (pre.closest('.mermaid-code-and-diagram')) continue;
+        const source = code.textContent.trim();
 
         try {
             const id = 'mermaid-' + Date.now() + '-' + i;
@@ -5446,8 +5758,12 @@ async function renderMermaidBlocks() {
             const container = document.createElement('div');
             container.className = 'mermaid-container';
             container.setAttribute('data-mermaid-source', source);
+            container.setAttribute('data-mermaid-mode', 'code-only');
             container.setAttribute('contenteditable', 'false');
             container.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+            
+            // モード変更ボタンを追加
+            addMermaidModeButton(container, source);
 
             // Double-click to edit
             container.addEventListener('dblclick', () => {
@@ -5459,7 +5775,257 @@ async function renderMermaidBlocks() {
             console.error('Mermaid render error:', err);
         }
     }
+
+    // 2. 図形のみ表示モード
+    const diagramOnlyContainers = editor.querySelectorAll('.mermaid-diagram-only');
+    for (let i = 0; i < diagramOnlyContainers.length; i++) {
+        const container = diagramOnlyContainers[i];
+        if (container.getAttribute('data-mermaid-rendered') === 'true') continue; // 既にレンダリング済み
+
+        const source = container.getAttribute('data-mermaid-source') || '';
+        if (!source) continue;
+
+        try {
+            const id = 'mermaid-diagram-' + Date.now() + '-' + i;
+            const { svg } = await mermaid.render(id, source);
+
+            container.setAttribute('data-mermaid-rendered', 'true');
+            container.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+            container.classList.add('mermaid-container');
+            
+            // モード変更ボタンを追加
+            addMermaidModeButton(container, source);
+
+            // Double-click to edit
+            container.addEventListener('dblclick', () => {
+                editMermaidDiagramOnly(container);
+            });
+        } catch (err) {
+            console.error('Mermaid render error:', err);
+        }
+    }
+
+    // 3. コード＋図形表示モード
+    const codeAndDiagramContainers = editor.querySelectorAll('.mermaid-code-and-diagram');
+    for (let i = 0; i < codeAndDiagramContainers.length; i++) {
+        const container = codeAndDiagramContainers[i];
+        if (container.getAttribute('data-mermaid-rendered') === 'true') continue; // 既にレンダリング済み
+
+        const source = container.getAttribute('data-mermaid-source') || '';
+        if (!source) continue;
+
+        try {
+            const id = 'mermaid-both-' + Date.now() + '-' + i;
+            const { svg } = await mermaid.render(id, source);
+
+            container.setAttribute('data-mermaid-rendered', 'true');
+            const displayDiv = container.querySelector('.mermaid-display');
+            if (displayDiv) {
+                displayDiv.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+                displayDiv.classList.add('mermaid-svg-wrapper');
+            }
+            
+            // モード変更ボタンを追加
+            addMermaidModeButton(container, source);
+
+            // Double-click to edit
+            container.addEventListener('dblclick', () => {
+                editMermaidCodeAndDiagram(container);
+            });
+        } catch (err) {
+            console.error('Mermaid render error:', err);
+        }
+    }
+
+    // 全Mermaidコンテナの前後に空の段落を確保（カーソルを置けるようにする）
+    const allMermaidContainers = editor.querySelectorAll('.mermaid-container, .mermaid-diagram-only, .mermaid-code-and-diagram');
+    allMermaidContainers.forEach(container => {
+        if (!container.previousElementSibling) {
+            const pBefore = document.createElement('p');
+            pBefore.innerHTML = '<br>';
+            container.parentNode.insertBefore(pBefore, container);
+        }
+        if (!container.nextElementSibling) {
+            const pAfter = document.createElement('p');
+            pAfter.innerHTML = '<br>';
+            container.parentNode.insertBefore(pAfter, container.nextSibling);
+        }
+    });
 }
+
+// Mermaidコンテナにモード変更ボタンを追加
+function addMermaidModeButton(container, source) {
+    // 既に追加済みの場合はスキップ
+    if (container.querySelector('.mermaid-mode-button')) return;
+    
+    const btn = document.createElement('button');
+    btn.className = 'mermaid-mode-button';
+    btn.innerHTML = '📋';
+    btn.title = '表示モードを変更';
+    btn.style.cssText = `
+        position: absolute;
+        top: 8px;
+        right: 50px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.2s;
+        z-index: 100;
+    `;
+    
+    container.style.position = 'relative';
+    container.appendChild(btn);
+    
+    // ホバー時に表示
+    container.addEventListener('mouseenter', () => {
+        btn.style.opacity = '1';
+    });
+    container.addEventListener('mouseleave', () => {
+        btn.style.opacity = '0';
+    });
+    
+    // クリックでメニュー表示
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showMermaidModeMenu(container, source);
+    });
+}
+
+// Mermaidモード変更メニューを表示
+function showMermaidModeMenu(container, source) {
+    // 既存のメニューを削除
+    const existingMenu = document.querySelector('.mermaid-mode-menu');
+    if (existingMenu) existingMenu.remove();
+    
+    const menu = document.createElement('div');
+    menu.className = 'mermaid-mode-menu';
+    menu.style.cssText = `
+        position: absolute;
+        top: 32px;
+        right: 50px;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        z-index: 1000;
+        min-width: 180px;
+        overflow: hidden;
+    `;
+    
+    const modes = [
+        { value: 'diagram-only', label: '図形のみ表示' },
+        { value: 'code-and-diagram', label: 'コード＋図形表示' }
+    ];
+    
+    modes.forEach(mode => {
+        const item = document.createElement('div');
+        item.style.cssText = `
+            padding: 8px 12px;
+            cursor: pointer;
+            user-select: none;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s;
+        `;
+        item.textContent = mode.label;
+        
+        item.addEventListener('mouseenter', () => {
+            item.style.backgroundColor = '#f0f0f0';
+        });
+        item.addEventListener('mouseleave', () => {
+            item.style.backgroundColor = 'transparent';
+        });
+        
+        item.addEventListener('click', () => {
+            changeMermaidMode(container, source, mode.value);
+            menu.remove();
+        });
+        
+        menu.appendChild(item);
+    });
+    
+    container.appendChild(menu);
+    
+    // メニュー外クリックで閉じる
+    setTimeout(() => {
+        document.addEventListener('click', function closeMenu(e) {
+            if (!menu.contains(e.target) && !container.contains(e.target)) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        });
+    }, 0);
+}
+
+// Mermaidのモードを変更
+async function changeMermaidMode(container, source, newMode) {
+    const oldClass = container.className;
+    const isCodeOnly = oldClass.includes('mermaid-container') && !oldClass.includes('diagram-only') && !oldClass.includes('code-and-diagram');
+    const isDiagramOnly = oldClass.includes('mermaid-diagram-only');
+    const isCodeAndDiagram = oldClass.includes('mermaid-code-and-diagram');
+    
+    // 新しいコンテナを作成
+    let newContainer;
+    
+    if (newMode === 'diagram-only') {
+        // 図形のみ表示に変換
+        newContainer = document.createElement('div');
+        newContainer.className = 'mermaid-diagram-only';
+        newContainer.setAttribute('data-mermaid-source', source);
+        newContainer.setAttribute('contenteditable', 'false');
+        
+        try {
+            const id = 'mermaid-mode-change-' + Date.now();
+            const { svg } = await mermaid.render(id, source);
+            newContainer.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+        } catch (err) {
+            console.error('Mermaid render error:', err);
+            return;
+        }
+    } else if (newMode === 'code-and-diagram') {
+        // コード＋図形表示に変換
+        newContainer = document.createElement('div');
+        newContainer.className = 'mermaid-code-and-diagram';
+        newContainer.setAttribute('data-mermaid-source', source);
+        newContainer.setAttribute('contenteditable', 'false');
+        newContainer.innerHTML = '<div class="mermaid-display"></div><pre><code class="language-mermaid"></code></pre>';
+        newContainer.querySelector('code').textContent = source;
+        
+        try {
+            const id = 'mermaid-mode-change-' + Date.now();
+            const { svg } = await mermaid.render(id, source);
+            const displayDiv = newContainer.querySelector('.mermaid-display');
+            displayDiv.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+            displayDiv.classList.add('mermaid-svg-wrapper');
+        } catch (err) {
+            console.error('Mermaid render error:', err);
+            return;
+        }
+    }
+    
+    // モード変更ボタンを追加
+    addMermaidModeButton(newContainer, source);
+    
+    // ダブルクリック編集イベントを追加
+    if (newMode === 'diagram-only') {
+        newContainer.addEventListener('dblclick', () => editMermaidDiagramOnly(newContainer));
+    } else if (newMode === 'code-and-diagram') {
+        newContainer.addEventListener('dblclick', () => editMermaidCodeAndDiagram(newContainer));
+    }
+    
+    // 古いコンテナを新しいコンテナに置き換える
+    container.parentNode.replaceChild(newContainer, container);
+    
+    markModified();
+}
+
 
 function editMermaidBlock(container) {
     const source = container.getAttribute('data-mermaid-source') || '';
@@ -5509,6 +6075,130 @@ function editMermaidBlock(container) {
     });
 
     // Enter in textarea should be allowed (new line), Escape closes
+    textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            overlay.remove();
+            editor.focus();
+        }
+    });
+}
+
+// 図形のみ表示モード用の編集関数
+async function editMermaidDiagramOnly(container) {
+    const source = container.getAttribute('data-mermaid-source') || '';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+
+    overlay.innerHTML =
+        '<div class="modal-dialog" style="min-width:500px">' +
+        '<div class="modal-title">Mermaid図を編集（図形のみ表示）</div>' +
+        '<div class="modal-field">' +
+        '<label>Mermaid記法</label>' +
+        '<textarea id="mermaidEditArea" style="width:100%;height:200px;font-family:monospace;padding:8px;border:1px solid #ccc;border-radius:4px;resize:vertical;font-size:13px;line-height:1.5;box-sizing:border-box">' +
+        escapeHtml(source) + '</textarea>' +
+        '</div>' +
+        '<div class="modal-buttons">' +
+        '<button class="modal-btn modal-btn-cancel" id="mermaidCancel">キャンセル</button>' +
+        '<button class="modal-btn modal-btn-ok" id="mermaidOk">OK</button>' +
+        '</div></div>';
+
+    document.body.appendChild(overlay);
+
+    const textarea = overlay.querySelector('#mermaidEditArea');
+    setTimeout(() => textarea.focus(), 50);
+
+    overlay.querySelector('#mermaidOk').addEventListener('click', async () => {
+        const newSource = textarea.value.trim();
+        overlay.remove();
+        if (!newSource) return;
+
+        try {
+            const id = 'mermaid-diagram-edit-' + Date.now();
+            const { svg } = await mermaid.render(id, newSource);
+            container.setAttribute('data-mermaid-source', newSource);
+            container.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+            container.addEventListener('dblclick', () => editMermaidDiagramOnly(container));
+            markModified();
+        } catch (err) {
+            console.error('Mermaid render error:', err);
+        }
+    });
+
+    overlay.querySelector('#mermaidCancel').addEventListener('click', () => {
+        overlay.remove();
+        editor.focus();
+    });
+
+    textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            overlay.remove();
+            editor.focus();
+        }
+    });
+}
+
+// コード＋図形表示モード用の編集関数
+async function editMermaidCodeAndDiagram(container) {
+    const source = container.getAttribute('data-mermaid-source') || '';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'flex';
+
+    overlay.innerHTML =
+        '<div class="modal-dialog" style="min-width:500px">' +
+        '<div class="modal-title">Mermaid図を編集（コード＋図形表示）</div>' +
+        '<div class="modal-field">' +
+        '<label>Mermaid記法</label>' +
+        '<textarea id="mermaidEditArea" style="width:100%;height:200px;font-family:monospace;padding:8px;border:1px solid #ccc;border-radius:4px;resize:vertical;font-size:13px;line-height:1.5;box-sizing:border-box">' +
+        escapeHtml(source) + '</textarea>' +
+        '</div>' +
+        '<div class="modal-buttons">' +
+        '<button class="modal-btn modal-btn-cancel" id="mermaidCancel">キャンセル</button>' +
+        '<button class="modal-btn modal-btn-ok" id="mermaidOk">OK</button>' +
+        '</div></div>';
+
+    document.body.appendChild(overlay);
+
+    const textarea = overlay.querySelector('#mermaidEditArea');
+    setTimeout(() => textarea.focus(), 50);
+
+    overlay.querySelector('#mermaidOk').addEventListener('click', async () => {
+        const newSource = textarea.value.trim();
+        overlay.remove();
+        if (!newSource) return;
+
+        try {
+            const id = 'mermaid-both-edit-' + Date.now();
+            const { svg } = await mermaid.render(id, newSource);
+            container.setAttribute('data-mermaid-source', newSource);
+            
+            const displayDiv = container.querySelector('.mermaid-display');
+            if (displayDiv) {
+                displayDiv.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+            }
+            
+            const codeBlock = container.querySelector('code.language-mermaid');
+            if (codeBlock) {
+                codeBlock.textContent = newSource;
+            }
+            
+            container.addEventListener('dblclick', () => editMermaidCodeAndDiagram(container));
+            markModified();
+        } catch (err) {
+            console.error('Mermaid render error:', err);
+        }
+    });
+
+    overlay.querySelector('#mermaidCancel').addEventListener('click', () => {
+        overlay.remove();
+        editor.focus();
+    });
+
     textarea.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             e.preventDefault();

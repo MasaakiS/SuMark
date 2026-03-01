@@ -17,6 +17,14 @@ wdio-*.log
 allure-results/
 allure-report/
 
+# Playwright report and results
+test/playwright-report/
+test/playwright-results/
+
 # Test screenshots at root
 test-*.png
 test-*.jpg
+
+# Serena cache and auto-generated files
+.serena/memories/
+.serena/project.yml

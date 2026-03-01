@@ -549,9 +549,17 @@ body {
     position: relative;
     padding-left: 1.6em;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    /* テキストを少し上に上げる */
     gap: 0.5em;
+}
+
+/* ネストされたリスト（Tabインデント後）はフル幅で改行表示 */
+.markdown-body .task-list-item > ul,
+.markdown-body .task-list-item > ol {
+    flex-basis: 100%;
+    width: 100%;
+    margin-left: 0;
 }
 
 .markdown-body .task-list-item input[type="checkbox"] {
@@ -569,8 +577,17 @@ body {
     position: relative;
     padding-left: 1.6em;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.5em;
+}
+
+/* ネストされたリスト（Tabインデント後）はフル幅で改行表示 */
+.markdown-body li:has(> input[type="checkbox"]) > ul,
+.markdown-body li:has(> input[type="checkbox"]) > ol {
+    flex-basis: 100%;
+    width: 100%;
+    margin-left: 0;
 }
 
 .markdown-body li:has(> input[type="checkbox"]) > input[type="checkbox"] {
@@ -886,7 +903,163 @@ body {
     opacity: 1;
 }
 
-/* ========== TOC Styles ========== */
+/* ========== Mermaid Diagram Only Mode ========== */
+.mermaid-diagram-only {
+    margin: 16px 0;
+    padding: 16px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    text-align: center;
+    position: relative;
+    cursor: default;
+}
+
+.mermaid-diagram-only:hover {
+    border-color: #4a9eff;
+}
+
+.mermaid-diagram-only svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.mermaid-diagram-only::after {
+    content: 'ダブルクリックで編集';
+    position: absolute;
+    bottom: 4px;
+    right: 8px;
+    font-size: 10px;
+    color: #bbb;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.mermaid-diagram-only:hover::after {
+    opacity: 1;
+}
+
+/* ========== Mermaid Code and Diagram Mode ========== */
+.mermaid-code-and-diagram {
+    margin: 16px 0;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+    background: #f8f9fa;
+}
+
+.mermaid-code-and-diagram:hover {
+    border-color: #4a9eff;
+}
+
+.mermaid-code-and-diagram::after {
+    content: 'ダブルクリックで編集';
+    position: absolute;
+    bottom: 4px;
+    right: 8px;
+    font-size: 10px;
+    color: #bbb;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+}
+
+.mermaid-code-and-diagram:hover::after {
+    opacity: 1;
+}
+
+/* 図形表示部分 */
+.mermaid-display {
+    padding: 16px;
+    text-align: center;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+    position: relative;
+}
+
+.mermaid-svg-wrapper {
+    position: relative;
+}
+
+.mermaid-svg-wrapper svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* コード表示部分 */
+.mermaid-code-and-diagram pre {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: #f5f5f5;
+    padding: 12px 16px;
+}
+
+.mermaid-code-and-diagram code {
+    color: #333;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* ========== Mermaid Mode Button ========== */
+.mermaid-container,
+.mermaid-diagram-only,
+.mermaid-code-and-diagram {
+    position: relative;
+}
+
+.mermaid-mode-button {
+    position: absolute;
+    top: 8px;
+    right: 50px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 100;
+}
+
+.mermaid-mode-menu {
+    position: absolute;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 1000;
+    min-width: 180px;
+    overflow: hidden;
+}
+
+.mermaid-mode-menu > div {
+    padding: 8px 12px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 13px;
+    transition: background-color 0.2s;
+}
+
+.mermaid-mode-menu > div:last-child {
+    border-bottom: none;
+}
+
+.mermaid-mode-menu > div:hover {
+    background-color: #f0f0f0;
+}
+
+/* TOC Styles */
+
 .toc-container {
     margin: 16px 0;
     padding: 16px 20px;

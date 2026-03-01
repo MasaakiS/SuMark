@@ -20,10 +20,10 @@ module.exports = defineConfig({
     expect: {
         timeout: 5000,
     },
-    fullyParallel: false,
+    fullyParallel: true,
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 2 : 0,
-    workers: 1,
+    workers: 8,
     reporter: [
         ['list'],
         ['html', { open: 'never', outputFolder: 'test/playwright-report' }],

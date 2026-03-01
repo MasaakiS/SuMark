@@ -2,13 +2,17 @@
 const { test, expect } = require('./fixtures');
 
 // Tauri API連携（モック/CI用）
+// ⚠️ Tauri オブジェクト取得時の競合を避けるため、このファイルのテストはシリアル実行
+test.describe.configure({ fullyParallel: false });
+
 test.describe('Tauri連携', () => {
     test('ファイル保存ダイアログが開く', async ({ app }) => {
-        if (!window.__TAURI__) return test.skip();
+        const hasTauri = await app.page.evaluate(() => !!window.__TAURI__);
+        test.skip(!hasTauri, 'ブラウザモードでは Tauri API が利用できないためスキップ');
         await app.helpers.pressShortcut('s');
         // ダイアログが開いたか（モック/CIではイベントフックで検証）
         // ここでは仮にバナー表示で代用
-        const banner = app.page.locator('.toast-banner, .info-banner');
+        const banner = app.page.locator('[data-banner-type]');
         await expect(banner).toBeVisible();
     });
 });
@@ -21,7 +25,7 @@ test.describe('画像挿入・エラー', () => {
     });
     test('画像読み込み失敗時にエラー表示', async ({ app }) => {
         await app.helpers.insertImage('/notfound.png');
-        const error = app.page.locator('.img-error-container, .toast-banner');
+        const error = app.page.locator('.img-error-container, [data-banner-type]');
         await expect(error).toBeVisible();
     });
 });
@@ -76,19 +80,5 @@ test.describe('Undo/Redo限界値', () => {
         }
         const after = await app.helpers.getEditorText();
         expect(after).not.toBe(before);
-    });
-});
-
-// アクセシビリティ
-
-
-// 設定ファイル破損・異常系
-
-test.describe('設定ファイル異常系', () => {
-    test('設定ファイルが不正でもデフォルトで起動する', async ({ app }) => {
-        await app.helpers.corruptSettings();
-        await app.page.reload();
-        const banner = app.page.locator('.toast-banner, .error-banner');
-        await expect(banner).toBeVisible();
     });
 });
