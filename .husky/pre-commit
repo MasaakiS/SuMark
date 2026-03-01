@@ -1,0 +1,25 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# CSS-JS 検証スクリプト実行
+echo "🔍 CSS-JS 整合性チェック中..."
+node scripts/validate-css-js-sync.js
+
+# エラーで終了した場合
+if [ $? -ne 0 ]; then
+  echo "❌ コミット前の検証に失敗しました"
+  echo "詳細は上記のメッセージを確認してください"
+  exit 1
+fi
+
+# E2E テスト実行（オプション）
+# プリコミットフックはコミット速度が関連するため、
+# 必要に応じて以下をコメントインしてください：
+# echo "🧪 E2E テスト実行中..."
+# npm run test:e2e
+# if [ $? -ne 0 ]; then
+#   echo "❌ E2E テスト失敗"
+#   exit 1
+# fi
+
+echo "✅ 全チェック合格"

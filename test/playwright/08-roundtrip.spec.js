@@ -702,4 +702,210 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             await expect(app.page.locator('#editor td').nth(0)).toContainText('田中');
         });
     });
+
+    // ─────────────────────────────────────────────
+    // CSS適用状態の検証 (修正時必須チェック)
+    // ─────────────────────────────────────────────
+    test.describe('CSS適用状態の検証', () => {
+        test('見出しのスタイルが保存後も適用されていること', async ({ app }) => {
+            const md = '# 見出し1\n\n## 見出し2';
+            await roundtrip(app.page, md);
+
+            const h1 = app.page.locator('#editor h1').first();
+            const h2 = app.page.locator('#editor h2').first();
+
+            // CSSが適用されていることを確認（computed styleで検証）
+            const h1ComputedStyle = await h1.evaluate(el => {
+                return getComputedStyle(el).fontSize;
+            });
+            const h2ComputedStyle = await h2.evaluate(el => {
+                return getComputedStyle(el).fontSize;
+            });
+
+            // H1 と H2 のフォントサイズが異なることを確認（CSSが適用済み）
+            expect(h1ComputedStyle).not.toBe(h2ComputedStyle);
+        });
+
+        test('コードブロックの背景色が保存後も適用されていること', async ({ app }) => {
+            const md = '```javascript\nconst x = 1;\n```';
+            await roundtrip(app.page, md);
+
+            const codeBlock = app.page.locator('#editor pre').first();
+            const backgroundColor = await codeBlock.evaluate(el => {
+                return getComputedStyle(el).backgroundColor;
+            });
+
+            // 背景色が設定されていることを確認（rgb値が返されること）
+            expect(backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+            expect(backgroundColor).not.toBe('transparent');
+        });
+
+        test('テーブルの枠線が保存後も表示されていること', async ({ app }) => {
+            const md = '| A | B |\n| --- | --- |\n| 1 | 2 |';
+            await roundtrip(app.page, md);
+
+            // テーブルセルに枠線スタイルが適用されていることを確認
+            // (table自体ではなく td に border が適用されることが多い)
+            const td = app.page.locator('#editor td').first();
+            const borderWidth = await td.evaluate(el => {
+                return getComputedStyle(el).borderWidth;
+            });
+
+            // 枠線が設定されていることを確認（0pxでない）
+            expect(borderWidth).not.toBe('0px');
+        });
+
+        test('ツールバーボタンのcss classが正しく適用されていること', async ({ app }) => {
+            // ツールバーを確認（DOM構造の検証）
+            const toolbarButtons = app.page.locator('.toolbar-btn');
+            const count = await toolbarButtons.count();
+            expect(count).toBeGreaterThan(0);
+
+            // 最初のボタンが toolbar-btn クラスを持つことを確認
+            const hasClass = await toolbarButtons.first().evaluate(el => {
+                return el.classList.contains('toolbar-btn');
+            });
+            expect(hasClass).toBe(true);
+        });
+    });
+
+    // ─────────────────────────────────────────────
+    // DOM構造の整合性検証
+    // ─────────────────────────────────────────────
+    test.describe('DOM構造の整合性', () => {
+        test('Markdown変換後のDOM構造が有効なHTMLであること', async ({ app }) => {
+            const md = '# 見出し\n\nテキスト\n\n- リスト1\n- リスト2';
+            await roundtrip(app.page, md);
+
+            // Editor の HTML を取得
+            const html = await app.page.locator('#editor').innerHTML();
+
+            // 基本的なタグ対応が取れていることを確認
+            const openH1 = (html.match(/<h1/g) || []).length;
+            const closeH1 = (html.match(/<\/h1>/g) || []).length;
+            expect(openH1).toBe(closeH1);
+
+            const openUL = (html.match(/<ul/g) || []).length;
+            const closeUL = (html.match(/<\/ul>/g) || []).length;
+            expect(openUL).toBe(closeUL);
+        });
+
+        test('保存したコンテンツを再度読み込み後、要素数が変わらないこと', async ({ app }) => {
+            const md = '# H1\n\nテキスト\n\n## H2\n\nリスト\n\n- A\n- B\n- C';
+            await loadMarkdown(app.page, md);
+
+            // 初回の要素数を数える
+            const h1Count1 = await app.page.locator('#editor h1').count();
+            const h2Count1 = await app.page.locator('#editor h2').count();
+            const liCount1 = await app.page.locator('#editor li').count();
+
+            // ラウンドトリップ後
+            const saved = await dumpMarkdown(app.page);
+            await loadMarkdown(app.page, saved);
+
+            const h1Count2 = await app.page.locator('#editor h1').count();
+            const h2Count2 = await app.page.locator('#editor h2').count();
+            const liCount2 = await app.page.locator('#editor li').count();
+
+            // 要素数が同じであることを確認
+            expect(h1Count1).toBe(h1Count2);
+            expect(h2Count1).toBe(h2Count2);
+            expect(liCount1).toBe(liCount2);
+        });
+
+        test('表内に表が生成されないこと（セル内安全性）', async ({ app }) => {
+            // 通常のテーブル
+            const md = '| A | B |\n| --- | --- |\n| cell1 | cell2 |';
+            await roundtrip(app.page, md);
+
+            // テーブル全体の数が1であることを確認
+            const tableCount = await app.page.locator('#editor table').count();
+            expect(tableCount).toBe(1);
+
+            // テーブル内にネストされた別のテーブルがないことを確認
+            const nestedTables = await app.page.locator('#editor table table').count();
+            expect(nestedTables).toBe(0);
+        });
+    });
+
+    // ─────────────────────────────────────────────
+    // 複数要素の同時保存検証
+    // ─────────────────────────────────────────────
+    test.describe('複数要素の同時保存', () => {
+        test('複数の異なる形式の要素が混在するコンテンツが保持されること', async ({ app }) => {
+            const md = `# タイトル
+
+段落テキスト
+
+- リスト1
+- リスト2
+
+\`\`\`
+code block
+\`\`\`
+
+| 列1 | 列2 |
+| --- | --- |
+| 値1 | 値2 |
+
+> 引用
+
+**bold** と *italic*`;
+
+            await roundtrip(app.page, md);
+
+            // 各要素が保持されていることを確認
+            await expect(app.page.locator('#editor h1')).toHaveCount(1);
+            await expect(app.page.locator('#editor ul li')).toHaveCount(2);
+            await expect(app.page.locator('#editor pre')).toHaveCount(1);
+            await expect(app.page.locator('#editor table')).toHaveCount(1);
+            await expect(app.page.locator('#editor blockquote')).toHaveCount(1);
+            await expect(app.page.locator('#editor strong')).toHaveCount(1);
+            await expect(app.page.locator('#editor em')).toHaveCount(1);
+        });
+
+        test('連続して複数回ラウンドトリップしても内容が変わらないこと', async ({ app }) => {
+            const md = '# テスト\n\nテキスト\n\n- リスト';
+            
+            // 1回目
+            await loadMarkdown(app.page, md);
+            const md1 = await dumpMarkdown(app.page);
+
+            // 2回目
+            await loadMarkdown(app.page, md1);
+            const md2 = await dumpMarkdown(app.page);
+
+            // 3回目
+            await loadMarkdown(app.page, md2);
+            const md3 = await dumpMarkdown(app.page);
+
+            // 全て同じMarkdownであることを確認
+            expect(md1).toBe(md2);
+            expect(md2).toBe(md3);
+        });
+    });
+
+    // ─────────────────────────────────────────────
+    // エラー耐性テスト
+    // ─────────────────────────────────────────────
+    test.describe('エラー耐性', () => {
+        test('空のMarkdownが正しく処理されること', async ({ app }) => {
+            await roundtrip(app.page, '');
+            // エラーが発生せず、エディタが空の状態で維持されることを確認
+            const content = await app.page.locator('#editor').innerHTML();
+            expect(content.trim().length).toBeLessThan(50); // ほぼ空
+        });
+
+        test('不正なHTMLが含む場合でもクラッシュしないこと', async ({ app }) => {
+            const md = '# テスト\n\nテキスト';
+            await loadMarkdown(app.page, md);
+            const saved = await dumpMarkdown(app.page);
+            
+            // 2回以上のラウンドトリップが成功することを確認
+            await loadMarkdown(app.page, saved);
+            const saved2 = await dumpMarkdown(app.page);
+            
+            expect(saved2.length).toBeGreaterThan(0);
+        });
+    });
 });

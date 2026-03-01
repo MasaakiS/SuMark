@@ -14,10 +14,12 @@
     "test": "npm run test:build && npm run test:smoke",
     "test:build": "tauri build",
     "test:smoke": "node test/smoke-test.js",
+    "test:lint": "node scripts/validate-css-js-sync.js",
     "test:e2e": "npx playwright test",
     "test:e2e:headed": "npx playwright test --headed",
     "test:e2e:ui": "npx playwright test --ui",
-    "test:e2e:report": "npx playwright show-report test/playwright-report"
+    "test:e2e:report": "npx playwright show-report test/playwright-report",
+    "prepare": "husky install"
   },
   "keywords": [
     "markdown",
@@ -32,6 +34,7 @@
     "@tauri-apps/api": "^1.6.0",
     "@tauri-apps/cli": "^1.6.3",
     "@testing-library/dom": "^10.4.1",
+    "husky": "^9.0.0",
     "jest": "^30.2.0",
     "jsdom": "^28.1.0"
   },
