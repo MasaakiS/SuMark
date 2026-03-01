@@ -2,6 +2,14 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v0.5.5] - 2026-03-01
+### 改良
+- npm依存関係を整理・統一
+  - WDIO/WebdriverIO関連パッケージをすべてv9系（^9.24.0）で統一
+  - peer dependencyの競合を解消
+- package-lock.jsonの同期を修正
+  - turndown, turndown-plugin-gfm, @mixmark-io/dominoを明示的に依存に追加
+  - npm ciのエラーを解消
 
 ## [v0.5.4] - 2026-03-01
 ### 修正
