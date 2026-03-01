@@ -1,5 +1,5 @@
 {
-{  "name": "sumark",
+  "name": "sumark",
   "version": "0.5.5",
   "description": "SuMark - A powerful WYSIWYG Markdown editor",
   "main": "src/index.html",
