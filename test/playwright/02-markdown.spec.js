@@ -180,9 +180,9 @@ test.describe('Markdown 自動変換テスト', () => {
             await app.helpers.typeInEditor('$$\\int_0^1 x^2 dx$$');
             await app.helpers.wait(800);
 
-            const hasMathInline = await app.helpers.elementExists('.math-inline');
-            expect(hasMathInline).toBe(true);
-            const mathAttr = await app.page.locator('#editor .math-inline').first().getAttribute('data-math');
+            const hasMathDisplay = await app.helpers.elementExists('.math-display');
+            expect(hasMathDisplay).toBe(true);
+            const mathAttr = await app.page.locator('#editor .math-display').first().getAttribute('data-math');
             const normalized = (mathAttr || '').replace(/\s+/g, '');
             expect(normalized).toContain('\\int_0^1x^2dx');
         });

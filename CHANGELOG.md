@@ -2,6 +2,15 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v0.5.6] - 2026-03-02
+### 修正
+- E2Eテストの表示数式（`$$...$$`）検証を実装仕様に合わせて修正
+  - `test/playwright/02-markdown.spec.js` の対象セレクタを `.math-inline` から `.math-display` に変更
+
+### テスト
+- `npx playwright test -g "ディスプレイ数式"` を実行し、対象ケースの通過を確認
+- `npx playwright test test/playwright/02-markdown.spec.js` を実行し、19件全通過を確認
+
 ## [v0.5.5] - 2026-03-01
 ### 改良
 - npm依存関係を整理・統一
