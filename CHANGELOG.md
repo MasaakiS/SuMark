@@ -2,6 +2,16 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v0.6.0] - 2026-03-02
+### 改良
+- main.js のモジュール分割 Phase 1 を完了（6931 → 6297 行、-634 行）
+  - `src/utils.js`: 共有ユーティリティ（escapeHtml）
+  - `src/nodeUtils.js`: DOM ノード操作（saveSelection, restoreSelection 等 6 関数）
+  - `src/pasteUtils.js`: ペースト処理（tsvToHtmlTable, parseHtmlTable 等 5 関数）
+  - `src/codeHighlight.js`: コードブロックハイライト（highlightCodeBlock 等 7 関数 + codeHighlightTimer）
+  - `src/mathRender.js`: KaTeX 数式レンダリング（renderMathBlocks）
+- 全 147 E2E テスト通過を各ステップで確認済み
+
 ## [v0.5.6] - 2026-03-02
 ### 修正
 - E2Eテストの表示数式（`$$...$$`）検証を実装仕様に合わせて修正
