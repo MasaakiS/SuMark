@@ -279,7 +279,7 @@ function showError(message) { showBanner(message, 'error'); }
 
 // ========== State ==========
 let isConverting = false; // Guard for auto-conversion recursion
-let codeHighlightTimer = null; // Debounce timer for code block highlighting
+// codeHighlightTimer → codeHighlight.js に移動済み
 let isComposing = false; // IME composition state
 
 // Tab management
@@ -977,140 +977,7 @@ function setMarkdown(md) {
     }
 }
 
-// ========== Code Block Live Highlighting ==========
-function getCaretCharacterOffsetWithin(element) {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return 0;
-    const range = sel.getRangeAt(0);
-    const preCaretRange = range.cloneRange();
-    preCaretRange.selectNodeContents(element);
-    preCaretRange.setEnd(range.startContainer, range.startOffset);
-    return preCaretRange.toString().length;
-}
-
-function setCaretCharacterOffset(element, offset) {
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
-    let currentOffset = 0;
-    let node;
-    while (node = walker.nextNode()) {
-        const nodeLen = node.textContent.length;
-        if (currentOffset + nodeLen >= offset) {
-            const sel = window.getSelection();
-            const range = document.createRange();
-            range.setStart(node, offset - currentOffset);
-            range.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(range);
-            return;
-        }
-        currentOffset += nodeLen;
-    }
-    // If offset is beyond the content, place at end
-    const sel = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    range.collapse(false);
-    sel.removeAllRanges();
-    sel.addRange(range);
-}
-
-function highlightCodeBlock(codeEl) {
-    if (typeof hljs === 'undefined') return;
-    if (!codeEl || codeEl.tagName !== 'CODE') return;
-    // Don't highlight mermaid blocks
-    if (codeEl.classList.contains('language-mermaid')) return;
-
-    // Check line count - skip highlighting for large code blocks (500+ lines)
-    const plainText = codeEl.textContent;
-    const lineCount = plainText.split('\n').length;
-    
-    if (lineCount > 500) {
-        console.log(`[ハイライトスキップ] ${lineCount}行のコードブロックが大きすぎるため、シンタックスハイライトをスキップしました。`);
-        
-        // Update line numbers without highlighting
-        const pre = codeEl.closest('pre');
-        if (pre) {
-            updateLineNumbers(pre);
-            // Add a visual indicator that highlighting is skipped
-            if (!pre.querySelector('.highlight-skipped-notice')) {
-                const notice = document.createElement('div');
-                notice.className = 'highlight-skipped-notice';
-                notice.textContent = `⚠️ ${lineCount}行 - シンタックスハイライト無効`;
-                notice.style.cssText = 'position:absolute;top:5px;right:10px;background:rgba(255,165,0,0.2);color:#ff8c00;padding:2px 8px;border-radius:3px;font-size:11px;pointer-events:none;z-index:10;';
-                pre.style.position = 'relative';
-                pre.appendChild(notice);
-            }
-        }
-        return;
-    }
-
-    // Save cursor position
-    const sel = window.getSelection();
-    const isInsideCode = codeEl.contains(sel.anchorNode);
-    let caretOffset = 0;
-    if (isInsideCode) {
-        caretOffset = getCaretCharacterOffsetWithin(codeEl);
-    }
-
-    // Remove previous hljs state
-    delete codeEl.dataset.highlighted;
-    codeEl.removeAttribute('data-highlighted');
-    codeEl.textContent = plainText;
-    hljs.highlightElement(codeEl);
-
-    // Restore cursor
-    if (isInsideCode) {
-        setCaretCharacterOffset(codeEl, caretOffset);
-    }
-
-    // Update line numbers
-    const pre = codeEl.closest('pre');
-    if (pre) {
-        updateLineNumbers(pre);
-        // Remove skipped notice if it exists
-        const notice = pre.querySelector('.highlight-skipped-notice');
-        if (notice) notice.remove();
-    }
-}
-
-// Highlight all code blocks in the editor (used after undo/redo)
-function highlightAllCodeBlocks() {
-    if (typeof hljs === 'undefined') return;
-    const codeBlocks = editor.querySelectorAll('pre code:not(.language-mermaid)');
-    codeBlocks.forEach(block => {
-        const lineCount = block.textContent.split('\n').length;
-        
-        if (lineCount > 500) {
-            console.log(`[ハイライトスキップ] ${lineCount}行のコードブロックをスキップしました。`);
-            
-            // Update line numbers and add notice
-            const pre = block.closest('pre');
-            if (pre) {
-                updateLineNumbers(pre);
-                if (!pre.querySelector('.highlight-skipped-notice')) {
-                    const notice = document.createElement('div');
-                    notice.className = 'highlight-skipped-notice';
-                    notice.textContent = `⚠️ ${lineCount}行 - シンタックスハイライト無効`;
-                    notice.style.cssText = 'position:absolute;top:5px;right:10px;background:rgba(255,165,0,0.2);color:#ff8c00;padding:2px 8px;border-radius:3px;font-size:11px;pointer-events:none;z-index:10;';
-                    pre.style.position = 'relative';
-                    pre.appendChild(notice);
-                }
-            }
-            return;
-        }
-        
-        delete block.dataset.highlighted;
-        block.removeAttribute('data-highlighted');
-        hljs.highlightElement(block);
-        
-        // Remove skipped notice if it exists
-        const pre = block.closest('pre');
-        if (pre) {
-            const notice = pre.querySelector('.highlight-skipped-notice');
-            if (notice) notice.remove();
-        }
-    });
-}
+// getCaretCharacterOffsetWithin(), setCaretCharacterOffset(), highlightCodeBlock(), highlightAllCodeBlocks() は src/codeHighlight.js に移動済み
 
 // Ensure editor starts with an editable element
 function ensureEditableStart() {
@@ -1130,75 +997,7 @@ function ensureEditableStart() {
     }
 }
 
-// ========== Line Numbers ==========
-function updateLineNumbers(pre) {
-    if (!pre || pre.tagName !== 'PRE') return;
-    // Skip Mermaid containers
-    if (pre.closest('.mermaid-container')) return;
-
-    const code = pre.querySelector('code');
-    if (!code) return;
-
-    const text = code.textContent;
-    const lines = text.split('\n');
-    // Remove trailing empty line (common with code blocks ending in \n)
-    if (lines.length > 1 && lines[lines.length - 1] === '') {
-        lines.pop();
-    }
-    const lineCount = Math.max(lines.length, 1);
-
-    let gutter = pre.querySelector('.line-numbers-gutter');
-    if (!gutter) {
-        gutter = document.createElement('div');
-        gutter.className = 'line-numbers-gutter';
-        gutter.setAttribute('contenteditable', 'false');
-        gutter.setAttribute('aria-hidden', 'true');
-        pre.insertBefore(gutter, pre.firstChild);
-    }
-
-    // Only update if line count changed
-    const currentCount = gutter.children.length;
-    if (currentCount !== lineCount) {
-        let html = '';
-        for (let i = 1; i <= lineCount; i++) {
-            html += '<span>' + i + '</span>';
-        }
-        gutter.innerHTML = html;
-    }
-}
-
-function updateAllLineNumbers() {
-    editor.querySelectorAll('pre').forEach(pre => {
-        if (!pre.closest('.mermaid-container')) {
-            updateLineNumbers(pre);
-        }
-    });
-}
-
-function debouncedHighlightCodeAtCursor() {
-    if (codeHighlightTimer) clearTimeout(codeHighlightTimer);
-    codeHighlightTimer = setTimeout(() => {
-        const sel = window.getSelection();
-        if (!sel.rangeCount) return;
-        let node = sel.anchorNode;
-        // Walk up to find code element inside pre
-        while (node && node !== editor) {
-            if (node.tagName === 'CODE' && node.parentElement && node.parentElement.tagName === 'PRE') {
-                const lineCount = node.textContent.split('\n').length;
-                // Adjust delay based on code size
-                const delay = lineCount > 100 ? 500 : 0;
-                
-                if (delay > 0) {
-                    setTimeout(() => highlightCodeBlock(node), delay);
-                } else {
-                    highlightCodeBlock(node);
-                }
-                return;
-            }
-            node = node.parentElement;
-        }
-    }, 300);
-}
+// updateLineNumbers(), updateAllLineNumbers(), debouncedHighlightCodeAtCursor() は src/codeHighlight.js に移動済み
 
 // isOnEmptyTrailingLine(), removeTrailingEmptyLines() は src/nodeUtils.js に移動済み
 
