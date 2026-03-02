@@ -5361,11 +5361,7 @@ function setCursorToEnd(element) {
     sel.addRange(range);
 }
 
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-}
+// escapeHtml() は src/utils.js に移動済み（全モジュール共有ユーティリティ）
 
 function updateWordCount() {
     const text = editor.textContent || '';
