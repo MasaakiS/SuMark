@@ -279,7 +279,7 @@ function showError(message) { showBanner(message, 'error'); }
 
 // ========== State ==========
 let isConverting = false; // Guard for auto-conversion recursion
-let codeHighlightTimer = null; // Debounce timer for code block highlighting
+// codeHighlightTimer → codeHighlight.js に移動済み
 let isComposing = false; // IME composition state
 
 // Tab management
@@ -977,140 +977,7 @@ function setMarkdown(md) {
     }
 }
 
-// ========== Code Block Live Highlighting ==========
-function getCaretCharacterOffsetWithin(element) {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return 0;
-    const range = sel.getRangeAt(0);
-    const preCaretRange = range.cloneRange();
-    preCaretRange.selectNodeContents(element);
-    preCaretRange.setEnd(range.startContainer, range.startOffset);
-    return preCaretRange.toString().length;
-}
-
-function setCaretCharacterOffset(element, offset) {
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
-    let currentOffset = 0;
-    let node;
-    while (node = walker.nextNode()) {
-        const nodeLen = node.textContent.length;
-        if (currentOffset + nodeLen >= offset) {
-            const sel = window.getSelection();
-            const range = document.createRange();
-            range.setStart(node, offset - currentOffset);
-            range.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(range);
-            return;
-        }
-        currentOffset += nodeLen;
-    }
-    // If offset is beyond the content, place at end
-    const sel = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    range.collapse(false);
-    sel.removeAllRanges();
-    sel.addRange(range);
-}
-
-function highlightCodeBlock(codeEl) {
-    if (typeof hljs === 'undefined') return;
-    if (!codeEl || codeEl.tagName !== 'CODE') return;
-    // Don't highlight mermaid blocks
-    if (codeEl.classList.contains('language-mermaid')) return;
-
-    // Check line count - skip highlighting for large code blocks (500+ lines)
-    const plainText = codeEl.textContent;
-    const lineCount = plainText.split('\n').length;
-    
-    if (lineCount > 500) {
-        console.log(`[ハイライトスキップ] ${lineCount}行のコードブロックが大きすぎるため、シンタックスハイライトをスキップしました。`);
-        
-        // Update line numbers without highlighting
-        const pre = codeEl.closest('pre');
-        if (pre) {
-            updateLineNumbers(pre);
-            // Add a visual indicator that highlighting is skipped
-            if (!pre.querySelector('.highlight-skipped-notice')) {
-                const notice = document.createElement('div');
-                notice.className = 'highlight-skipped-notice';
-                notice.textContent = `⚠️ ${lineCount}行 - シンタックスハイライト無効`;
-                notice.style.cssText = 'position:absolute;top:5px;right:10px;background:rgba(255,165,0,0.2);color:#ff8c00;padding:2px 8px;border-radius:3px;font-size:11px;pointer-events:none;z-index:10;';
-                pre.style.position = 'relative';
-                pre.appendChild(notice);
-            }
-        }
-        return;
-    }
-
-    // Save cursor position
-    const sel = window.getSelection();
-    const isInsideCode = codeEl.contains(sel.anchorNode);
-    let caretOffset = 0;
-    if (isInsideCode) {
-        caretOffset = getCaretCharacterOffsetWithin(codeEl);
-    }
-
-    // Remove previous hljs state
-    delete codeEl.dataset.highlighted;
-    codeEl.removeAttribute('data-highlighted');
-    codeEl.textContent = plainText;
-    hljs.highlightElement(codeEl);
-
-    // Restore cursor
-    if (isInsideCode) {
-        setCaretCharacterOffset(codeEl, caretOffset);
-    }
-
-    // Update line numbers
-    const pre = codeEl.closest('pre');
-    if (pre) {
-        updateLineNumbers(pre);
-        // Remove skipped notice if it exists
-        const notice = pre.querySelector('.highlight-skipped-notice');
-        if (notice) notice.remove();
-    }
-}
-
-// Highlight all code blocks in the editor (used after undo/redo)
-function highlightAllCodeBlocks() {
-    if (typeof hljs === 'undefined') return;
-    const codeBlocks = editor.querySelectorAll('pre code:not(.language-mermaid)');
-    codeBlocks.forEach(block => {
-        const lineCount = block.textContent.split('\n').length;
-        
-        if (lineCount > 500) {
-            console.log(`[ハイライトスキップ] ${lineCount}行のコードブロックをスキップしました。`);
-            
-            // Update line numbers and add notice
-            const pre = block.closest('pre');
-            if (pre) {
-                updateLineNumbers(pre);
-                if (!pre.querySelector('.highlight-skipped-notice')) {
-                    const notice = document.createElement('div');
-                    notice.className = 'highlight-skipped-notice';
-                    notice.textContent = `⚠️ ${lineCount}行 - シンタックスハイライト無効`;
-                    notice.style.cssText = 'position:absolute;top:5px;right:10px;background:rgba(255,165,0,0.2);color:#ff8c00;padding:2px 8px;border-radius:3px;font-size:11px;pointer-events:none;z-index:10;';
-                    pre.style.position = 'relative';
-                    pre.appendChild(notice);
-                }
-            }
-            return;
-        }
-        
-        delete block.dataset.highlighted;
-        block.removeAttribute('data-highlighted');
-        hljs.highlightElement(block);
-        
-        // Remove skipped notice if it exists
-        const pre = block.closest('pre');
-        if (pre) {
-            const notice = pre.querySelector('.highlight-skipped-notice');
-            if (notice) notice.remove();
-        }
-    });
-}
+// getCaretCharacterOffsetWithin(), setCaretCharacterOffset(), highlightCodeBlock(), highlightAllCodeBlocks() は src/codeHighlight.js に移動済み
 
 // Ensure editor starts with an editable element
 function ensureEditableStart() {
@@ -1130,153 +997,9 @@ function ensureEditableStart() {
     }
 }
 
-// ========== Line Numbers ==========
-function updateLineNumbers(pre) {
-    if (!pre || pre.tagName !== 'PRE') return;
-    // Skip Mermaid containers
-    if (pre.closest('.mermaid-container')) return;
+// updateLineNumbers(), updateAllLineNumbers(), debouncedHighlightCodeAtCursor() は src/codeHighlight.js に移動済み
 
-    const code = pre.querySelector('code');
-    if (!code) return;
-
-    const text = code.textContent;
-    const lines = text.split('\n');
-    // Remove trailing empty line (common with code blocks ending in \n)
-    if (lines.length > 1 && lines[lines.length - 1] === '') {
-        lines.pop();
-    }
-    const lineCount = Math.max(lines.length, 1);
-
-    let gutter = pre.querySelector('.line-numbers-gutter');
-    if (!gutter) {
-        gutter = document.createElement('div');
-        gutter.className = 'line-numbers-gutter';
-        gutter.setAttribute('contenteditable', 'false');
-        gutter.setAttribute('aria-hidden', 'true');
-        pre.insertBefore(gutter, pre.firstChild);
-    }
-
-    // Only update if line count changed
-    const currentCount = gutter.children.length;
-    if (currentCount !== lineCount) {
-        let html = '';
-        for (let i = 1; i <= lineCount; i++) {
-            html += '<span>' + i + '</span>';
-        }
-        gutter.innerHTML = html;
-    }
-}
-
-function updateAllLineNumbers() {
-    editor.querySelectorAll('pre').forEach(pre => {
-        if (!pre.closest('.mermaid-container')) {
-            updateLineNumbers(pre);
-        }
-    });
-}
-
-function debouncedHighlightCodeAtCursor() {
-    if (codeHighlightTimer) clearTimeout(codeHighlightTimer);
-    codeHighlightTimer = setTimeout(() => {
-        const sel = window.getSelection();
-        if (!sel.rangeCount) return;
-        let node = sel.anchorNode;
-        // Walk up to find code element inside pre
-        while (node && node !== editor) {
-            if (node.tagName === 'CODE' && node.parentElement && node.parentElement.tagName === 'PRE') {
-                const lineCount = node.textContent.split('\n').length;
-                // Adjust delay based on code size
-                const delay = lineCount > 100 ? 500 : 0;
-                
-                if (delay > 0) {
-                    setTimeout(() => highlightCodeBlock(node), delay);
-                } else {
-                    highlightCodeBlock(node);
-                }
-                return;
-            }
-            node = node.parentElement;
-        }
-    }, 300);
-}
-
-// Check if cursor is on an empty line at the end of the code element
-// Handles both <br> elements (from insertLineBreak) and \n text chars (from file loading)
-function isOnEmptyTrailingLine(targetEl, range) {
-    const node = range.startContainer;
-    const offset = range.startOffset;
-
-    // Case 1: Cursor is in a text node
-    if (node.nodeType === 3) {
-        const text = node.textContent;
-        // Check if character before cursor is \n (meaning we're on a new empty line)
-        if (offset > 0 && text[offset - 1] === '\n') {
-            // Check nothing meaningful after cursor in this node
-            const after = text.substring(offset);
-            if (after !== '' && after.replace(/\n/g, '') !== '') return false;
-            // Check no more meaningful siblings after this node
-            let sibling = node.nextSibling;
-            while (sibling) {
-                if (sibling.nodeType === 3 && sibling.textContent.replace(/\n/g, '') !== '') return false;
-                if (sibling.nodeType === 1 && sibling.nodeName !== 'BR') return false;
-                sibling = sibling.nextSibling;
-            }
-            return true;
-        }
-        return false;
-    }
-
-    // Case 2: Cursor is in an element node (between child nodes)
-    if (node.nodeType === 1) {
-        if (offset === 0) {
-            // At the very start - exit only if completely empty
-            return targetEl.textContent.trim() === '' &&
-                   targetEl.innerHTML.replace(/<br\s*\/?>/gi, '').trim() === '';
-        }
-        const prevChild = node.childNodes[offset - 1];
-        if (!prevChild) return false;
-
-        // Previous child should be a <br> or a text node ending with \n
-        const isPrevBr = prevChild.nodeName === 'BR';
-        const isPrevNewline = prevChild.nodeType === 3 && prevChild.textContent.endsWith('\n');
-
-        if (isPrevBr || isPrevNewline) {
-            // Check no meaningful content after cursor position
-            for (let i = offset; i < node.childNodes.length; i++) {
-                const child = node.childNodes[i];
-                if (child.nodeType === 3 && child.textContent.replace(/\n/g, '') !== '') return false;
-                if (child.nodeType === 1 && child.nodeName !== 'BR') return false;
-            }
-            return true;
-        }
-    }
-
-    return false;
-}
-
-// Remove trailing empty lines (<br> elements and trailing \n characters) from element
-function removeTrailingEmptyLines(el) {
-    // Remove trailing <br> elements and empty text nodes
-    while (el.lastChild) {
-        if (el.lastChild.nodeType === 3 && el.lastChild.textContent.match(/^\n*$/)) {
-            el.removeChild(el.lastChild);
-        } else if (el.lastChild.nodeType === 3) {
-            // Trim trailing newlines from the last text node
-            el.lastChild.textContent = el.lastChild.textContent.replace(/\n+$/, '');
-            if (el.lastChild.textContent === '') {
-                el.removeChild(el.lastChild);
-            } else {
-                break;
-            }
-        } else {
-            break;
-        }
-    }
-    // If completely empty, add a non-breaking space to prevent collapse
-    if (!el.textContent.trim()) {
-        el.textContent = ' ';
-    }
-}
+// isOnEmptyTrailingLine(), removeTrailingEmptyLines() は src/nodeUtils.js に移動済み
 
 // ========== Event Listeners ==========
 function setupEventListeners() {
@@ -1523,80 +1246,7 @@ function debouncedSaveEditorState() {
     }, 500);
 }
 
-/**
- * Save current selection (cursor position/range)
- */
-function saveSelection() {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return null;
-    
-    const range = sel.getRangeAt(0);
-    return {
-        startContainer: getNodePath(range.startContainer),
-        startOffset: range.startOffset,
-        endContainer: getNodePath(range.endContainer),
-        endOffset: range.endOffset,
-        collapsed: range.collapsed
-    };
-}
-
-/**
- * Restore saved selection
- */
-function restoreSelection(selectionData) {
-    if (!selectionData) return;
-    
-    try {
-        const startNode = getNodeByPath(selectionData.startContainer);
-        const endNode = getNodeByPath(selectionData.endContainer);
-        
-        if (!startNode || !endNode) return;
-        
-        const range = document.createRange();
-        range.setStart(startNode, Math.min(selectionData.startOffset, startNode.length || startNode.childNodes.length || 0));
-        range.setEnd(endNode, Math.min(selectionData.endOffset, endNode.length || endNode.childNodes.length || 0));
-        
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-    } catch (err) {
-        console.warn('[Undo] Failed to restore selection:', err);
-    }
-}
-
-/**
- * Get path from editor root to target node
- */
-function getNodePath(node) {
-    const path = [];
-    let current = node;
-    
-    while (current && current !== editor) {
-        const parent = current.parentNode;
-        if (!parent) break;
-        
-        const index = Array.from(parent.childNodes).indexOf(current);
-        path.unshift(index);
-        current = parent;
-    }
-    
-    return path;
-}
-
-/**
- * Get node by path from editor root
- */
-function getNodeByPath(path) {
-    if (!path || path.length === 0) return editor;
-    
-    let current = editor;
-    for (const index of path) {
-        if (!current.childNodes[index]) return null;
-        current = current.childNodes[index];
-    }
-    
-    return current;
-}
+// saveSelection(), restoreSelection(), getNodePath(), getNodeByPath() は src/nodeUtils.js に移動済み
 
 /**
  * Perform undo operation
@@ -3079,53 +2729,7 @@ function hideProgressIndicator() {
     }
 }
 
-// ========== Chunked Paste Processing ==========
-async function pasteTextInChunks(lines, codeElement) {
-    const CHUNK_SIZE = 100; // Process 100 lines at a time
-    const totalLines = lines.length;
-    let currentIndex = 0;
-    
-    return new Promise((resolve) => {
-        function processChunk() {
-            const endIndex = Math.min(currentIndex + CHUNK_SIZE, totalLines);
-            const chunk = lines.slice(currentIndex, endIndex);
-            
-            // Insert chunk
-            for (let i = 0; i < chunk.length; i++) {
-                if (currentIndex + i > 0) {
-                    document.execCommand('insertLineBreak');
-                }
-                if (chunk[i]) {
-                    document.execCommand('insertText', false, chunk[i]);
-                }
-            }
-            
-            currentIndex = endIndex;
-            
-            // Update progress
-            if (totalLines > 500) {
-                const progress = Math.round((currentIndex / totalLines) * 100);
-                showProgressIndicator(`貼り付け中... ${progress}% (${currentIndex}/${totalLines}行)`);
-            }
-            
-            // Continue processing or finish
-            if (currentIndex < totalLines) {
-                requestAnimationFrame(processChunk);
-            } else {
-                if (totalLines > 500) {
-                    hideProgressIndicator();
-                }
-                resolve();
-            }
-        }
-        
-        // Start processing
-        if (totalLines > 500) {
-            showProgressIndicator(`貼り付け中... 0% (0/${totalLines}行)`);
-        }
-        requestAnimationFrame(processChunk);
-    });
-}
+// pasteTextInChunks() は src/pasteUtils.js に移動済み
 
 // ========== Paste Handling ==========
 async function handlePaste(e) {
@@ -3279,65 +2883,7 @@ async function handlePaste(e) {
     }
 }
 
-// Check if text is tab-delimited (multiple columns, multiple rows)
-function isTabDelimited(text) {
-    const lines = text.trim().split('\n');
-    if (lines.length < 1) return false;
-    // At least one line must have a tab
-    return lines.some(line => line.includes('\t'));
-}
-
-// Convert tab-separated text to HTML table
-function tsvToHtmlTable(text) {
-    const lines = text.trim().split('\n');
-    const rows = lines.map(line => line.split('\t'));
-
-    // First row as header
-    let html = '<table><thead><tr>';
-    rows[0].forEach(cell => {
-        html += '<th>' + escapeHtml(cell.trim()) + '</th>';
-    });
-    html += '</tr></thead><tbody>';
-
-    for (let i = 1; i < rows.length; i++) {
-        html += '<tr>';
-        rows[i].forEach(cell => {
-            html += '<td>' + escapeHtml((cell || '').trim()) + '</td>';
-        });
-        html += '</tr>';
-    }
-    html += '</tbody></table>';
-    return html;
-}
-
-// Parse HTML with table (from Excel) and create a clean table
-function parseHtmlTable(htmlStr) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlStr, 'text/html');
-    const srcTable = doc.querySelector('table');
-    if (!srcTable) return null;
-
-    const rows = srcTable.querySelectorAll('tr');
-    if (rows.length === 0) return null;
-
-    let html = '<table><thead><tr>';
-    // First row as header
-    const headerCells = rows[0].querySelectorAll('th, td');
-    headerCells.forEach(cell => {
-        html += '<th>' + escapeHtml(cell.textContent.trim()) + '</th>';
-    });
-    html += '</tr></thead><tbody>';
-
-    for (let i = 1; i < rows.length; i++) {
-        html += '<tr>';
-        rows[i].querySelectorAll('th, td').forEach(cell => {
-            html += '<td>' + escapeHtml(cell.textContent.trim()) + '</td>';
-        });
-        html += '</tr>';
-    }
-    html += '</tbody></table>';
-    return html;
-}
+// isTabDelimited(), tsvToHtmlTable(), parseHtmlTable() は src/pasteUtils.js に移動済み
 
 function pasteImageFile(file) {
     const reader = new FileReader();
@@ -3351,10 +2897,7 @@ function pasteImageFile(file) {
     reader.readAsDataURL(file);
 }
 
-function looksLikeMarkdown(text) {
-    // Simple heuristic: does it contain common markdown patterns?
-    return /^#{1,6} |^[-*+] |\*\*.*\*\*|^```|^\|.*\|.*\||^>\s|^\d+\.\s|!\[.*\]\(.*\)|\[.*\]\(.*\)/m.test(text);
-}
+// looksLikeMarkdown() は src/pasteUtils.js に移動済み
 
 // ========== Formatting Commands ==========
 
@@ -5361,11 +4904,7 @@ function setCursorToEnd(element) {
     sel.addRange(range);
 }
 
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-}
+// escapeHtml() は src/utils.js に移動済み（全モジュール共有ユーティリティ）
 
 function updateWordCount() {
     const text = editor.textContent || '';
@@ -5547,179 +5086,7 @@ function createTableRow(colCount, tag) {
     return tr;
 }
 
-// ========== KaTeX Math Rendering ==========
-/**
- * Render all math expressions in the editor.
- * This is called after loading a Markdown file to convert $$...$$ and $...$ to rendered math.
- */
-function renderMathBlocks() {
-    if (typeof katex === 'undefined') {
-        return;
-    }
-
-    // Find all text nodes containing $$...$$ or $...$ patterns
-    const walker = document.createTreeWalker(
-        editor,
-        NodeFilter.SHOW_TEXT,
-        {
-            acceptNode: function(node) {
-                // Skip if already inside a math element
-                let parent = node.parentNode;
-                while (parent && parent !== editor) {
-                    if (parent.classList && (parent.classList.contains('math-display') || parent.classList.contains('math-inline'))) {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    parent = parent.parentNode;
-                }
-                // Accept if contains $ pattern
-                if (node.textContent.includes('$')) {
-                    return NodeFilter.FILTER_ACCEPT;
-                }
-                return NodeFilter.FILTER_REJECT;
-            }
-        }
-    );
-
-    const nodesToProcess = [];
-    let node;
-    while (node = walker.nextNode()) {
-        nodesToProcess.push(node);
-    }
-
-    // Process display math first ($$...$$)
-    nodesToProcess.forEach(textNode => {
-        if (!textNode.parentNode || !editor.contains(textNode)) return;
-        
-        const text = textNode.textContent;
-        const displayMathRegex = /\$\$([^$]+?)\$\$/g;
-        let match;
-        const replacements = [];
-
-        while ((match = displayMathRegex.exec(text)) !== null) {
-            replacements.push({
-                start: match.index,
-                end: match.index + match[0].length,
-                math: match[1],
-                type: 'display'
-            });
-        }
-        
-        if (replacements.length > 0) {
-            // Process replacements in reverse order to maintain indices
-            replacements.reverse().forEach(rep => {
-                const beforeText = text.substring(0, rep.start);
-                const afterText = text.substring(rep.end);
-                const parent = textNode.parentNode;
-                
-                const frag = document.createDocumentFragment();
-                if (beforeText) frag.appendChild(document.createTextNode(beforeText));
-                
-                const div = document.createElement('div');
-                div.className = 'math-display';
-                div.setAttribute('data-math', rep.math);
-                div.setAttribute('contenteditable', 'false');
-                try {
-                    div.innerHTML = katex.renderToString(rep.math, {displayMode: true, throwOnError: false});
-                } catch (err) {
-                    console.error('[Math] KaTeX render error:', err);
-                    div.textContent = '$$' + rep.math + '$$';
-                }
-                frag.appendChild(div);
-                
-                const afterNode = document.createTextNode(afterText);
-                frag.appendChild(afterNode);
-                
-                parent.replaceChild(frag, textNode);
-                
-                // Update textNode reference for next iteration
-                if (afterText) {
-                    textNode = afterNode;
-                }
-            });
-        }
-    });
-
-    // Process inline math ($...$) - need to re-collect nodes after display math processing
-    const walker2 = document.createTreeWalker(
-        editor,
-        NodeFilter.SHOW_TEXT,
-        {
-            acceptNode: function(node) {
-                let parent = node.parentNode;
-                while (parent && parent !== editor) {
-                    if (parent.classList && (parent.classList.contains('math-display') || parent.classList.contains('math-inline'))) {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    parent = parent.parentNode;
-                }
-                if (node.textContent.includes('$')) {
-                    return NodeFilter.FILTER_ACCEPT;
-                }
-                return NodeFilter.FILTER_REJECT;
-            }
-        }
-    );
-
-    const inlineNodesToProcess = [];
-    while (node = walker2.nextNode()) {
-        inlineNodesToProcess.push(node);
-    }
-
-    inlineNodesToProcess.forEach(textNode => {
-        if (!textNode.parentNode || !editor.contains(textNode)) return;
-        
-        const text = textNode.textContent;
-        const inlineMathRegex = /\$([^$]+?)\$/g;
-        let match;
-        const replacements = [];
-        
-        while ((match = inlineMathRegex.exec(text)) !== null) {
-            // Make sure it's not part of $$
-            if (match.index > 0 && text[match.index - 1] === '$') continue;
-            if (match.index + match[0].length < text.length && text[match.index + match[0].length] === '$') continue;
-            
-            replacements.push({
-                start: match.index,
-                end: match.index + match[0].length,
-                math: match[1],
-                type: 'inline'
-            });
-        }
-        
-        if (replacements.length > 0) {
-            replacements.reverse().forEach(rep => {
-                const beforeText = text.substring(0, rep.start);
-                const afterText = text.substring(rep.end);
-                const parent = textNode.parentNode;
-                
-                const frag = document.createDocumentFragment();
-                if (beforeText) frag.appendChild(document.createTextNode(beforeText));
-                
-                const span = document.createElement('span');
-                span.className = 'math-inline';
-                span.setAttribute('data-math', rep.math);
-                span.setAttribute('contenteditable', 'false');
-                try {
-                    span.innerHTML = katex.renderToString(rep.math, {displayMode: false, throwOnError: false});
-                } catch (err) {
-                    console.error('[Math] KaTeX render error:', err);
-                    span.textContent = '$' + rep.math + '$';
-                }
-                frag.appendChild(span);
-                
-                const afterNode = document.createTextNode(afterText);
-                frag.appendChild(afterNode);
-                
-                parent.replaceChild(frag, textNode);
-                
-                if (afterText) {
-                    textNode = afterNode;
-                }
-            });
-        }
-    });
-
-}
+// renderMathBlocks() は src/mathRender.js に移動済み
 
 // ========== Mermaid Rendering ==========
 async function renderMermaidBlocks() {
