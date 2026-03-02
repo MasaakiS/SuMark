@@ -68,3 +68,85 @@ function insertTOC() {
     markModified();
     saveEditorState(); // Save state after inserting TOC
 }
+
+/**
+ * Markdown保存→再読み込み時に失われた .toc-container 構造を復元する。
+ * marked.parse() は「📑 目次」を <p><strong>📑 目次</strong></p> + <ul> として出力するため、
+ * これを検出して .toc-container で囲み直し、リンクに .toc-link クラスを付与する。
+ */
+function reconstructTocContainers() {
+    // 既に .toc-container がある場合は何もしない
+    if (editor.querySelector('.toc-container')) {
+        return;
+    }
+
+    // 「📑 目次」を含む <strong> 要素を探す
+    const strongs = editor.querySelectorAll('strong');
+    for (const strong of strongs) {
+        if (!strong.textContent.includes('📑 目次')) {
+            continue;
+        }
+        
+        const titleP = strong.closest('p');
+        if (!titleP) continue;
+
+        // titleP の次の兄弟要素が <ul> であることを確認
+        let nextEl = titleP.nextElementSibling;
+        if (!nextEl || nextEl.tagName !== 'UL') continue;
+
+        // UL 内のリンクが #heading- or # で始まるか確認（目次リンクかどうか）
+        const links = nextEl.querySelectorAll('a[href^="#"]');
+        if (links.length === 0) continue;
+
+        // .toc-container を構築
+        const container = document.createElement('div');
+        container.className = 'toc-container';
+        container.setAttribute('contenteditable', 'false');
+
+        // titleP の前に container を挿入
+        titleP.parentNode.insertBefore(container, titleP);
+
+        // titleP と ul を container の中に移動
+        container.appendChild(titleP);
+        container.appendChild(nextEl);
+
+        // UL 内のリンクに .toc-link クラスを付与
+        links.forEach(link => {
+            link.classList.add('toc-link');
+        });
+    }
+}
+
+/**
+ * 保存後に再読み込みされた目次のリンクに基づいて、見出し要素にIDを復元する。
+ * reconstructTocContainers() の後に呼ぶこと。
+ * （marked.jsでheaderIds: falseのため、保存→再読み込み時にIDが失われる問題を修正）
+ */
+function restoreTocHeadingIds() {
+    // .toc-container 内のリンクから見出しIDを復元
+    const tocLinks = editor.querySelectorAll('.toc-container a.toc-link[href^="#"]');
+    if (tocLinks.length === 0) {
+        return;
+    }
+
+    const headings = editor.querySelectorAll('h1, h2, h3, h4, h5, h6');
+
+    tocLinks.forEach(link => {
+        const href = link.getAttribute('href');
+        const linkText = link.textContent.trim();
+        if (!href || !href.startsWith('#')) return;
+
+        const targetId = href.substring(1); // # を除去
+
+        // 既にIDが存在するか確認
+        if (editor.querySelector('#' + CSS.escape(targetId))) return;
+
+        // リンクテキストと一致する見出し要素を探してIDを付与
+        for (const h of headings) {
+            if (h.textContent.trim() === linkText && !h.id) {
+                h.id = targetId;
+                break;
+            }
+        }
+    });
+}

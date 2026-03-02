@@ -249,6 +249,19 @@ let editor, currentFileSpan, wordCountSpan, tabList;
 // Turndown instance
 let turndownService;
 
+// DOMPurify config: allow Tauri's asset:// protocol for local file display
+const DOMPURIFY_URI_REGEXP = /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|asset):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
+
+// ========== Debug Helper ==========
+function testConvertFileSrc(path) {
+    // Use the native Tauri convertFileSrc function which generates asset:// URLs
+    // This is more secure and recommended by Tauri
+    const assetUrl = convertFileSrc(path);
+    console.log('[TEST convertFileSrc] input path:', path);
+    console.log('[TEST convertFileSrc] output asset URL:', assetUrl);
+    return assetUrl;
+}
+
 // ========== Initialization ==========
 function init() {
     console.log('=== WYSIWYG Editor Initialization ===');
@@ -826,6 +839,7 @@ function setMarkdown(md) {
             'data-mermaid-source', 'data-math',  // custom data attributes
         ],
         ALLOW_DATA_ATTR: true,
+        ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP,
     }) : dirtyHtml;
     
     try {
@@ -853,7 +867,9 @@ function setMarkdown(md) {
     // Render KaTeX math expressions
     renderMathBlocks();
 
-    // Add delete buttons to TOC containers
+    // Reconstruct TOC containers from parsed markdown, then restore heading IDs and add delete buttons
+    reconstructTocContainers();
+    restoreTocHeadingIds();
     setupTocDeleteButtons();
 
     // Add line numbers to code blocks
@@ -1168,7 +1184,7 @@ function performUndo() {
     try {
         console.log('[Undo] Restoring state:', previousState);
         if (typeof DOMPurify !== 'undefined') {
-            editor.innerHTML = DOMPurify.sanitize(previousState.html);
+            editor.innerHTML = DOMPurify.sanitize(previousState.html, { ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP });
         } else {
             editor.innerHTML = previousState.html;
         }
@@ -1223,7 +1239,7 @@ function performRedo() {
     try {
         console.log('[Redo] Restoring state:', nextState);
         if (typeof DOMPurify !== 'undefined') {
-            editor.innerHTML = DOMPurify.sanitize(nextState.html);
+            editor.innerHTML = DOMPurify.sanitize(nextState.html, { ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP });
         } else {
             editor.innerHTML = nextState.html;
         }
@@ -2786,7 +2802,9 @@ function pasteImageFile(file) {
     const reader = new FileReader();
     reader.onload = function(event) {
         const base64 = event.target.result;
-        const html = '<img src="' + base64 + '" alt="貼り付け画像" style="max-width:100%">';
+        // Insert image as markdown to ensure clean conversion to relative paths during save
+        const markdownImage = '![貼り付け画像](' + base64 + ')';
+        const html = '<img src="' + base64 + '" alt="貼り付け画像">';
         editor.focus();
         document.execCommand('insertHTML', false, html);
         markModified();
@@ -3623,22 +3641,37 @@ async function newFile() {
 // Open a file from a given path (used by both dialog and drag-and-drop)
 async function openFileFromPath(filePath) {
     try {
+        console.log('[DEBUG openFileFromPath START] filePath:', filePath);
+        
         // Check if file is already open
         const existingTab = tabs.find(t => t.filePath === filePath);
         if (existingTab) {
+            console.log('[DEBUG openFileFromPath] File already open, switching tab');
             switchTab(existingTab.id);
             return;
         }
 
+        console.log('[DEBUG openFileFromPath] Reading file...');
         let contents = await readTextFile(filePath);
+        console.log('[DEBUG openFileFromPath] File read successfully, contents length:', contents.length);
 
         // Resolve relative image paths to asset protocol URLs for display
         const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
         const fileDir = filePath.substring(0, lastSlash);
+        console.log('[DEBUG openFileFromPath] fileDir:', fileDir);
+        console.log('[DEBUG openFileFromPath] Resolving relative images...');
         contents = resolveRelativeImages(contents, fileDir);
-        contents = await resolveRelativeCsvLinks(contents, fileDir);
+        console.log('[DEBUG openFileFromPath] Resolving CSV links...');
+        try {
+            contents = await resolveRelativeCsvLinks(contents, fileDir);
+            console.log('[DEBUG openFileFromPath] CSV links resolved successfully');
+        } catch (err) {
+            console.warn('[DEBUG openFileFromPath] CSV link resolution failed (non-critical):', err.message);
+            // Continue even if CSV resolution fails
+        }
 
         // Notion エクスポート形式の複数行テーブルセルを正規化
+        console.log('[DEBUG openFileFromPath] Preprocessing Notion markdown...');
         contents = preprocessNotionMarkdown(contents);
 
         // Normalize task list items: GFM requires a space after [x]/[ ]
@@ -3646,11 +3679,18 @@ async function openFileFromPath(filePath) {
         // Empty task items need ZWSP for marked to recognize them as task list
         contents = contents.replace(/^(\s*[-*+]\s+\[[ xX]\])\s*$/gm, '$1 \u200B');
 
+        console.log('[DEBUG openFileFromPath] Parsing markdown to HTML...');
         const filename = filePath.split('/').pop().split('\\').pop();
         const html = (typeof marked !== 'undefined') ? marked.parse(contents) : contents;
+        console.log('[DEBUG openFileFromPath] Creating tab...');
         createTab(filePath, filename, html);
+        console.log('[DEBUG openFileFromPath] SUCCESS');
+
     } catch (err) {
-        console.error('Error opening file:', err);
+        console.error('[ERROR openFileFromPath] Exception:', err);
+        console.error('[ERROR openFileFromPath] Stack:', err.stack);
+        console.error('[ERROR openFileFromPath] Message:', err.message);
+        showError('ファイルを開くことができません: ' + (err.message || String(err)));
         throw err;
     }
 }
@@ -3678,6 +3718,10 @@ async function openFile() {
 // Resolve relative image paths in Markdown to asset protocol URLs for display
 // This is a synchronous, lightweight string replacement (no file I/O)
 function resolveRelativeImages(markdown, fileDir) {
+    // Normalize fileDir to use forward slashes and remove trailing slash
+    fileDir = fileDir.replace(/\\/g, '/').replace(/\/$/, '');
+    console.log('[DEBUG resolveRelativeImages] fileDir:', fileDir);
+
     // Handle nested parentheses in URLs (e.g., Notion exports with unencoded parens)
     const imgRegex = /!\[([^\]]*)\]\(([^)]*(?:\([^)]*\)[^)]*)*)\)/g;
     let match;
@@ -3687,11 +3731,13 @@ function resolveRelativeImages(markdown, fileDir) {
         const fullMatch = match[0];
         const alt = match[1];
         const rawPath = match[2];
+        console.log('[DEBUG resolveRelativeImages] matched image:', fullMatch, 'rawPath:', rawPath);
 
         // Skip data URIs, http(s) URLs, absolute paths, and already-converted asset URLs
         if (rawPath.startsWith('data:') || rawPath.startsWith('http://') ||
             rawPath.startsWith('https://') || rawPath.startsWith('/') ||
             rawPath.startsWith('asset://')) {
+            console.log('[DEBUG resolveRelativeImages] skipping:', rawPath);
             continue;
         }
 
@@ -3703,16 +3749,27 @@ function resolveRelativeImages(markdown, fileDir) {
             decodedPath = rawPath;
         }
 
+        // Normalize path separators in decoded path
+        decodedPath = decodedPath.replace(/\\/g, '/');
+        console.log('[DEBUG resolveRelativeImages] decodedPath:', decodedPath);
+
         // Resolve to absolute path and convert to asset protocol URL
         const absolutePath = fileDir + '/' + decodedPath;
+        console.log('[DEBUG resolveRelativeImages] absolutePath:', absolutePath);
         try {
-            const assetUrl = convertFileSrc(absolutePath);
-            replacements.push({
-                original: fullMatch,
-                replacement: '![' + alt + '](' + assetUrl + ')'
-            });
+            const assetUrl = testConvertFileSrc(absolutePath);
+            console.log('[DEBUG resolveRelativeImages] assetUrl result:', assetUrl);
+            if (assetUrl) {
+                replacements.push({
+                    original: fullMatch,
+                    replacement: '![' + alt + '](' + assetUrl + ')'
+                });
+                console.log('[DEBUG resolveRelativeImages] replacement added');
+            } else {
+                console.warn('convertFileSrc returned empty/null for path:', absolutePath);
+            }
         } catch (err) {
-            console.warn('Could not convert to asset URL:', absolutePath, err);
+            console.warn('Could not convert to asset URL for path:', absolutePath, 'Error:', err.message);
         }
     }
 
@@ -3721,6 +3778,7 @@ function resolveRelativeImages(markdown, fileDir) {
     for (const r of replacements) {
         result = result.replace(r.original, r.replacement);
     }
+    console.log('[DEBUG resolveRelativeImages] final result has', replacements.length, 'replacements');
     return result;
 }
 
@@ -3919,9 +3977,11 @@ async function saveAsFile() {
 // ========== Resolve Images for Save ==========
 // Convert asset:// URLs back to relative paths, and save Base64 images to files
 async function resolveImagesForSave(markdown, mdFilePath) {
-    const lastSlash = Math.max(mdFilePath.lastIndexOf('/'), mdFilePath.lastIndexOf('\\'));
-    const fileDir = mdFilePath.substring(0, lastSlash);
-    const mdFileName = mdFilePath.substring(lastSlash + 1).replace(/\.md$/i, '');
+    // Normalize file path to use forward slashes
+    const normalizedPath = mdFilePath.replace(/\\/g, '/');
+    const lastSlash = normalizedPath.lastIndexOf('/');
+    const fileDir = normalizedPath.substring(0, lastSlash);
+    const mdFileName = normalizedPath.substring(lastSlash + 1).replace(/\.md$/i, '');
 
     // --- Step 1: Convert asset URLs back to relative paths ---
     // macOS: asset://localhost/ENCODED_PATH
@@ -4008,7 +4068,9 @@ async function resolveImagesForSave(markdown, mdFilePath) {
 
     // Match Base64 images (from paste operations)
     const mdImgRegex = /!\[([^\]]*)\]\(data:(image\/[a-zA-Z+]+);base64,([A-Za-z0-9+/=\s]+)\)/g;
-    const htmlImgRegex = /<img\s+src="data:(image\/[a-zA-Z+]+);base64,([A-Za-z0-9+/=\s]+)"\s*alt="([^"]*)"(?:\s*width="(\d+)")?\s*\/?>/g;
+    // HTML image regex: more flexible pattern that handles attributes in any order
+    // Matches: <img ... src="data:image/...;base64,..." ... alt="..." ...>
+    const htmlImgRegex = /<img[^>]*src="data:(image\/[a-zA-Z+]+);base64,([A-Za-z0-9+/=\s]+)"[^>]*alt="([^"]*)"[^>]*>/g;
 
     // Scan existing files in image directory to avoid overwriting
     let imgCounter = 0;
@@ -4048,7 +4110,9 @@ async function resolveImagesForSave(markdown, mdFilePath) {
         const mime = match[1];
         const base64Data = match[2].replace(/\s/g, '');
         const alt = match[3];
-        const width = match[4];
+        // Extract width from the full match if present (new regex doesn't capture it)
+        const widthMatch = fullMatch.match(/width="(\d+)"/);
+        const width = widthMatch ? widthMatch[1] : null;
         const ext = mimeToExt(mime);
         const fileName = generateImageFileName(alt, imgCounter, ext);
         try {
@@ -4414,7 +4478,7 @@ function switchTab(id) {
     try {
         console.log('[TabSwitch] Restoring tab content:', tab);
         if (typeof DOMPurify !== 'undefined') {
-            editor.innerHTML = DOMPurify.sanitize(tab.content);
+            editor.innerHTML = DOMPurify.sanitize(tab.content, { ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP });
         } else {
             editor.innerHTML = tab.content;
         }
@@ -4452,7 +4516,9 @@ function switchTab(id) {
     // Setup toggle blocks (open, contenteditable, toggle-content wrapper, delete buttons)
     setupToggleBlocks();
 
-    // Add delete buttons to TOC containers
+    // Reconstruct TOC containers (if loaded from markdown), restore heading IDs, add delete buttons
+    reconstructTocContainers();
+    restoreTocHeadingIds();
     setupTocDeleteButtons();
 
     // Add line numbers to code blocks
