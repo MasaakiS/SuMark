@@ -2,6 +2,19 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v0.6.2] - 2026-03-02
+### 改良
+- main.js のモジュール分割 Phase 2 を完了（6297 → 5397 行、-900 行）
+  - `src/mermaidManager.js`: Mermaid 図表管理（showMermaidInsertDialog, renderMermaidBlocks, editMermaidBlock 等 9 関数）
+  - `src/tocManager.js`: 目次生成・管理（setupTocDeleteButtons, insertTOC）
+  - `src/toggleBlock.js`: トグルブロック管理（insertToggle, unwrapToggle, setupToggleBlocks 等 5 関数）
+- Phase 1 との合計削減: 6931 行 → 5397 行、-1534 行（約22%削減）
+- 全 147 E2E テスト通過
+
+## [v0.6.1] - 2026-03-02
+### 修正
+- CI の package-lock.json 同期問題を修正
+
 ## [v0.6.0] - 2026-03-02
 ### 改良
 - main.js のモジュール分割 Phase 1 を完了（6931 → 6297 行、-634 行）
