@@ -211,6 +211,52 @@ function updateLineNumbers(pre) {
         }
         gutter.innerHTML = html;
     }
+    
+    // Ensure wrap toggle button exists
+    setupCodeWrapButton(pre);
+}
+
+/**
+ * Setup code wrap toggle button for a code block
+ */
+function setupCodeWrapButton(pre) {
+    if (!pre || pre.tagName !== 'PRE') return;
+    
+    // Check if button already exists
+    if (pre.querySelector('.code-wrap-btn')) return;
+    
+    // Create wrap toggle button
+    const button = document.createElement('button');
+    button.className = 'code-wrap-btn';
+    button.setAttribute('type', 'button');
+    button.setAttribute('contenteditable', 'false');
+    button.setAttribute('aria-label', 'Toggle text wrapping');
+    button.textContent = '↵ Wrap';
+    button.title = 'Toggle text wrapping (Hold Shift to wrap long lines within window)';
+    
+    // Check if wrap is already enabled (from data attribute)
+    const code = pre.querySelector('code');
+    if (code && code.classList.contains('wrap-enabled')) {
+        button.classList.add('wrap-enabled');
+    }
+    
+    // Insert button near copy button or create container
+    let container = pre.querySelector('.code-copy-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'code-copy-container';
+        pre.appendChild(container);
+    }
+    
+    // Insert wrap button before copy button(s)
+    container.insertBefore(button, container.firstChild);
+    
+    // Add click handler
+    button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleCodeWrap(pre);
+    });
 }
 
 /**
@@ -252,4 +298,26 @@ function debouncedHighlightCodeAtCursor() {
             node = node.parentElement;
         }
     }, 300);
+}
+
+/**
+ * Toggle text wrapping for a code block
+ */
+function toggleCodeWrap(pre) {
+    if (!pre || pre.tagName !== 'PRE') return;
+    
+    const code = pre.querySelector('code');
+    if (!code) return;
+    
+    const button = pre.querySelector('.code-wrap-btn');
+    if (!button) return;
+    
+    // Toggle wrap class
+    const isWrapped = code.classList.toggle('wrap-enabled');
+    button.classList.toggle('wrap-enabled', isWrapped);
+    
+    // Save wrap state in data attribute
+    code.setAttribute('data-wrap', isWrapped ? 'true' : 'false');
+    
+    console.log(`[CodeWrap] Toggled for code block: ${isWrapped ? 'enabled' : 'disabled'}`);
 }

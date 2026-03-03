@@ -836,7 +836,7 @@ function setMarkdown(md) {
             'type', 'checked', 'disabled',
             'open',
             'contenteditable',
-            'data-mermaid-source', 'data-math',  // custom data attributes
+            'data-mermaid-source', 'data-math', 'data-wrap',  // custom data attributes
         ],
         ALLOW_DATA_ATTR: true,
         ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP,
@@ -874,6 +874,9 @@ function setMarkdown(md) {
 
     // Add line numbers to code blocks
     updateAllLineNumbers();
+    
+    // Restore code wrap states
+    restoreCodeWrapStates();
 
     // Setup toggle blocks
     setupToggleBlocks();
@@ -3483,6 +3486,19 @@ function doInsertCodeBlock(lang, savedRange, selectedText) {
     }
 }
 
+/**
+ * Restore code wrap states from data attributes
+ */
+function restoreCodeWrapStates() {
+    editor.querySelectorAll('pre code[data-wrap="true"]').forEach(code => {
+        code.classList.add('wrap-enabled');
+        const button = code.closest('pre').querySelector('.code-wrap-btn');
+        if (button) {
+            button.classList.add('wrap-enabled');
+        }
+    });
+}
+
 function insertTaskList() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
@@ -4486,7 +4502,27 @@ function switchTab(id) {
     try {
         console.log('[TabSwitch] Restoring tab content:', tab);
         if (typeof DOMPurify !== 'undefined') {
-            editor.innerHTML = DOMPurify.sanitize(tab.content, { ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP });
+            editor.innerHTML = DOMPurify.sanitize(tab.content, {
+                ALLOWED_TAGS: [
+                    'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                    'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+                    'blockquote', 'pre', 'code', 'hr',
+                    'br', 'strong', 'em', 'del', 's', 'a', 'img',
+                    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+                    'details', 'summary',
+                    'div', 'span', 'input',
+                ],
+                ALLOWED_ATTR: [
+                    'href', 'title', 'src', 'alt', 'width', 'height',
+                    'class', 'id', 'style',
+                    'type', 'checked', 'disabled',
+                    'open',
+                    'contenteditable',
+                    'data-mermaid-source', 'data-math', 'data-wrap',
+                ],
+                ALLOW_DATA_ATTR: true,
+                ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP
+            });
         } else {
             editor.innerHTML = tab.content;
         }
@@ -4531,6 +4567,9 @@ function switchTab(id) {
 
     // Add line numbers to code blocks
     updateAllLineNumbers();
+    
+    // Restore code wrap states
+    restoreCodeWrapStates();
 
     // Setup image error handling
     setupImageErrorHandling();

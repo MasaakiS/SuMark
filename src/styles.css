@@ -425,6 +425,33 @@ body {
     border-color: #28a745;
 }
 
+.markdown-body pre .code-wrap-btn {
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #666;
+    background-color: #e8e8e8;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height: 1.4;
+    white-space: nowrap;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.markdown-body pre .code-wrap-btn:hover {
+    background-color: #d0d0d0;
+    color: #333;
+}
+
+.markdown-body pre .code-wrap-btn.wrap-enabled {
+    background-color: #0066cc;
+    color: white;
+    border-color: #0066cc;
+}
+
 .markdown-body pre code {
     padding: 16px;
     margin: 0;
@@ -437,6 +464,14 @@ body {
     overflow-x: auto;
     flex: 1;
     line-height: 1.6;
+}
+
+/* Code block with text wrapping enabled */
+.markdown-body pre code.wrap-enabled {
+    white-space: pre-wrap;
+    overflow-x: visible;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .markdown-body table {
