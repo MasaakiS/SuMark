@@ -16,7 +16,16 @@ npm run dev
 ```
 
 ## 主要ファイル
-- フロントエンド/ロジック: `src/main.js`
+- フロントエンド/ロジック: 
+   - `src/main.js`（エディタのロジック、イベントハンドリング、Markdown変換など）
+   - `src/utils.js`（ユーティリティ関数、Markdown変換ロジック、ファイル操作など）
+   - `src/nodeUtils.js`（DOM ノード操作）
+   - `src/pasteUtils.js`（ペースト処理）
+   - `src/codeHighlight.js`（コードブロックハイライト）
+   - `src/mathRender.js`（KaTeX 数式レンダリング）
+   - `src/mermaidManager.js`（Mermaid 図表管理）
+   - `src/tocManager.js`（目次生成・管理）
+   - `src/toggleBlock.js`（トグルブロック管理）
 - UI: `src/index.html`, `src/styles.css`
 - Tauri (Rust): `src-tauri/Cargo.toml`
 - パッケージ設定: `package.json`
@@ -29,10 +38,23 @@ npm run dev
 - パフォーマンスや大きなバイナリ処理にはチャンク処理などの安全策を使う。
 - DOM 操作は `getAttribute` / `setAttribute` と生の属性値を意識する（ブラウザが `src` をノーマライズすることがあるため）。
 - インターネット接続できない場所でも動作するよう、外部リソースへの依存しないこと。必要なライブラリはローカルに含める。
+- すべてのコーディング作業では、まずSerena MCPを使ってプロジェクト構造を確認し、シンボル検索を実行してください。Serenaにアクセスできない場合を除き、必ず /mcp__serena でオンボーディングを維持。
 
 ## Markdown / テーブルに関する注意点
 - エディタは `contenteditable` ベースの WYSIWYG。貼り付けや自動変換で「表の中に表」が生成されないよう、挿入前に必ず挿入先が `td` / `th` 内かどうかをチェックすること。
 - 具体的には `closest('td, th')` で検査し、セル内なら外側の `table` の直後へ挿入する、あるいはプレーンテキストで挿入する等の回避を行う。
+- テーブルセル内ではブロック要素（コードブロック・水平線・トグル・引用）の挿入を制限している。
+
+## 通知システム / ユーザーフィードバック
+- `alert()` の代わりにトースト通知を使用：
+  - `showWarn()`: 黄色バナー (3秒表示) - 軽微な警告
+  - `showError()`: 赤色バナー (5秒表示) - エラー通知（ファイル操作、PDF出力エラーなど）
+- ブロッキングを避けるため、重要なエラーも非ブロッキングの通知で対応。
+
+## Notionエクスポート形式への対応
+- Notionからエクスポートされたマークダウン（複数行テーブルセルなど）への対応を実装。
+- `preprocessNotionMarkdown()` で前処理し、複数行セルを `<br>` で結合。
+- ファイルを開く・ペースト・`setMarkdown()` の全パスで有効。
 
 ## セキュリティとサニタイズ
 - 外部HTMLを挿入するときは `escapeHtml` 等でテキストをエスケープする。意図的に生HTMLを保持する場合は明記する。
@@ -61,12 +83,13 @@ npm run dev
 1. **CHANGELOG.md を更新**
    - 最新の `## [vX.Y.Z] - YYYY-MM-DD` セクションを追加
    - 改良点・修正点・テスト結果などを記載
+   - わかりやすい言葉で簡素にまとめること（例: "ファイルドロップで既に開いているファイルを切り替えるように修正"）
    - 例：
      ```markdown
-     ## [v0.5.1] - 2026-02-21
-     ### 改良
-     - 外部CDN依存を排除し、全ライブラリをローカルバンドルに変更
-     - GitHub Actions ワークフローのリリース重複問題を修正
+     ## [v0.6.3] - 2026-03-03
+     ### 修正
+     - 目次（TOC）の保存・再読み込み時のリンク機能を修正
+     - `reconstructTocContainers()`: Markdown保存→再読み込み時に失われた構造を復元
      ```
 
 2. **バージョン同期確認** — 上記 3 ファイルを同一バージョンに更新
@@ -88,8 +111,7 @@ npm run dev
 4. **変更をステージ・コミット**
    ```bash
    git add CHANGELOG.md package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json [その他変更ファイル]
-   git commit -m "v0.5.1: [簡潔な説明]"
-   # または commit -m "chore(release): bump version to vX.Y.Z"
+   git commit -m "chore(release): bump version to vX.Y.Z"
    ```
 
 5. **main ブランチにプッシュ**
@@ -120,6 +142,7 @@ npm run dev
 ### 注意点
 - **重複リリース防止**: Build & Release ワークフローは `create_release` ジョブで単一のドラフトリリースを作成し、各プラットフォーム（macOS/Windows/Linux）のビルドジョブはアセットアップロードのみを行います。レースコンディションは発生しません。
 - **オフラインサポート**: v0.5.1 以降、全ライブラリが `src/vendor/` にローカルバンドルされているため、CDN によるダウンロードは不要です。
+- **モジュール分割**: v0.6.0 以降、`main.js` の機能は複数のモジュール（`utils.js`, `nodeUtils.js`, `pasteUtils.js`, `codeHighlight.js`, `mathRender.js`, `mermaidManager.js`, `tocManager.js`, `toggleBlock.js`）に分割されています。
 - **タグ削除の場合**: 誤ってタグやリリースを作成した場合は以下で削除可能です：
   ```bash
   git push --delete origin vX.Y.Z  # リモートタグ削除
@@ -149,16 +172,26 @@ npm run prepare  # husky hooks をセットアップ
 npm run test:lint  # CSS-JS 検証実行
 ```
 
-### C. テスト拡充（08-roundtrip.spec.js）
-- **CSS適用状態の検証**: 修正後のスタイルが保持されるか確認（3テスト）
-- **DOM構造の整合性**: HTML タグペアの対応、要素数の変化がないか確認（3テスト）
-- **複数要素の同時保存**: 複数形式混在コンテンツの保持確認（2テスト）
-- **エラー耐性**: 空のコンテンツ、不正な HTML への耐性確認（2テスト）
-- **合計**: 55テスト全てパス済み
+### C. テスト拡充（E2E テスト全体）
+- 11 個の Playwright テストファイル（計 147 テスト）
+- **基本操作**: 01-basic.spec.js
+- **Markdown 変換**: 02-markdown.spec.js（数式・コード・テーブル等）
+- **ツールバー**: 03-toolbar.spec.js
+- **テーブル操作**: 04-table.spec.js（セル内ブロック要素禁止検証含む）
+- **キーボードショートカット**: 05-shortcuts.spec.js
+- **タブ操作**: 06-tabs.spec.js
+- **エラーハンドリング**: 07-error-handling.spec.js
+- **ラウンドトリップ**: 08-roundtrip.spec.js（Markdown ↔ HTML 往復検証）
+- **推奨事項**: 09-recommended.spec.js
+- **Tauri 拡張アクセス**: 10-tauri-ext-access.spec.js
+- **エディタ追加機能**: 11-editor-extras.spec.js
+- **合計**: 147 テスト全てパス済み
 
 実行コマンド:
 ```bash
-npm run test:e2e -- test/playwright/08-roundtrip.spec.js
+npm run test:e2e                    # 全テスト実行
+npm run test:e2e -- test/playwright/08-roundtrip.spec.js  # ラウンドトリップテストのみ
+npm run test:e2e:headed            # ブラウザ表示で実行
 ```
 
 ---
