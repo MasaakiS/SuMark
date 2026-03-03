@@ -3463,13 +3463,21 @@ function doInsertCodeBlock(lang, savedRange, selectedText) {
         sel.removeAllRanges();
         sel.addRange(codeRange);
 
-        // Apply highlighting first
-        if (lang && typeof hljs !== 'undefined') {
-            highlightCodeBlock(code);
-        }
+        // Temporarily prevent input events during highlighting
+        const wasConverting = isConverting;
+        isConverting = true;
+        
+        try {
+            // Apply highlighting first
+            if (lang && typeof hljs !== 'undefined') {
+                highlightCodeBlock(code);
+            }
 
-        // Then add line numbers (wraps the highlighted HTML)
-        updateLineNumbers(pre);
+            // Then add line numbers
+            updateLineNumbers(pre);
+        } finally {
+            isConverting = wasConverting;
+        }
         
         saveEditorState(); // Save state after inserting code block
     }

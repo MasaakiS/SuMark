@@ -98,10 +98,22 @@ function highlightCodeBlock(codeEl) {
         caretOffset = getCaretCharacterOffsetWithin(codeEl);
     }
 
-    // Remove previous hljs state
+    // Completely reset hljs cache state
     delete codeEl.dataset.highlighted;
     codeEl.removeAttribute('data-highlighted');
+    // Also clear any hljs-specific internal state
+    if (codeEl.__hljs_result) {
+        delete codeEl.__hljs_result;
+    }
+    
     codeEl.textContent = plainText;
+    
+    // Ensure codeEl is properly inserted in DOM before highlighting
+    if (!codeEl.parentElement) {
+        console.warn('[highlightCodeBlock] Code element not in DOM tree');
+        return;
+    }
+    
     hljs.highlightElement(codeEl);
 
     // Restore cursor
