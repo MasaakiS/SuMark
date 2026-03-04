@@ -88,6 +88,23 @@ test.describe('Markdown 自動変換テスト', () => {
             const isChecked = await app.page.locator('#editor input[type="checkbox"]').first().isChecked();
             expect(isChecked).toBe(true);
         });
+
+        test('回帰: ネスト末尾の単独-を含むMarkdown読込で h2 化しない', async ({ app }) => {
+            const markdown = '-   1\n    -   2\n        -   3\n            -';
+
+            await app.page.evaluate((md) => {
+                if (typeof setMarkdown === 'function') {
+                    setMarkdown(md);
+                }
+            }, markdown);
+            await app.helpers.wait(800);
+
+            const h2Count = await app.page.locator('#editor h2').count();
+            expect(h2Count).toBe(0);
+
+            const nestedListCount = await app.page.locator('#editor ul ul ul').count();
+            expect(nestedListCount).toBeGreaterThan(0);
+        });
     });
 
     test.describe('装飾変換', () => {

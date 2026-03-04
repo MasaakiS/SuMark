@@ -225,6 +225,11 @@ function setupCodeWrapButton(pre) {
     // Check if button already exists
     if (pre.querySelector('.code-wrap-btn')) return;
     
+    // Wait for container to be created by addCopyButtonsToCodeBlocks
+    // If container doesn't exist yet, skip (will be called again later)
+    const container = pre.querySelector('.code-copy-container');
+    if (!container) return;
+    
     // Create wrap toggle button
     const button = document.createElement('button');
     button.className = 'code-wrap-btn';
@@ -238,14 +243,6 @@ function setupCodeWrapButton(pre) {
     const code = pre.querySelector('code');
     if (code && code.classList.contains('wrap-enabled')) {
         button.classList.add('wrap-enabled');
-    }
-    
-    // Insert button near copy button or create container
-    let container = pre.querySelector('.code-copy-container');
-    if (!container) {
-        container = document.createElement('div');
-        container.className = 'code-copy-container';
-        pre.appendChild(container);
     }
     
     // Insert wrap button before copy button(s)
