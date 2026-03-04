@@ -32,65 +32,8 @@ function insertTextAtCursor(text) {
 // Global error banner management
 let errorBanner = null;
 let errorBannerTimeout = null;
-// ===============================
-// Editor Zoom (倍率変更) 機能
-// ===============================
-let editorZoom = 1.0;
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 2.0;
-const ZOOM_STEP = 0.1;
-
-function applyEditorZoom() {
-    if (!editor) return;
-    editor.style.transform = `scale(${editorZoom})`;
-    editor.style.transformOrigin = 'top left';
-    // スクロール位置補正（ズーム時に左上基準で）
-    editor.parentElement && (editor.parentElement.scrollLeft = 0);
-}
-
-function changeEditorZoom(delta) {
-    editorZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round((editorZoom + delta) * 100) / 100));
-    applyEditorZoom();
-}
-
-function resetEditorZoom() {
-    editorZoom = 1.0;
-    applyEditorZoom();
-}
-
-// ショートカット・マウスホイール対応
-window.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
-        // Mac配列対応: Ctrl+Shift+; も+になる。Ctrl+= も+として扱う。
-        if (
-            e.code === 'Equal' ||
-            e.key === '+' ||
-            (e.shiftKey && (e.key === ';' || e.key === '=')) ||
-            e.key === '='
-        ) {
-            changeEditorZoom(ZOOM_STEP);
-            e.preventDefault();
-        } else if (e.code === 'Minus' || e.key === '-') {
-            changeEditorZoom(-ZOOM_STEP);
-            e.preventDefault();
-        } else if (e.code === 'Digit0' || e.key === '0') {
-            resetEditorZoom();
-            e.preventDefault();
-        }
-    }
-});
-
-// Ctrl+マウスホイール
-window.addEventListener('wheel', (e) => {
-    if (e.ctrlKey || e.metaKey) {
-        if (e.deltaY < 0) {
-            changeEditorZoom(ZOOM_STEP);
-        } else if (e.deltaY > 0) {
-            changeEditorZoom(-ZOOM_STEP);
-        }
-        e.preventDefault();
-    }
-}, { passive: false });
+// editorZoom, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP, applyEditorZoom, changeEditorZoom, resetEditorZoom
+// → modules/editorZoom.js に移動済み
 let lastErrorTime = 0;
 const ERROR_THROTTLE_MS = 500;  // Prevent rapid-fire error spam
 
@@ -179,18 +122,11 @@ let isConverting = false; // Guard for auto-conversion recursion
 // codeHighlightTimer → codeHighlight.js に移動済み
 let isComposing = false; // IME composition state
 
-// Tab management
-let tabs = [];       // Array of { id, filePath, title, content, isModified, scrollTop }
-let activeTabId = null;
-let tabIdCounter = 0;
+// Tab management → tabManager.js に移動済み
+// let tabs, activeTabId, tabIdCounter は tabManager.js で定義
 
-// ========== Advanced Undo/Redo Stack ==========
-let undoStack = [];        // Array of { html, selection }
-let redoStack = [];        // Array of { html, selection }
-let currentState = null;   // Current editor state
-const MAX_UNDO_STACK = 100; // Maximum undo history size
-let isUndoRedoOperation = false; // Guard to prevent recording during undo/redo
-let saveStateTimer = null; // Debounce timer for saving editor state
+// undoStack, redoStack, currentState, MAX_UNDO_STACK, isUndoRedoOperation, saveStateTimer
+// → modules/undoRedo.js に移動済み
 let inputCharCount = 0; // 連続入力カウンタ
 let isProcessingDrop = false; // Guard to prevent duplicate drop processing
 
@@ -245,7 +181,8 @@ const EMOJI_MAP = {
 let invoke, tauriOpen, tauriSave, readTextFile, writeTextFile, readBinaryFile, writeBinaryFile, createDir, readDir, exists, shellOpen, convertFileSrc;
 
 // DOM
-let editor, currentFileSpan, wordCountSpan, tabList;
+let editor, wordCountSpan;
+// tabList, currentFileSpan → tabManager.js に移動済み
 
 // Turndown instance
 let turndownService;
@@ -340,9 +277,10 @@ function init() {
 
     // DOM elements
     editor = document.getElementById('editor');
-    currentFileSpan = document.getElementById('currentFile');
     wordCountSpan = document.getElementById('wordCount');
-    tabList = document.getElementById('tabList');
+
+    // Initialize tab manager (currentFileSpan, tabList を初期化)
+    initTabManager();
 
     if (!editor) {
         console.error('Editor element not found');
@@ -377,6 +315,8 @@ function init() {
     setupCodeCopyButtons();
     setupImageErrorHandling();
     setupImageMutationObserver(); // Watch for new images added to editor
+    // setupTabKeyboardShortcuts() は呼ばない（N/W は main.js handleKeyDown で処理済み）
+    setupZoomKeyboardShortcuts();
 
     // Initialize Mermaid (may load asynchronously via defer)
     try {
@@ -1309,154 +1249,10 @@ function setupEventListeners() {
 /**
  * Save current editor state to undo stack
  */
-function saveEditorState() {
-    if (isUndoRedoOperation) return; // Don't record during undo/redo
-    if (isConverting) return; // Don't record during auto-conversion
-    
-    const html = editor.innerHTML;
-    const selection = saveSelection();
-    
-    // Check if state actually changed
-    if (currentState && currentState.html === html) {
-        return; // No change, don't save
-    }
-    
-    // Save current state to undo stack
-    if (currentState) {
-        undoStack.push(currentState);
-        // Limit stack size
-        if (undoStack.length > MAX_UNDO_STACK) {
-            undoStack.shift();
-        }
-    }
-    
-    // Update current state
-    currentState = { html, selection };
-    
-    // Clear redo stack when new change is made
-    redoStack = [];
-    
-    console.log('[Undo] State saved. Stack size:', undoStack.length);
-}
-
-/**
- * Debounced version of saveEditorState (waits 500ms after last input)
- */
-function debouncedSaveEditorState() {
-    if (saveStateTimer) clearTimeout(saveStateTimer);
-    saveStateTimer = setTimeout(() => {
-        saveEditorState();
-    }, 500);
-}
+// saveEditorState, debouncedSaveEditorState, performUndo, performRedo
+// → modules/undoRedo.js に移動済み
 
 // saveSelection(), restoreSelection(), getNodePath(), getNodeByPath() は src/nodeUtils.js に移動済み
-
-/**
- * Perform undo operation
- */
-function performUndo() {
-    if (undoStack.length === 0) {
-        console.log('[Undo] Nothing to undo');
-        return;
-    }
-    
-    isUndoRedoOperation = true;
-    
-    // Push current state to redo stack
-    if (currentState) {
-        redoStack.push(currentState);
-    }
-    
-    // Pop from undo stack
-    const previousState = undoStack.pop();
-    currentState = previousState;
-    
-    try {
-        console.log('[Undo] Restoring state:', previousState);
-        if (typeof DOMPurify !== 'undefined') {
-            editor.innerHTML = DOMPurify.sanitize(previousState.html, { ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP });
-        } else {
-            editor.innerHTML = previousState.html;
-        }
-        console.log('[Undo] editor.innerHTML length:', editor.innerHTML.length);
-    } catch (e) {
-        console.error('[Undo] Exception:', e);
-    }
-    
-    // Ensure editor starts with an editable element
-    ensureEditableStart();
-    
-    // Restore selection
-    restoreSelection(previousState.selection);
-    
-    // Re-highlight code blocks
-    highlightAllCodeBlocks();
-    
-    // Update word count
-    updateWordCount();
-    
-    // Mark as modified
-    markModified();
-    
-    isUndoRedoOperation = false;
-    
-    console.log('[Undo] Performed. Undo stack:', undoStack.length, 'Redo stack:', redoStack.length);
-}
-
-/**
- * Perform redo operation
- */
-function performRedo() {
-    if (redoStack.length === 0) {
-        console.log('[Redo] Nothing to redo');
-        return;
-    }
-    
-    isUndoRedoOperation = true;
-    
-    // Push current state to undo stack
-    if (currentState) {
-        undoStack.push(currentState);
-        if (undoStack.length > MAX_UNDO_STACK) {
-            undoStack.shift();
-        }
-    }
-    
-    // Pop from redo stack
-    const nextState = redoStack.pop();
-    currentState = nextState;
-    
-    try {
-        console.log('[Redo] Restoring state:', nextState);
-        if (typeof DOMPurify !== 'undefined') {
-            editor.innerHTML = DOMPurify.sanitize(nextState.html, { ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP });
-        } else {
-            editor.innerHTML = nextState.html;
-        }
-        console.log('[Redo] editor.innerHTML length:', editor.innerHTML.length);
-    } catch (e) {
-        console.error('[Redo] Exception:', e);
-    }
-    
-    // Ensure editor starts with an editable element
-    ensureEditableStart();
-    
-    // Restore selection
-    restoreSelection(nextState.selection);
-    
-    // Re-highlight code blocks
-    highlightAllCodeBlocks();
-    
-    // Update word count
-    updateWordCount();
-    
-    // Mark as modified
-    markModified();
-    
-    isUndoRedoOperation = false;
-    
-    console.log('[Redo] Performed. Undo stack:', undoStack.length, 'Redo stack:', redoStack.length);
-}
 
 // ========== Editor Input Handler ==========
 function onEditorInput() {
@@ -1644,10 +1440,11 @@ function handleBlockAutoConversion() {
         cb.type = 'checkbox';
         cb.checked = checked;
         li.appendChild(cb);
-        li.appendChild(document.createTextNode(' ' + content));
+        const textNode = document.createTextNode(' ' + content);
+        li.appendChild(textNode);
         ul.appendChild(li);
         block.parentNode.replaceChild(ul, block);
-        setCursorToEnd(li);
+        { const r = document.createRange(); r.setStart(textNode, textNode.length); r.collapse(true); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
         return;
     }
     // Task list prefix only (short form): "[] " or "[x] "
@@ -1661,10 +1458,11 @@ function handleBlockAutoConversion() {
         cb.type = 'checkbox';
         cb.checked = checked;
         li.appendChild(cb);
-        li.appendChild(document.createTextNode(' '));
+        const textNode = document.createTextNode(' ');
+        li.appendChild(textNode);
         ul.appendChild(li);
         block.parentNode.replaceChild(ul, block);
-        setCursorToEnd(li);
+        { const r = document.createRange(); r.setStart(textNode, textNode.length); r.collapse(true); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
         return;
     }
 
@@ -2200,6 +1998,22 @@ function handleKeyDown(e) {
     if (mod && e.key.toLowerCase() === 'w') {
         e.preventDefault();
         closeTab(activeTabId);
+        return;
+    }
+
+    // Cmd/Ctrl+Tab: 次のタブへ移動 / Cmd/Ctrl+Shift+Tab: 前のタブへ移動
+    if (mod && e.key === 'Tab') {
+        e.preventDefault();
+        if (tabs.length > 1) {
+            const currentIndex = tabs.findIndex(t => t.id === activeTabId);
+            if (e.shiftKey) {
+                const prevIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+                switchTab(tabs[prevIndex].id);
+            } else {
+                const nextIndex = (currentIndex + 1) % tabs.length;
+                switchTab(tabs[nextIndex].id);
+            }
+        }
         return;
     }
 
@@ -2988,19 +2802,7 @@ async function handlePaste(e) {
 
 // isTabDelimited(), tsvToHtmlTable(), parseHtmlTable() は src/pasteUtils.js に移動済み
 
-function pasteImageFile(file) {
-    const reader = new FileReader();
-    reader.onload = function(event) {
-        const base64 = event.target.result;
-        // Insert image as markdown to ensure clean conversion to relative paths during save
-        const markdownImage = '![貼り付け画像](' + base64 + ')';
-        const html = '<img src="' + base64 + '" alt="貼り付け画像">';
-        editor.focus();
-        document.execCommand('insertHTML', false, html);
-        markModified();
-    };
-    reader.readAsDataURL(file);
-}
+// pasteImageFile() は src/modules/imageManager.js に移動済み
 
 // looksLikeMarkdown() は src/pasteUtils.js に移動済み
 
@@ -3455,80 +3257,7 @@ async function insertImage() {
     }
 }
 
-function insertTable() {
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return;
-    const range = sel.getRangeAt(0);
-    const block = getParentBlock(range.startContainer);
-    const containerEl = range.startContainer.nodeType === Node.ELEMENT_NODE
-        ? range.startContainer
-        : range.startContainer.parentElement;
-    const cell = containerEl ? containerEl.closest('td, th') : null;
-
-    // Prevent nested tables - do not insert table inside table cells
-    if (cell) {
-        return;
-    }
-
-    const table = document.createElement('table');
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-    ['列1', '列2', '列3'].forEach(text => {
-        const th = document.createElement('th');
-        th.textContent = text;
-        headerRow.appendChild(th);
-    });
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    for (let i = 0; i < 2; i++) {
-        const tr = document.createElement('tr');
-        for (let j = 0; j < 3; j++) {
-            const td = document.createElement('td');
-            td.textContent = 'データ';
-            tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
-
-    const afterP = document.createElement('p');
-    afterP.innerHTML = '<br>';
-
-    // Find insertion point - check if inside toggle-content
-    const toggleContent = block ? block.closest('.toggle-content') : null;
-    if (toggleContent) {
-        // Insert inside toggle-content
-        if (block && block.parentNode === toggleContent) {
-            if (block.textContent.trim() === '' && block.tagName === 'P') {
-                toggleContent.replaceChild(table, block);
-            } else {
-                toggleContent.insertBefore(table, block.nextSibling);
-            }
-        } else {
-            toggleContent.appendChild(table);
-        }
-        toggleContent.insertBefore(afterP, table.nextSibling);
-        ensureToggleContentEditable(toggleContent);
-    } else if (block && block !== editor && block.parentNode) {
-        block.parentNode.insertBefore(table, block.nextSibling);
-        block.parentNode.insertBefore(afterP, table.nextSibling);
-    } else {
-        editor.appendChild(table);
-        editor.appendChild(afterP);
-    }
-    // Place cursor in first header cell
-    const firstTh = table.querySelector('th');
-    if (firstTh) {
-        const r = document.createRange();
-        r.selectNodeContents(firstTh);
-        sel.removeAllRanges();
-        sel.addRange(r);
-    }
-    onEditorInput();
-    saveEditorState(); // Save state after inserting table
-}
+// insertTable() は src/modules/tableManager.js に移動済み
 
 // Supported languages for code block dropdown (Highlight.js common languages)
 const CODE_LANGUAGES = [
@@ -4038,90 +3767,7 @@ async function resolveRelativeCsvLinks(markdown, fileDir) {
     return result;
 }
 
-// Parse CSV text and convert to Markdown table
-function csvToMarkdownTable(csvText, title) {
-    const rows = parseCsv(csvText);
-    if (rows.length === 0) return null;
-
-    // Find max columns
-    const maxCols = Math.max(...rows.map(r => r.length));
-    if (maxCols === 0) return null;
-
-    // Normalize rows to have equal columns
-    const normalized = rows.map(row => {
-        while (row.length < maxCols) row.push('');
-        return row;
-    });
-
-    // Build Markdown table
-    let md = '';
-    if (title) {
-        md += '**' + title + '**\n\n';
-    }
-
-    // Header row
-    md += '| ' + normalized[0].map(c => c.replace(/\|/g, '\\|')).join(' | ') + ' |\n';
-    // Separator
-    md += '| ' + normalized[0].map(() => '---').join(' | ') + ' |\n';
-    // Data rows
-    for (let i = 1; i < normalized.length; i++) {
-        md += '| ' + normalized[i].map(c => c.replace(/\|/g, '\\|')).join(' | ') + ' |\n';
-    }
-
-    return md;
-}
-
-// Simple CSV parser that handles quoted fields
-function parseCsv(text) {
-    const rows = [];
-    let current = [];
-    let field = '';
-    let inQuotes = false;
-    const len = text.length;
-
-    for (let i = 0; i < len; i++) {
-        const ch = text[i];
-
-        if (inQuotes) {
-            if (ch === '"') {
-                if (i + 1 < len && text[i + 1] === '"') {
-                    field += '"';
-                    i++; // skip escaped quote
-                } else {
-                    inQuotes = false;
-                }
-            } else {
-                field += ch;
-            }
-        } else {
-            if (ch === '"') {
-                inQuotes = true;
-            } else if (ch === ',') {
-                current.push(field.trim());
-                field = '';
-            } else if (ch === '\n') {
-                current.push(field.trim());
-                if (current.some(c => c !== '')) {
-                    rows.push(current);
-                }
-                current = [];
-                field = '';
-            } else if (ch === '\r') {
-                // skip carriage return
-            } else {
-                field += ch;
-            }
-        }
-    }
-
-    // Last field/row
-    current.push(field.trim());
-    if (current.some(c => c !== '')) {
-        rows.push(current);
-    }
-
-    return rows;
-}
+// csvToMarkdownTable(), parseCsv() は src/modules/tableManager.js に移動済み
 
 async function saveFile() {
     const tab = getActiveTab();
@@ -4339,68 +3985,7 @@ async function resolveImagesForSave(markdown, mdFilePath) {
     return result;
 }
 
-function mimeToExt(mime) {
-    const map = {
-        'image/png': 'png',
-        'image/jpeg': 'jpg',
-        'image/gif': 'gif',
-        'image/bmp': 'bmp',
-        'image/webp': 'webp',
-        'image/svg+xml': 'svg',
-    };
-    return map[mime] || 'png';
-}
-
-function generateImageFileName(alt, counter, ext) {
-    // Use alt text as filename if it looks like a filename with extension
-    if (alt && /^[\w.-]+$/.test(alt) && alt.includes('.')) {
-        const name = alt.replace(/\.[^.]+$/, '');
-        const origExt = alt.split('.').pop();
-        return name + '_' + String(counter).padStart(3, '0') + '.' + origExt;
-    }
-    // Use alt text (sanitized) + counter for uniqueness
-    if (alt && alt.trim()) {
-        const sanitized = alt.trim()
-            .replace(/[^\w\u3000-\u9FFF\u4E00-\u9FFF\uF900-\uFAFF-]/g, '_')
-            .replace(/_+/g, '_')
-            .replace(/^_|_$/g, '')
-            .substring(0, 50);
-        if (sanitized) {
-            return sanitized + '_' + String(counter).padStart(3, '0') + '.' + ext;
-        }
-    }
-    return 'image_' + String(counter).padStart(3, '0') + '.' + ext;
-}
-
-async function saveImageFile(fileDir, imageDir, fileName, base64Data) {
-    const dirPath = fileDir + '/' + imageDir;
-
-    // Create directory if it doesn't exist
-    try {
-        const dirExists = await exists(dirPath);
-        if (!dirExists) {
-            await createDir(dirPath, { recursive: true });
-        }
-    } catch (e) {
-        // Try to create anyway
-        try {
-            await createDir(dirPath, { recursive: true });
-        } catch (e2) {
-            // Directory might already exist, continue
-        }
-    }
-
-    // Decode Base64 to binary
-    const binaryStr = atob(base64Data);
-    const bytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-    }
-
-    // Write file
-    const filePath = dirPath + '/' + fileName;
-    await writeBinaryFile(filePath, bytes);
-}
+// mimeToExt(), generateImageFileName(), saveImageFile() は src/modules/imageManager.js に移動済み
 
 // ========== PDF Export ==========
 async function exportPDF() {
@@ -4653,211 +4238,11 @@ window.onload = function() {
     }
 }
 
-// ========== Tab Management ==========
+// ========== Tab Management → tabManager.js に移動済み ==========
+// createTab, getActiveTab, switchTab, closeTab, renderTabs, markModified, updateStatusBar
+// は tabManager.js で定義
 
-function createTab(filePath, title, htmlContent) {
-    const id = ++tabIdCounter;
-    const tab = {
-        id,
-        filePath: filePath || null,
-        title: title || '無題',
-        content: htmlContent || '<p><br></p>',
-        isModified: false,
-        scrollTop: 0,
-    };
-    tabs.push(tab);
-    switchTab(id);
-    return tab;
-}
-
-function getActiveTab() {
-    return tabs.find(t => t.id === activeTabId) || null;
-}
-
-function switchTab(id) {
-    // Save current tab state
-    const current = getActiveTab();
-    if (current) {
-        current.content = editor.innerHTML;
-        current.scrollTop = editor.parentElement.scrollTop;
-    }
-
-    activeTabId = id;
-    const tab = getActiveTab();
-    if (!tab) return;
-
-    try {
-        console.log('[TabSwitch] Restoring tab content:', tab);
-        if (typeof DOMPurify !== 'undefined') {
-            editor.innerHTML = DOMPurify.sanitize(tab.content, {
-                ALLOWED_TAGS: [
-                    'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-                    'ul', 'ol', 'li', 'dl', 'dt', 'dd',
-                    'blockquote', 'pre', 'code', 'hr',
-                    'br', 'strong', 'em', 'del', 's', 'a', 'img',
-                    'table', 'thead', 'tbody', 'tr', 'th', 'td',
-                    'details', 'summary',
-                    'div', 'span', 'input',
-                ],
-                ALLOWED_ATTR: [
-                    'href', 'title', 'src', 'alt', 'width', 'height',
-                    'class', 'id', 'style',
-                    'type', 'checked', 'disabled',
-                    'open',
-                    'contenteditable',
-                    'data-mermaid-source', 'data-math', 'data-wrap',
-                ],
-                ALLOW_DATA_ATTR: true,
-                ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP
-            });
-        } else {
-            editor.innerHTML = tab.content;
-        }
-        console.log('[TabSwitch] editor.innerHTML length:', editor.innerHTML.length);
-    } catch (e) {
-        console.error('[TabSwitch] Exception:', e);
-    }
-    editor.parentElement.scrollTop = tab.scrollTop;
-    
-    // Ensure editor starts with an editable element
-    ensureEditableStart();
-    
-    // Reset undo/redo stack when switching tabs
-    undoStack = [];
-    redoStack = [];
-    currentState = null;
-    saveEditorState(); // Save initial state for new tab
-
-    // Make checkboxes interactive
-    editor.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-        cb.removeAttribute('disabled');
-    });
-
-    // Highlight code blocks
-    editor.querySelectorAll('pre code').forEach(block => {
-        if (typeof hljs !== 'undefined') hljs.highlightElement(block);
-    });
-
-    // Render Mermaid diagrams
-    renderMermaidBlocks();
-
-    // Render KaTeX math expressions
-    renderMathBlocks();
-
-    // Setup toggle blocks (open, contenteditable, toggle-content wrapper, delete buttons)
-    setupToggleBlocks();
-
-    // Reconstruct TOC containers (if loaded from markdown), restore heading IDs, add delete buttons
-    reconstructTocContainers();
-    restoreTocHeadingIds();
-    setupTocDeleteButtons();
-
-    // Add line numbers to code blocks
-    updateAllLineNumbers();
-    
-    // Restore code wrap states
-    restoreCodeWrapStates();
-
-    // Setup image error handling
-    setupImageErrorHandling();
-
-    renderTabs();
-    updateWordCount();
-    updateStatusBar();
-}
-
-function closeTab(id) {
-    const tabIndex = tabs.findIndex(t => t.id === id);
-    if (tabIndex === -1) return;
-
-    const tab = tabs[tabIndex];
-
-    // Ask to save if modified
-    if (tab.isModified) {
-        const ok = confirm('"' + tab.title + '" は保存されていません。閉じますか？');
-        if (!ok) return;
-    }
-
-    tabs.splice(tabIndex, 1);
-
-    if (tabs.length === 0) {
-        // No tabs left: create a new empty one
-        createTab(null, '無題', '<p><br></p>');
-    } else if (id === activeTabId) {
-        // Switch to nearest tab
-        const newIndex = Math.min(tabIndex, tabs.length - 1);
-        switchTab(tabs[newIndex].id);
-    } else {
-        renderTabs();
-    }
-}
-
-function renderTabs() {
-    if (!tabList) return;
-    tabList.innerHTML = '';
-
-    tabs.forEach(tab => {
-        const el = document.createElement('div');
-        el.className = 'tab-item' + (tab.id === activeTabId ? ' active' : '');
-        el.title = tab.filePath || tab.title;
-
-        const titleSpan = document.createElement('span');
-        titleSpan.className = 'tab-title';
-        titleSpan.textContent = tab.title;
-        el.appendChild(titleSpan);
-
-        if (tab.isModified) {
-            const dot = document.createElement('span');
-            dot.className = 'tab-modified';
-            dot.textContent = '●';
-            el.appendChild(dot);
-        }
-
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'tab-close';
-        closeBtn.textContent = '×';
-        closeBtn.addEventListener('mousedown', e => {
-            e.preventDefault();
-            e.stopPropagation();
-        });
-        closeBtn.addEventListener('click', e => {
-            e.stopPropagation();
-            closeTab(tab.id);
-        });
-        el.appendChild(closeBtn);
-
-        el.addEventListener('mousedown', e => e.preventDefault());
-        el.addEventListener('click', () => {
-            if (tab.id !== activeTabId) switchTab(tab.id);
-        });
-
-        tabList.appendChild(el);
-    });
-}
-
-function markModified() {
-    const tab = getActiveTab();
-    if (tab && !tab.isModified) {
-        tab.isModified = true;
-        renderTabs();
-    }
-}
-
-function updateStatusBar() {
-    const tab = getActiveTab();
-    if (!tab) return;
-
-    // Show full path in status bar
-    if (tab.filePath) {
-        currentFileSpan.textContent = tab.filePath;
-        currentFileSpan.title = tab.filePath;
-    } else {
-        currentFileSpan.textContent = '無題';
-        currentFileSpan.title = '';
-    }
-}
-
-// ========== Date/Time Insertion ==========
+// ========== Date/Time Insertion =========
 
 async function insertDate() {
     try {
@@ -4912,17 +4297,7 @@ function getParentBlock(node) {
     return null;
 }
 
-// Check if the current selection or node is inside a table cell
-function isInsideTableCell(node) {
-    let current = node;
-    while (current && current !== editor) {
-        if (current.tagName === 'TD' || current.tagName === 'TH') {
-            return true;
-        }
-        current = current.parentNode;
-    }
-    return false;
-}
+// isInsideTableCell() は src/modules/tableManager.js に移動済み
 
 function setCursorTo(element) {
     const sel = window.getSelection();
@@ -4953,176 +4328,8 @@ function updateWordCount() {
     }
 }
 
-// ========== Table Context Menu ==========
-let tableContextMenu = null;
-let activeTableCell = null;
-
-function setupTableContextMenu() {
-    // Create context menu element
-    tableContextMenu = document.createElement('div');
-    tableContextMenu.id = 'tableContextMenu';
-    tableContextMenu.className = 'table-context-menu';
-    tableContextMenu.innerHTML = `
-        <button data-action="addRowAbove">↑ 上に行を追加</button>
-        <button data-action="addRowBelow">↓ 下に行を追加</button>
-        <div class="ctx-divider"></div>
-        <button data-action="addColLeft">← 左に列を追加</button>
-        <button data-action="addColRight">→ 右に列を追加</button>
-        <div class="ctx-divider"></div>
-        <button data-action="deleteRow" class="ctx-danger">行を削除</button>
-        <button data-action="deleteCol" class="ctx-danger">列を削除</button>
-    `;
-    tableContextMenu.style.display = 'none';
-    document.body.appendChild(tableContextMenu);
-
-    // Prevent menu from stealing editor focus
-    tableContextMenu.addEventListener('mousedown', e => {
-        e.preventDefault();
-        e.stopPropagation();
-    });
-    tableContextMenu.addEventListener('click', e => {
-        const btn = e.target.closest('button[data-action]');
-        if (!btn) return;
-        handleTableAction(btn.dataset.action);
-        hideTableContextMenu();
-    });
-
-    // Show on right-click inside table cell
-    editor.addEventListener('contextmenu', e => {
-        const cell = e.target.closest('td, th');
-        if (cell && editor.contains(cell)) {
-            e.preventDefault();
-            activeTableCell = cell;
-            showTableContextMenu(e.clientX, e.clientY);
-        } else {
-            hideTableContextMenu();
-        }
-    });
-
-    // Hide on click/key elsewhere
-    document.addEventListener('click', e => {
-        if (tableContextMenu && !tableContextMenu.contains(e.target)) {
-            hideTableContextMenu();
-        }
-    });
-    document.addEventListener('keydown', () => hideTableContextMenu());
-}
-
-function showTableContextMenu(x, y) {
-    tableContextMenu.style.display = 'block';
-    tableContextMenu.style.left = x + 'px';
-    tableContextMenu.style.top = y + 'px';
-    // Keep within viewport
-    requestAnimationFrame(() => {
-        const rect = tableContextMenu.getBoundingClientRect();
-        if (rect.right > window.innerWidth) {
-            tableContextMenu.style.left = (window.innerWidth - rect.width - 8) + 'px';
-        }
-        if (rect.bottom > window.innerHeight) {
-            tableContextMenu.style.top = (window.innerHeight - rect.height - 8) + 'px';
-        }
-    });
-}
-
-function hideTableContextMenu() {
-    if (tableContextMenu) tableContextMenu.style.display = 'none';
-    activeTableCell = null;
-}
-
-function handleTableAction(action) {
-    if (!activeTableCell) return;
-
-    const row = activeTableCell.closest('tr');
-    const table = activeTableCell.closest('table');
-    if (!row || !table) return;
-
-    const cellIndex = Array.from(row.children).indexOf(activeTableCell);
-    const allRows = table.querySelectorAll('tr');
-    const colCount = allRows[0] ? allRows[0].children.length : 0;
-    const isHeader = activeTableCell.tagName === 'TH' || (row.parentNode && row.parentNode.tagName === 'THEAD');
-
-    switch (action) {
-        case 'addRowAbove': {
-            const newRow = createTableRow(colCount, 'td');
-            if (isHeader) {
-                let tbody = table.querySelector('tbody');
-                if (!tbody) { tbody = document.createElement('tbody'); table.appendChild(tbody); }
-                tbody.insertBefore(newRow, tbody.firstChild);
-            } else {
-                row.parentNode.insertBefore(newRow, row);
-            }
-            break;
-        }
-        case 'addRowBelow': {
-            const newRow = createTableRow(colCount, 'td');
-            if (isHeader) {
-                let tbody = table.querySelector('tbody');
-                if (!tbody) { tbody = document.createElement('tbody'); table.appendChild(tbody); }
-                tbody.insertBefore(newRow, tbody.firstChild);
-            } else {
-                row.parentNode.insertBefore(newRow, row.nextSibling);
-            }
-            break;
-        }
-        case 'addColLeft': {
-            allRows.forEach(r => {
-                const tag = r.parentNode && r.parentNode.tagName === 'THEAD' ? 'th' : 'td';
-                const newCell = document.createElement(tag);
-                newCell.innerHTML = '&nbsp;';
-                r.insertBefore(newCell, r.children[cellIndex]);
-            });
-            break;
-        }
-        case 'addColRight': {
-            allRows.forEach(r => {
-                const tag = r.parentNode && r.parentNode.tagName === 'THEAD' ? 'th' : 'td';
-                const newCell = document.createElement(tag);
-                newCell.innerHTML = '&nbsp;';
-                const ref = r.children[cellIndex];
-                r.insertBefore(newCell, ref ? ref.nextSibling : null);
-            });
-            break;
-        }
-        case 'deleteRow': {
-            if (isHeader) break; // Don't delete header row
-            const tbody = row.parentNode;
-            row.remove();
-            if (tbody.tagName === 'TBODY' && tbody.children.length === 0) {
-                const thead = table.querySelector('thead');
-                if (!thead || thead.children.length === 0) {
-                    const p = document.createElement('p');
-                    p.innerHTML = '<br>';
-                    table.parentNode.replaceChild(p, table);
-                }
-            }
-            break;
-        }
-        case 'deleteCol': {
-            if (colCount <= 1) {
-                const p = document.createElement('p');
-                p.innerHTML = '<br>';
-                table.parentNode.replaceChild(p, table);
-            } else {
-                allRows.forEach(r => {
-                    if (r.children[cellIndex]) r.children[cellIndex].remove();
-                });
-            }
-            break;
-        }
-    }
-
-    markModified();
-}
-
-function createTableRow(colCount, tag) {
-    const tr = document.createElement('tr');
-    for (let i = 0; i < colCount; i++) {
-        const cell = document.createElement(tag);
-        cell.innerHTML = '&nbsp;';
-        tr.appendChild(cell);
-    }
-    return tr;
-}
+// setupTableContextMenu(), showTableContextMenu(), hideTableContextMenu(),
+// handleTableAction(), createTableRow() は src/modules/tableManager.js に移動済み
 
 // renderMathBlocks() は src/mathRender.js に移動済み
 
@@ -5136,7 +4343,6 @@ function createTableRow(colCount, tag) {
 
 // setupTocDeleteButtons(), insertTOC() は src/tocManager.js に移動済み
 
-// ========== Image Resize ==========
 // ========== Code Block Copy Button ==========
 function setupCodeCopyButtons() {
     // Add copy buttons to existing code blocks
@@ -5269,287 +4475,10 @@ function addCopyButtonsToCodeBlocks() {
     });
 }
 
-// ========== Image Error Handling ==========
-let imageMutationObserver = null;
+// setupImageMutationObserver(), handleSingleImage(), setupImageErrorHandling()
+// は src/modules/imageManager.js に移動済み
 
-function setupImageMutationObserver() {
-    // Create a MutationObserver to watch for new images added to the editor
-    if (imageMutationObserver) {
-        imageMutationObserver.disconnect();
-    }
-    
-    imageMutationObserver = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            // Check for added nodes
-            mutation.addedNodes.forEach((node) => {
-                if (node.nodeType === Node.ELEMENT_NODE) {
-                    // Check if the node itself is an image
-                    if (node.tagName === 'IMG') {
-                        handleSingleImage(node);
-                    }
-                    // Check for images within the added node
-                    else if (node.querySelectorAll) {
-                        const images = node.querySelectorAll('img');
-                        if (images.length > 0) {
-                            images.forEach(img => handleSingleImage(img));
-                        }
-                    }
-                }
-            });
-        });
-    });
-    
-    // Start observing the editor
-    imageMutationObserver.observe(editor, {
-        childList: true,
-        subtree: true
-    });
-}
-
-function handleSingleImage(img) {
-    // Skip if already processed
-    if (img.dataset.errorHandled) {
-        return;
-    }
-    img.dataset.errorHandled = 'true';
-    
-    // Function to handle error and display alt text
-    const handleImageError = function() {
-        // Skip if already showing alt text or if image loaded successfully
-        if (this.classList.contains('img-error-processed')) {
-            return;
-        }
-        if (this.complete && this.naturalWidth > 0) {
-            return; // Image loaded successfully
-        }
-        
-        this.classList.add('img-error-processed');
-        
-        const alt = this.getAttribute('alt') || '画像を読み込めません';
-        const src = this.getAttribute('src') || '';
-        
-        // Create a container to display alt text
-        const container = document.createElement('div');
-        container.className = 'img-error-container';
-        container.setAttribute('contenteditable', 'false');
-        
-        const altText = document.createElement('div');
-        altText.className = 'img-error-text';
-        altText.textContent = alt;
-        
-        const srcText = document.createElement('div');
-        srcText.className = 'img-error-src';
-        srcText.textContent = '(画像パス: ' + src + ')';
-        
-        container.appendChild(altText);
-        container.appendChild(srcText);
-        
-        // Replace image with error container
-        if (this.parentNode) {
-            this.parentNode.replaceChild(container, this);
-            markModified();
-        }
-    };
-    
-    // Add error event listener
-    img.addEventListener('error', handleImageError);
-    
-    // Also add load event to mark successful loads
-    img.addEventListener('load', function() {
-        this.classList.add('img-loaded-successfully');
-    });
-    
-    // Check current state
-    if (img.complete) {
-        // Image has finished loading (or failed)
-        if (img.naturalWidth === 0 && img.naturalHeight === 0) {
-            // Failed to load
-            handleImageError.call(img);
-        }
-    }
-}
-
-function setupImageErrorHandling() {
-    // Handle image load errors and display alt text
-    const images = editor.querySelectorAll('img');
-    
-    images.forEach((img) => {
-        handleSingleImage(img);
-    });
-}
-
-// ========== Image Resize ==========
-function setupImageResize() {
-    let activeImage = null;
-    let resizeHandle = document.createElement('div');
-    resizeHandle.className = 'image-resize-handle';
-    resizeHandle.style.display = 'none';
-    resizeHandle.innerHTML = '<div class="resize-grip"></div>';
-    document.body.appendChild(resizeHandle);
-
-    // Image copy button
-    let copyBtn = document.createElement('button');
-    copyBtn.className = 'image-copy-btn';
-    copyBtn.textContent = '📋 Copy';
-    copyBtn.title = '画像をコピー';
-    document.body.appendChild(copyBtn);
-
-    copyBtn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
-    copyBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!activeImage) return;
-        try {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            // Use natural dimensions for best quality
-            canvas.width = activeImage.naturalWidth || activeImage.width;
-            canvas.height = activeImage.naturalHeight || activeImage.height;
-            ctx.drawImage(activeImage, 0, 0, canvas.width, canvas.height);
-            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-            if (blob) {
-                // --- Hybrid clipboard logic start ---
-                // 1. Try Tauri native clipboard API if available
-                if (window.__TAURI__ && window.__TAURI__.tauri && window.__TAURI__.tauri.invoke) {
-                    try {
-                        // Convert blob to base64
-                        const base64 = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onloadend = () => resolve(reader.result.split(',')[1]);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(blob);
-                        });
-                        await window.__TAURI__.tauri.invoke('copy_image_to_clipboard', { imageData: base64 });
-                        showCopySuccess('(Tauri)');
-                        return;
-                    } catch (tauriErr) {
-                        console.warn('Tauri clipboard failed, fallback to Web API:', tauriErr);
-                    }
-                }
-                // 2. Try Web Clipboard API
-                try {
-                    await navigator.clipboard.write([
-                        new ClipboardItem({ 'image/png': blob })
-                    ]);
-                    showCopySuccess();
-                    return;
-                } catch (clipboardErr) {
-                    console.warn('Clipboard API image write failed, trying text fallback:', clipboardErr);
-                }
-                // 3. Fallback: copy image file name to clipboard as text
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    const imgName = activeImage.alt || activeImage.src.split('/').pop() || '画像';
-                    await navigator.clipboard.writeText(imgName);
-                    showCopySuccess('(ファイル名をコピー)');
-                } else {
-                    showCopyError('クリップボード API がサポートされていません');
-                }
-                // --- Hybrid clipboard logic end ---
-            }
-        } catch (err) {
-            console.error('Image copy failed:', err);
-            showCopyError();
-        }
-
-        function showCopySuccess(suffix = '') {
-            copyBtn.textContent = '✅ Copied!' + (suffix ? ' ' + suffix : '');
-            copyBtn.classList.add('copied');
-            setTimeout(() => {
-                copyBtn.textContent = '📋 Copy';
-                copyBtn.classList.remove('copied');
-            }, 2500);
-        }
-
-        function showCopyError(msg = 'Failed') {
-            copyBtn.textContent = '❌ ' + msg;
-            copyBtn.classList.add('copied');
-            setTimeout(() => {
-                copyBtn.textContent = '📋 Copy';
-                copyBtn.classList.remove('copied');
-            }, 3000);
-        }
-    });
-
-    editor.addEventListener('click', (e) => {
-        if (e.target.tagName === 'IMG') {
-            e.preventDefault();
-            selectImage(e.target);
-        } else if (!e.target.closest('.image-resize-handle') && !e.target.closest('.image-copy-btn')) {
-            deselectImage();
-        }
-    });
-
-    // Add double-click handler to expand image
-    editor.addEventListener('dblclick', (e) => {
-        if (e.target.tagName === 'IMG') {
-            e.preventDefault();
-            openImageViewer(e.target);
-        }
-    });
-
-    function selectImage(img) {
-        deselectImage();
-        activeImage = img;
-        img.classList.add('image-selected');
-        positionHandle();
-        resizeHandle.style.display = 'block';
-        copyBtn.style.display = 'block';
-    }
-
-    function deselectImage() {
-        if (activeImage) {
-            activeImage.classList.remove('image-selected');
-        }
-        activeImage = null;
-        resizeHandle.style.display = 'none';
-        copyBtn.style.display = 'none';
-    }
-
-    function positionHandle() {
-        if (!activeImage) return;
-        const rect = activeImage.getBoundingClientRect();
-        resizeHandle.style.left = (rect.right - 12) + 'px';
-        resizeHandle.style.top = (rect.bottom - 12) + 'px';
-        // Position copy button at top-right of image
-        copyBtn.style.left = (rect.right - copyBtn.offsetWidth - 4) + 'px';
-        copyBtn.style.top = (rect.top + 4) + 'px';
-    }
-
-    resizeHandle.addEventListener('mousedown', (e) => {
-        if (!activeImage) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const startX = e.clientX;
-        const startWidth = activeImage.offsetWidth;
-
-        function onMouseMove(ev) {
-            const dx = ev.clientX - startX;
-            const newWidth = Math.max(50, startWidth + dx);
-            activeImage.style.width = newWidth + 'px';
-            activeImage.style.height = 'auto';
-            positionHandle();
-        }
-
-        function onMouseUp() {
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
-            markModified();
-        }
-
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-    });
-
-    const editorContainer = editor.parentElement;
-    if (editorContainer) {
-        editorContainer.addEventListener('scroll', () => {
-            if (activeImage) positionHandle();
-        });
-    }
-    window.addEventListener('resize', () => {
-        if (activeImage) positionHandle();
-    });
-}
+// setupImageResize() は src/modules/imageManager.js に移動済み
 
 // ========== Emoji Picker ==========
 let emojiPickerEl = null;
@@ -5636,69 +4565,8 @@ function showEmojiPicker() {
     setTimeout(() => document.addEventListener('click', onOutsideClick), 0);
 }
 
-// ========== Image Viewer ==========
-let imageViewerModal = null;
-
-function setupImageViewer() {
-    // Create modal element
-    imageViewerModal = document.createElement('div');
-    imageViewerModal.className = 'image-viewer-modal';
-    imageViewerModal.innerHTML = `
-        <div class="image-viewer-container">
-            <button class="image-viewer-close" title="閉じる (Esc)">✕</button>
-            <img class="image-viewer-img" src="" alt="">
-            <div class="image-viewer-info"></div>
-        </div>
-    `;
-    document.body.appendChild(imageViewerModal);
-
-    // Close button
-    const closeBtn = imageViewerModal.querySelector('.image-viewer-close');
-    closeBtn.addEventListener('click', closeImageViewer);
-
-    // Modal background click to close
-    imageViewerModal.addEventListener('click', (e) => {
-        if (e.target === imageViewerModal) {
-            closeImageViewer();
-        }
-    });
-
-    // Escape key to close
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && imageViewerModal && imageViewerModal.classList.contains('active')) {
-            closeImageViewer();
-        }
-    });
-}
-
-function openImageViewer(img) {
-    if (!imageViewerModal) return;
-
-    const viewerImg = imageViewerModal.querySelector('.image-viewer-img');
-    const infoDiv = imageViewerModal.querySelector('.image-viewer-info');
-
-    viewerImg.src = img.src;
-    viewerImg.alt = img.alt || '画像';
-    
-    // Display image info (alt text or path)
-    if (img.alt) {
-        infoDiv.textContent = 'Alt: ' + img.alt;
-    } else if (img.src) {
-        const fileName = img.src.split('/').pop();
-        infoDiv.textContent = fileName || img.src;
-    } else {
-        infoDiv.textContent = '';
-    }
-
-    imageViewerModal.classList.add('active');
-    document.body.style.overflow = 'hidden';  // Prevent scrolling
-}
-
-function closeImageViewer() {
-    if (!imageViewerModal) return;
-    imageViewerModal.classList.remove('active');
-    document.body.style.overflow = '';  // Restore scrolling
-}
+// setupImageViewer(), openImageViewer(), closeImageViewer()
+// は src/modules/imageManager.js に移動済み
 
 // ========== Bootstrap ==========
 console.log('Script loaded, readyState:', document.readyState);
