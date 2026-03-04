@@ -2,6 +2,14 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v0.6.4] - 2026-03-05
+### 改良
+- **Week 1-2 緊急対応の実装**
+  - 重複ファイル削除：`mermaidManager 2.js`, `tocManager 2.js`, `toggleBlock 2.js` を削除
+  - E2E テスト安定化：`resetGlobalState()` 関数を追加し、グローバル状態を確実にリセット（複数テスト連続実行時のメモリリーク防止）
+  - utils.js の充実：共通ユーティリティ関数を追加（debounce, throttle, normalizeFilePath, resolveRelativePath, deepClone 等 10 関数）
+- 全 147 E2E テスト通過
+
 ## [v0.6.3] - 2026-03-03
 ### 修正
 - 目次（TOC）の保存・再読み込み時のリンク機能を修正

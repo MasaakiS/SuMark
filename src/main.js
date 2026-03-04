@@ -192,6 +192,7 @@ const MAX_UNDO_STACK = 100; // Maximum undo history size
 let isUndoRedoOperation = false; // Guard to prevent recording during undo/redo
 let saveStateTimer = null; // Debounce timer for saving editor state
 let inputCharCount = 0; // 連続入力カウンタ
+let isProcessingDrop = false; // Guard to prevent duplicate drop processing
 
 // ========== Emoji Map ==========
 const EMOJI_MAP = {
@@ -260,6 +261,25 @@ function testConvertFileSrc(path) {
     console.log('[TEST convertFileSrc] input path:', path);
     console.log('[TEST convertFileSrc] output asset URL:', assetUrl);
     return assetUrl;
+}
+
+/**
+ * グローバル状態をリセット（ページロード後など）
+ * 複数テスト連続実行時のメモリリーク・グローバル状態競合を防止
+ */
+function resetGlobalState() {
+    // Mermaid レンダリングのリトライカウンターをリセット
+    if (typeof renderMermaidBlocks !== 'undefined' && renderMermaidBlocks.retryCount) {
+        renderMermaidBlocks.retryCount = 0;
+    }
+    
+    // IME 合成フラグをリセット
+    isComposing = false;
+    
+    // 自動変換フラグをリセット
+    isConverting = false;
+    
+    console.log('[resetGlobalState] グローバル状態をリセット完了');
 }
 
 // ========== Initialization ==========
@@ -801,7 +821,7 @@ function _normalizeNotionTable(lines) {
 function setMarkdown(md) {
         console.log('[setMarkdown] called, md.length:', md.length);
     // リセット: グローバル状態をクリア（複数ページロード時のメモリリーク防止）
-    renderMermaidBlocks.retryCount = 0;
+    resetGlobalState();
     
     if (typeof marked === 'undefined') {
         editor.textContent = md;
@@ -1112,6 +1132,173 @@ function setupEventListeners() {
     } else {
         console.log('[DEBUG] Tauri event API not available - file drop disabled');
     }
+    
+    // ========== Unified File Drop Handling ==========
+    // fileDropEnabled=false in tauri.conf.json → HTML5 Drag & Drop API handles all drops
+    // This supports: Finder drops (dataTransfer.files), VSCode Explorer drops (text/uri-list)
+    const setupUnifiedDropHandler = () => {
+        console.log('[DEBUG] Setting up unified drop handlers (fileDropEnabled=false)...');
+
+        // Helper: check if drag contains files or file URIs
+        const isFileDrag = (e) => {
+            const types = Array.from(e.dataTransfer?.types || []);
+            return types.includes('Files') || types.includes('text/uri-list');
+        };
+
+        // Helper: extract file paths from text/uri-list
+        const parseUriList = (uriListStr) => {
+            return uriListStr
+                .split(/\r?\n/)
+                .filter(line => line.trim() && !line.startsWith('#'))
+                .map(line => {
+                    try {
+                        const url = new URL(line.trim());
+                        if (url.protocol === 'file:') {
+                            return decodeURIComponent(url.pathname);
+                        }
+                    } catch (e) {}
+                    return null;
+                })
+                .filter(Boolean);
+        };
+
+        // Window dragover: accept file drags, prevent browser navigation
+        window.addEventListener('dragover', (e) => {
+            if (isFileDrag(e)) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                document.body.style.outline = '3px dashed #007bff';
+            }
+        });
+
+        window.addEventListener('dragleave', (e) => {
+            if (e.clientX === 0 && e.clientY === 0) {
+                document.body.style.outline = '';
+            }
+        });
+
+        // Window drop: handle file drops from any source
+        window.addEventListener('drop', async (e) => {
+            document.body.style.outline = '';
+
+            // Only handle file drops; let text drops through for contenteditable
+            if (!isFileDrag(e)) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            console.log('[DEBUG] ===== DROP EVENT =====');
+            console.log('[DEBUG] dataTransfer.types:', Array.from(e.dataTransfer.types || []));
+            console.log('[DEBUG] dataTransfer.files.length:', e.dataTransfer.files?.length);
+
+            if (isProcessingDrop) {
+                console.log('[DEBUG] Drop already in progress, skipping');
+                return;
+            }
+            isProcessingDrop = true;
+
+            try {
+                let handled = false;
+
+                // 1. Try text/uri-list first (VSCode Explorer, possibly Finder on macOS)
+                const uriList = e.dataTransfer.getData('text/uri-list');
+                if (uriList) {
+                    console.log('[DEBUG] text/uri-list:', uriList);
+                    const filePaths = parseUriList(uriList);
+                    for (const filePath of filePaths) {
+                        const ext = filePath.split('.').pop().toLowerCase();
+                        if (['md', 'markdown', 'txt'].includes(ext)) {
+                            console.log('[DEBUG] Opening from URI:', filePath);
+                            await openFileFromPath(filePath);
+                            handled = true;
+                        } else {
+                            console.log('[INFO] Skipping unsupported file:', filePath);
+                        }
+                    }
+                }
+
+                if (handled) return;
+
+                // 2. Try text/plain for file:// URIs (fallback)
+                const plainText = e.dataTransfer.getData('text/plain');
+                if (plainText && plainText.startsWith('file://')) {
+                    console.log('[DEBUG] text/plain has file URI:', plainText);
+                    const filePaths = parseUriList(plainText);
+                    for (const filePath of filePaths) {
+                        const ext = filePath.split('.').pop().toLowerCase();
+                        if (['md', 'markdown', 'txt'].includes(ext)) {
+                            await openFileFromPath(filePath);
+                            handled = true;
+                        }
+                    }
+                }
+
+                if (handled) return;
+
+                // 3. Try dataTransfer.files (Finder drops)
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    console.log('[DEBUG] Processing', e.dataTransfer.files.length, 'files from dataTransfer.files');
+                    for (const file of e.dataTransfer.files) {
+                        console.log('[DEBUG] File:', file.name, 'type:', file.type, 'size:', file.size, 'path:', file.path || 'N/A');
+                        await processDroppedFile(file);
+                    }
+                    return;
+                }
+
+                // 4. Try dataTransfer.items
+                if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+                    console.log('[DEBUG] Processing items, count:', e.dataTransfer.items.length);
+                    for (let i = 0; i < e.dataTransfer.items.length; i++) {
+                        const item = e.dataTransfer.items[i];
+                        console.log('[DEBUG] Item', i, '- kind:', item.kind, 'type:', item.type);
+                        if (item.kind === 'file') {
+                            const file = item.getAsFile();
+                            if (file) await processDroppedFile(file);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('[ERROR] Drop handler:', err);
+            } finally {
+                isProcessingDrop = false;
+            }
+        });
+
+        console.log('[DEBUG] Unified drop handlers registered');
+    };
+
+    // Helper: process a dropped File object
+    async function processDroppedFile(file) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        console.log('[DEBUG] processDroppedFile:', file.name, 'ext:', ext);
+
+        if (!['md', 'markdown', 'txt'].includes(ext)) {
+            console.log('[INFO] Skipping unsupported file type:', ext);
+            return;
+        }
+
+        try {
+            // Try file.path (available in some runtimes like Electron)
+            if (file.path) {
+                console.log('[DEBUG] Using file.path:', file.path);
+                await openFileFromPath(file.path);
+            } else {
+                // Read content directly via File API
+                console.log('[DEBUG] Reading file via text()...');
+                const text = await file.text();
+                console.log('[DEBUG] Loaded', text.length, 'chars from', file.name);
+                // Preprocess and create a new tab (same logic as openFileFromPath)
+                const processed = preprocessNotionMarkdown(text);
+                const html = (typeof marked !== 'undefined') ? marked.parse(processed) : processed;
+                createTab(null, file.name, html);
+            }
+        } catch (err) {
+            console.error('[ERROR] processDroppedFile:', err);
+            showError('ファイルを開けませんでした: ' + file.name);
+        }
+    }
+
+    setupUnifiedDropHandler();
     
     // Initialize undo stack with initial state
     saveEditorState();
@@ -4954,10 +5141,23 @@ function createTableRow(colCount, tag) {
 function setupCodeCopyButtons() {
     // Add copy buttons to existing code blocks
     addCopyButtonsToCodeBlocks();
+    
+    // Add wrap buttons after copy buttons are created
+    editor.querySelectorAll('pre').forEach(pre => {
+        if (typeof setupCodeWrapButton === 'function') {
+            setupCodeWrapButton(pre);
+        }
+    });
 
     // Watch for new code blocks being added and update line numbers
     const observer = new MutationObserver(() => {
         addCopyButtonsToCodeBlocks();
+        // Add wrap buttons to newly added code blocks
+        editor.querySelectorAll('pre').forEach(pre => {
+            if (typeof setupCodeWrapButton === 'function') {
+                setupCodeWrapButton(pre);
+            }
+        });
         updateAllLineNumbers();
     });
     observer.observe(editor, { childList: true, subtree: true });

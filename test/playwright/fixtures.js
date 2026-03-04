@@ -65,8 +65,8 @@ const test = base.extend({
         
         // グローバル状態をリセット（複数テスト連続実行時のメモリリーク防止）
         await page.evaluate(() => {
-            if (typeof renderMermaidBlocks !== 'undefined') {
-                renderMermaidBlocks.retryCount = 0;
+            if (typeof resetGlobalState === 'function') {
+                resetGlobalState();
             }
         });
         
