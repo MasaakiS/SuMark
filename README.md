@@ -189,19 +189,42 @@ npm run build
 
 ```
 .
-├── src/                    # フロントエンド
-│   ├── index.html         # メインHTML
-│   ├── styles.css         # スタイルシート
-│   └── main.js            # JavaScriptロジック
-├── src-tauri/             # Rustバックエンド
-│   ├── src/
-│   │   └── main.rs       # Tauriメインプロセス
-│   ├── Cargo.toml        # Rust依存関係
-│   ├── build.rs          # ビルドスクリプト
-│   └── tauri.conf.json   # Tauri設定
-├── package.json          # Node.js依存関係
-└── README.md             # このファイル
+├── src/                        # フロントエンド
+│   ├── index.html             # メインHTML
+│   ├── main.js                # エントリーポイント（初期化・イベント）
+│   ├── utils.js               # ユーティリティ関数
+│   ├── nodeUtils.js           # DOM ノード操作
+│   ├── pasteUtils.js          # ペースト処理
+│   ├── codeHighlight.js       # コードブロックハイライト
+│   ├── mathRender.js          # KaTeX 数式レンダリング
+│   ├── mermaidManager.js      # Mermaid 図表管理
+│   ├── tocManager.js          # 目次生成・管理
+│   ├── toggleBlock.js         # トグルブロック管理
+│   ├── autoConvert.js         # 自動変換処理
+│   ├── markdown.js            # Markdown 変換ロジック
+│   ├── keyboard.js            # キーボードイベント
+│   ├── styles/                # スタイルシート（7ファイルに分割）
+│   │   ├── base.css           # リセット・スクロールバー・ユーティリティ
+│   │   ├── layout.css         # ツールバー・タブ・ステータスバー
+│   │   ├── editor.css         # エディタ本体
+│   │   ├── markdown.css       # Markdown レンダリング
+│   │   ├── components.css     # Mermaid・TOC・画像ビューア等
+│   │   ├── dialogs.css        # モーダル・コンテキストメニュー
+│   │   └── print.css          # 印刷/PDF 用
+│   └── vendor/                # サードパーティライブラリ
+├── src-tauri/                 # Rustバックエンド
+│   ├── src/main.rs            # Tauriメインプロセス
+│   ├── Cargo.toml             # Rust依存関係
+│   ├── build.rs               # ビルドスクリプト
+│   └── tauri.conf.json        # Tauri設定
+├── docs/                      # 設計・実装ドキュメント
+├── test/                      # テスト（Playwright E2E）
+├── package.json               # Node.js依存関係
+├── CHANGELOG.md               # バージョン履歴
+└── README.md                  # このファイル
 ```
+
+設計・実装に関する詳細ドキュメントは [docs/](docs/README.md) を参照してください。
 
 ## ライセンス
 
@@ -223,6 +246,6 @@ MIT
 
 ### カスタマイズ
 
-- エディタのスタイルは `src/styles.css` で変更できます
-- 新しい機能は `src/main.js` に追加できます
+- エディタのスタイルは `src/styles/` 内の各 CSS ファイルで変更できます
+- 新しい機能は対応する JS モジュール（`src/*.js`）に追加できます
 - Rustコマンドは `src-tauri/src/main.rs` に追加できます

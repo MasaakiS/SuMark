@@ -17,7 +17,7 @@ npm run dev
 
 ## 主要ファイル
 - フロントエンド/ロジック: 
-   - `src/main.js`（エディタのロジック、イベントハンドリング、Markdown変換など）
+   - `src/main.js`（エントリーポイント、初期化、イベントハンドリング）
    - `src/utils.js`（ユーティリティ関数、Markdown変換ロジック、ファイル操作など）
    - `src/nodeUtils.js`（DOM ノード操作）
    - `src/pasteUtils.js`（ペースト処理）
@@ -26,19 +26,24 @@ npm run dev
    - `src/mermaidManager.js`（Mermaid 図表管理）
    - `src/tocManager.js`（目次生成・管理）
    - `src/toggleBlock.js`（トグルブロック管理）
-- UI: `src/index.html`, `src/styles.css`
+   - `src/autoConvert.js`（自動変換処理）
+   - `src/markdown.js`（Markdown変換ロジック）
+   - `src/keyboard.js`（キーボードイベント処理）
+- UI: `src/index.html`, `src/styles/`（7ファイルに分割: base, layout, editor, markdown, components, dialogs, print）
 - Tauri (Rust): `src-tauri/Cargo.toml`
+- ドキュメント: `docs/`（設計・実装ガイド）
 - パッケージ設定: `package.json`
 
 ファイル参照の際は必ずワークスペース相対パスを使用してください。
 
 ## コーディング方針
+- すべてのコーディング作業では、まずSerena MCPを使ってプロジェクト構造を確認し、シンボル検索を実行してください。Serenaにアクセスできない場合を除き、必ず /mcp__serena でオンボーディングを維持。
 - 変更は小さく、目的が明確な単位で行う。既存のスタイルを乱さない。
 - バグ修正は根本原因を直すことを優先し、表面的な回避策は最小限にする。
 - パフォーマンスや大きなバイナリ処理にはチャンク処理などの安全策を使う。
 - DOM 操作は `getAttribute` / `setAttribute` と生の属性値を意識する（ブラウザが `src` をノーマライズすることがあるため）。
 - インターネット接続できない場所でも動作するよう、外部リソースへの依存しないこと。必要なライブラリはローカルに含める。
-- すべてのコーディング作業では、まずSerena MCPを使ってプロジェクト構造を確認し、シンボル検索を実行してください。Serenaにアクセスできない場合を除き、必ず /mcp__serena でオンボーディングを維持。
+
 
 ## Markdown / テーブルに関する注意点
 - エディタは `contenteditable` ベースの WYSIWYG。貼り付けや自動変換で「表の中に表」が生成されないよう、挿入前に必ず挿入先が `td` / `th` 内かどうかをチェックすること。
@@ -235,8 +240,8 @@ npm run test:e2e:headed            # ブラウザ表示で実行
 
 - [ ] **ファイル対応確認**: JS修正 → CSS影響範囲も確認（上記対応表を参照）
 - [ ] **クラス/ID一貫性**: JS で使用しているクラス/ID が CSS で定義されているか確認
-  - 例: `classList.add('xxx')` を追加した場合、`.xxx { ... }` が `src/styles.css` にあるか
-- [ ] **複数ファイル編集**: `src/main.js` と `src/styles.css` の両方を修正した場合、相互参照が正確か確認
+  - 例: `classList.add('xxx')` を追加した場合、`.xxx { ... }` が `src/styles/` 内の該当 CSS ファイルにあるか
+- [ ] **複数ファイル編集**: `src/main.js` と `src/styles/` 内の CSS の両方を修正した場合、相互参照が正確か確認
 - [ ] **修正対象ファイルが確定**: 「どのファイルを修正するか」をコミット内容から必ず判定
 
 #### ✓ UI/スタイル修正時
@@ -258,7 +263,7 @@ npm run test:e2e:headed            # ブラウザ表示で実行
 
 - [ ] **セル内挿入確認**: 表セル内に別の表や要素を挿入する際、`closest('td, th')` で検査済みか
 - [ ] **貼り付け処理**: HTML 貼り付け時に「表の中に表」が生成されていないか手動確認
-- [ ] **スタイル一貫性**: テーブル関連の className 変更時、`src/styles.css` の `table`, `td`, `th` 定義が同期しているか
+- [ ] **スタイル一貫性**: テーブル関連の className 変更時、`src/styles/markdown.css` の `table`, `td`, `th` 定義が同期しているか
 
 #### ✓ Markdown変換関連の修正時
 
@@ -284,7 +289,7 @@ npm run test:e2e:headed            # ブラウザ表示で実行
 
 3. **Git差分確認**:
    ```bash
-   git diff src/main.js src/styles.css
+   git diff src/main.js src/styles/
    ```
    不要な変更が含まれていないか確認
 

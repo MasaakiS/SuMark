@@ -2,6 +2,25 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v0.7.2] - 2026-03-06
+### 改良
+- **CSS分割**: `src/styles.css`（1,492行）を `src/styles/` ディレクトリ内の7ファイルに分割
+  - `base.css`: グローバルリセット・スクロールバー・ユーティリティ
+  - `layout.css`: ツールバー・タブバー・エディタコンテナ・ステータスバー
+  - `editor.css`: エディタ本体（#editor）・プレースホルダー
+  - `markdown.css`: .markdown-body レンダリング（見出し・リスト・コード・テーブル等）
+  - `components.css`: Mermaid・TOC・画像リサイズ/ビューア・絵文字ピッカー
+  - `dialogs.css`: モーダルダイアログ・テーブルコンテキストメニュー
+  - `print.css`: 印刷/PDF用スタイル
+- **ドキュメント整備**: 設計・実装ドキュメントを `docs/` フォルダに集約
+  - `MODULES.md`, `CSS_SPLITTING_GUIDE.md`, `DEPENDENCY_MAP*.md`, `IMPLEMENTATION_GUIDE*.md`, `ROLLBACK_GUIDE.md` を移動
+  - `docs/README.md` を新規作成（ドキュメント一覧・案内）
+- **README.md 更新**: プロジェクト構造セクションを最新のモジュール構成・CSS分割に対応
+- **CSS-JS検証スクリプト更新**: `src/styles/` ディレクトリ対応に修正
+
+### テスト
+- 全 176 E2E テスト通過（1 skipped）
+
 ## [v0.7.1] - 2026-03-05
 ### 改良
 - **Week 7-8 モジュール分割 Phase 4 を完了**

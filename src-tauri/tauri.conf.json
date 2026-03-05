@@ -8,7 +8,7 @@
   },
   "package": {
     "productName": "SuMark",
-    "version": "0.7.1"
+    "version": "0.7.2"
   },
   "tauri": {
     "allowlist": {
@@ -22,7 +22,9 @@
       },
       "protocol": {
         "asset": true,
-        "assetScope": ["**"]
+        "assetScope": [
+          "**"
+        ]
       },
       "shell": {
         "all": false,
@@ -47,7 +49,9 @@
         "removeFile": true,
         "renameFile": true,
         "exists": true,
-        "scope": ["**"]
+        "scope": [
+          "**"
+        ]
       }
     },
     "bundle": {

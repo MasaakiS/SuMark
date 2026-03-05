@@ -261,6 +261,68 @@ class PlaywrightHelpers {
     async wait(ms) {
         await this.page.waitForTimeout(ms);
     }
+
+    // ---------- Visual Regression Testing (VRT) ----------
+
+    /**
+     * Visual Regression Test: 保存前後でスクリーンショットを比較
+     * @param {string} markdown - テスト対象のMarkdown
+     * @param {string} testName - テスト名（スクリーンショットのファイル名に使用）
+     * @param {Object} options - オプション設定
+     * @param {string} options.selector - スクリーンショットを撮る対象のセレクタ（デフォルト: '#editor'）
+     * @param {number} options.waitAfterLoad - Markdown読み込み後の待機時間（デフォルト: 800ms）
+     * @param {number} options.waitBeforeScreenshot - スクリーンショット前の待機時間（デフォルト: 300ms）
+     */
+    async visualRegressionTest(markdown, testName, options = {}) {
+        const {
+            selector = '#editor',
+            waitAfterLoad = 800,
+            waitBeforeScreenshot = 300,
+        } = options;
+
+        // 1. Markdownを読み込む（保存前の状態を再現）
+        await this.page.evaluate((md) => {
+            window.setMarkdown(md);
+        }, markdown);
+        await this.page.waitForTimeout(waitAfterLoad);
+        await this.page.waitForTimeout(waitBeforeScreenshot);
+
+        // 2. 保存前のスクリーンショットを取得
+        const beforeElement = this.page.locator(selector);
+        const beforeScreenshot = await beforeElement.screenshot();
+
+        // 3. Markdownを保存（getMarkdown()で取得）
+        const savedMarkdown = await this.page.evaluate(() => window.getMarkdown());
+
+        // 4. 保存したMarkdownを再読み込み（保存後の状態を再現）
+        await this.page.evaluate((md) => {
+            window.setMarkdown(md);
+        }, savedMarkdown);
+        await this.page.waitForTimeout(waitAfterLoad);
+        await this.page.waitForTimeout(waitBeforeScreenshot);
+
+        // 5. 保存後のスクリーンショットを取得
+        const afterElement = this.page.locator(selector);
+        
+        // 6. スクリーンショットを比較（Playwrightの組み込み機能）
+        await afterElement.screenshot({ path: `test/playwright-results/${testName}-after.png` });
+        
+        // 7. ベースラインと比較（toHaveScreenshotマッチャー）
+        return {
+            beforeScreenshot,
+            savedMarkdown,
+            afterElement,
+        };
+    }
+
+    /**
+     * エディタ全体のスクリーンショットを撮影
+     * @param {string} name - スクリーンショット名
+     */
+    async takeEditorScreenshot(name) {
+        const editor = this.page.locator('#editor');
+        return await editor.screenshot({ path: `test/playwright-results/${name}.png` });
+    }
 }
 
 module.exports = PlaywrightHelpers;

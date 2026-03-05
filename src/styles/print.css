@@ -1,0 +1,148 @@
+/* ========== PDF / Print Styles ========== */
+@media print {
+    /* Hide all UI elements */
+    .toolbar,
+    .tab-bar,
+    .status-bar,
+    .modal-overlay,
+    .emoji-picker,
+    .code-copy-container,
+    .code-copy-btn,
+    .toc-delete-btn,
+    .image-resize-handle,
+    .image-copy-btn {
+        display: none !important;
+    }
+
+    body {
+        margin: 0;
+        padding: 0;
+        background: white;
+    }
+
+    .main-content {
+        margin: 0;
+        padding: 0;
+        overflow: visible;
+    }
+
+    .markdown-body {
+        padding: 0;
+        margin: 0;
+        max-width: 100%;
+        box-shadow: none;
+        border: none;
+        font-size: 11pt;
+        line-height: 1.6;
+        overflow: visible;
+    }
+
+    /* Code blocks */
+    .markdown-body pre {
+        border: 1px solid #ccc;
+        page-break-inside: avoid;
+        overflow: visible;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .markdown-body pre code {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .markdown-body pre .line-numbers-gutter {
+        background-color: #f0f0f0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Tables */
+    .markdown-body table {
+        page-break-inside: avoid;
+    }
+
+    /* Images */
+    .markdown-body img {
+        max-width: 100% !important;
+        page-break-inside: avoid;
+    }
+
+    /* Headings */
+    .markdown-body h1,
+    .markdown-body h2,
+    .markdown-body h3,
+    .markdown-body h4,
+    .markdown-body h5,
+    .markdown-body h6 {
+        page-break-after: avoid;
+    }
+
+    /* Blockquotes */
+    .markdown-body blockquote {
+        border-left: 4px solid #ccc !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Toggle blocks */
+    .markdown-body details {
+        border: 1px solid #ccc !important;
+        page-break-inside: avoid;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .markdown-body details[open] > summary::before {
+        transform: rotate(90deg);
+    }
+
+    /* TOC */
+    .toc-container {
+        border: 1px solid #ccc !important;
+        border-left: 4px solid #4a9eff !important;
+        background: #f8f9fa !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        page-break-inside: avoid;
+    }
+
+    /* Mermaid diagrams */
+    .mermaid-container {
+        page-break-inside: avoid;
+    }
+
+    /* Horizontal rule */
+    .markdown-body hr {
+        border-color: #ccc !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Task list checkboxes */
+    .markdown-body input[type="checkbox"] {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Inline code */
+    .markdown-body code {
+        background-color: #f5f5f5 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Syntax highlight colors */
+    .markdown-body pre code .hljs-keyword,
+    .markdown-body pre code .hljs-string,
+    .markdown-body pre code .hljs-number,
+    .markdown-body pre code .hljs-comment,
+    .markdown-body pre code .hljs-built_in,
+    .markdown-body pre code .hljs-title,
+    .markdown-body pre code .hljs-type,
+    .markdown-body pre code .hljs-attr,
+    .markdown-body pre code .hljs-literal {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}

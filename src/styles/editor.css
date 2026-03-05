@@ -1,0 +1,26 @@
+/* ========== WYSIWYG Editor ========== */
+#editor {
+    min-height: 100%;
+    padding: 40px 60px;
+    max-width: 900px;
+    margin: 0 auto;
+    outline: none;
+    font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Yu Gothic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 16px;
+    line-height: 1.8;
+    color: #333;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+#editor:focus {
+    outline: none;
+}
+
+/* Placeholder */
+#editor:empty::before {
+    content: attr(data-placeholder);
+    color: #aaa;
+    pointer-events: none;
+    display: block;
+}

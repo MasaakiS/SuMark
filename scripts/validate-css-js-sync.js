@@ -23,7 +23,7 @@ const path = require('path');
 // ─────────────────────────────────────────────────
 
 const JS_FILE = path.join(__dirname, '../src/main.js');
-const CSS_FILE = path.join(__dirname, '../src/styles.css');
+const CSS_DIR = path.join(__dirname, '../src/styles');
 
 // 検証を無視するパターン（className, id で使用されない可能性がある）
 const IGNORE_PATTERNS = [
@@ -100,12 +100,14 @@ function extractJSClasses() {
 }
 
 function extractCSSSelectors() {
-  if (!fs.existsSync(CSS_FILE)) {
-    console.error(`❌ ファイルが見つかりません: ${CSS_FILE}`);
+  if (!fs.existsSync(CSS_DIR)) {
+    console.error(`❌ ディレクトリが見つかりません: ${CSS_DIR}`);
     process.exit(1);
   }
 
-  const cssContent = fs.readFileSync(CSS_FILE, 'utf8');
+  // src/styles/ 内の全 .css ファイルを結合して読み込み
+  const cssFiles = fs.readdirSync(CSS_DIR).filter(f => f.endsWith('.css'));
+  const cssContent = cssFiles.map(f => fs.readFileSync(path.join(CSS_DIR, f), 'utf8')).join('\n');
   const selectors = new Set();
 
   // パターン: .classname, #id
@@ -164,7 +166,7 @@ function validateSync() {
     });
     console.error(
       '\n💡 対応方法:\n' +
-      '   1. src/styles.css にこれらのクラス/IDを追加\n' +
+      '   1. src/styles/ 内の該当CSSファイルにこれらのクラス/IDを追加\n' +
       '   2. または src/main.js の記述ミスを修正\n'
     );
   } else {

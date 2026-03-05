@@ -37,6 +37,19 @@ module.exports = defineConfig({
         video: 'retain-on-failure',
     },
 
+    // Visual Regression Testing (VRT) 設定
+    expect: {
+        ...module.exports?.expect,
+        toHaveScreenshot: {
+            // スクリーンショット比較のしきい値（0-1、1が完全一致）
+            maxDiffPixels: 100,
+            // アニメーションの影響を軽減するため、cssでアニメーションを無効化
+            animations: 'disabled',
+            // フォントレンダリングの違いを許容
+            threshold: 0.2,
+        },
+    },
+
     // Tauri app binary path (used by test fixtures)
     metadata: {
         binaryPath,

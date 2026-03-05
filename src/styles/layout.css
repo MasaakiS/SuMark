@@ -1,0 +1,164 @@
+/* ========== Toolbar ========== */
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px;
+    background-color: #fff;
+    border-bottom: 1px solid #e0e0e0;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.toolbar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background-color: transparent;
+    color: #333;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    font-size: 14px;
+}
+
+.toolbar-btn:hover {
+    background-color: #e8e8e8;
+}
+
+.toolbar-btn:active {
+    background-color: #d0d0d0;
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background-color: #e0e0e0;
+    margin: 0 4px;
+}
+
+.spacer {
+    flex: 1;
+}
+
+/* ========== Tab Bar ========== */
+.tab-bar {
+    display: flex;
+    align-items: center;
+    background-color: #f0f0f0;
+    border-bottom: 1px solid #d0d0d0;
+    flex-shrink: 0;
+    min-height: 36px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.tab-bar::-webkit-scrollbar {
+    height: 3px;
+}
+
+.tab-bar::-webkit-scrollbar-thumb {
+    background: #ccc;
+}
+
+.tab-list {
+    display: flex;
+    align-items: stretch;
+    min-height: 36px;
+}
+
+.tab-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    min-width: 120px;
+    max-width: 220px;
+    height: 36px;
+    border-right: 1px solid #d0d0d0;
+    background-color: #e8e8e8;
+    cursor: pointer;
+    font-size: 12px;
+    color: #555;
+    transition: background-color 0.15s;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.tab-item:hover {
+    background-color: #ddd;
+}
+
+.tab-item.active {
+    background-color: #fff;
+    color: #333;
+    border-bottom: 2px solid #4a9eff;
+}
+
+.tab-item .tab-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tab-item .tab-modified {
+    color: #888;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.tab-item .tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    color: #999;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.tab-item .tab-close:hover {
+    background-color: rgba(0,0,0,0.1);
+    color: #333;
+}
+
+/* ========== Editor Container ========== */
+.editor-container {
+    flex: 1;
+    overflow: auto;
+    background-color: #fff;
+}
+
+/* ========== Status Bar ========== */
+.status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 12px;
+    background-color: #f5f5f5;
+    border-top: 1px solid #e0e0e0;
+    font-size: 12px;
+    color: #666;
+    flex-shrink: 0;
+}
+
+.status-filepath {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 70%;
+    cursor: default;
+    direction: rtl;
+    text-align: left;
+}
