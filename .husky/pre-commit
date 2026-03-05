@@ -1,6 +1,3 @@
-#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
 # CSS-JS 検証スクリプト実行
 echo "🔍 CSS-JS 整合性チェック中..."
 node scripts/validate-css-js-sync.js
