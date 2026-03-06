@@ -19,11 +19,12 @@
     "test:e2e:headed": "npx playwright test --headed",
     "test:e2e:ui": "npx playwright test --ui",
     "test:e2e:report": "npx playwright show-report test/playwright-report",
-    "test:vrt": "npx playwright test test/playwright/12-visual-regression.spec.js",
+    "test:vrt": "rm -rf test/playwright-results/vrt-diffs && npx playwright test test/playwright/12-visual-regression.spec.js",
     "test:vrt:headed": "npx playwright test test/playwright/12-visual-regression.spec.js --headed",
-    "test:vrt:update": "npx playwright test test/playwright/12-visual-regression.spec.js --update-snapshots",
     "test:vrt:analyze": "node scripts/analyze-vrt-diff.js",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "test:vrt:json": "node scripts/analyze-vrt-diff.js --json",
+    "test:vrt:full": "npm run test:vrt && npm run test:vrt:analyze"
   },
   "keywords": [
     "markdown",
