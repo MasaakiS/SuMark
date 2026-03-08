@@ -2,6 +2,17 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v0.8.0] - 2026-03-08
+### 新機能
+- **Visual Regression Test (VRT) を全面改善**
+  - ベースライン不要の直接ピクセル比較方式に変更（pixelmatch + pngjs 使用）
+  - 29テストケース追加：基本要素、4階層ネストリスト、リッチテーブル、複合トグル、数式、複合ドキュメント等
+  - 自動判定スクリプト（`scripts/analyze-vrt-diff.js`）：差分領域分析・重要度判定・レポート生成
+  - npm scripts 追加：`test:vrt`, `test:vrt:full`, `test:vrt:json`, `test:vrt:analyze`
+
+### テスト
+- 全 177 E2E テスト通過（VRT 29 + 既存 148）
+
 ## [v0.7.2] - 2026-03-06
 ### 改良
 - **CSS分割**: `src/styles.css`（1,492行）を `src/styles/` ディレクトリ内の7ファイルに分割
