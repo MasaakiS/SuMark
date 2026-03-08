@@ -25,3 +25,6 @@ image = "0.25"
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
+
+[patch.crates-io]
+wry = { path = "patches/wry-0.24.11" }
