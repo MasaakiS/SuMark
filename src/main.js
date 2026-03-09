@@ -121,6 +121,10 @@ function showError(message) { showBanner(message, 'error'); }
 let isConverting = false; // Guard for auto-conversion recursion
 // codeHighlightTimer → codeHighlight.js に移動済み
 let isComposing = false; // IME composition state
+let initRetryCount = 0;
+const INIT_RETRY_MAX = 50;
+const INIT_RETRY_DELAY_MS = 100;
+
 
 // Tab management → tabManager.js に移動済み
 // let tabs, activeTabId, tabIdCounter は tabManager.js で定義
@@ -222,6 +226,21 @@ function init() {
     // Tauri APIs
     try {
         if (!window.__TAURI__) {
+            const isLikelyTauriRuntime =
+                (typeof window.__TAURI_IPC__ === 'function') ||
+                (typeof navigator !== 'undefined' && /tauri/i.test(navigator.userAgent || ''));
+
+            // On slower Tauri environments (e.g., Linux ARM64), bridge injection
+            // can lag behind DOMContentLoaded. Retry only when Tauri is likely.
+            if (isLikelyTauriRuntime && initRetryCount < INIT_RETRY_MAX) {
+                initRetryCount += 1;
+                if (initRetryCount === 1 || initRetryCount % 10 === 0) {
+                    console.warn(`[INIT] Waiting for Tauri bridge... (${initRetryCount}/${INIT_RETRY_MAX})`);
+                }
+                setTimeout(init, INIT_RETRY_DELAY_MS);
+                return;
+            }
+
             console.warn('[WARN] Tauri API not available - running in browser mode with limited functionality');
             // Mock Tauri APIs for browser testing
             invoke = () => Promise.resolve();
@@ -238,6 +257,7 @@ function init() {
             shellOpen = () => Promise.resolve();
             // Don't return - continue initialization
         } else {
+            initRetryCount = 0;
             invoke = window.__TAURI__.tauri.invoke;
             tauriOpen = window.__TAURI__.dialog.open;
             tauriSave = window.__TAURI__.dialog.save;
@@ -725,6 +745,38 @@ function setupEventListeners() {
     }
 
     setupUnifiedDropHandler();
+
+    // ブラウザモード用フォールバック（beforeunload）
+    window.addEventListener('beforeunload', e => {
+        if (!hasUnsavedTabs()) return;
+        e.preventDefault();
+        e.returnValue = '';
+    });
+
+    // Tauri ウィンドウクローズ確認（アプリX / Cmd+Q 共通）
+    // Rust 側で CloseRequested を prevent_close し、カスタムイベントを emit する
+    if (window.__TAURI__ && window.__TAURI__.event) {
+        window.__TAURI__.event.listen('app-close-requested', async () => {
+            if (!hasUnsavedTabs()) {
+                // 未保存なし → 閉じる
+                await invoke('allow_close');
+                window.__TAURI__.window.appWindow.close();
+                return;
+            }
+
+            const unsavedTabs = getUnsavedTabs();
+            const names = unsavedTabs.slice(0, 5).map(t => '・' + t.title).join('\n');
+            const extra = unsavedTabs.length > 5 ? '\n...他 ' + (unsavedTabs.length - 5) + ' 件' : '';
+            const message = '保存されていないタブがあります。\nアプリを終了しますか？\n\n' + names + extra;
+
+            if (confirm(message)) {
+                // OK → 閉じる
+                await invoke('allow_close');
+                window.__TAURI__.window.appWindow.close();
+            }
+            // キャンセル → 何もしない（Rust側で prevent_close 済み）
+        });
+    }
     
     // Initialize undo stack with initial state
     saveEditorState();
@@ -1038,6 +1090,8 @@ function addCopyButtonsToCodeBlocks() {
     editor.querySelectorAll('pre').forEach(pre => {
         // Skip if already has copy buttons
         if (pre.querySelector('.code-copy-container')) return;
+        // Also skip if toolbar already exists above pre
+        if (pre.previousElementSibling && pre.previousElementSibling.classList.contains('code-block-toolbar')) return;
         // Skip Mermaid containers
         if (pre.closest('.mermaid-container')) return;
 
@@ -1066,11 +1120,22 @@ function addCopyButtonsToCodeBlocks() {
             // クラスを書き換え
             code.className = langSelect.value ? 'language-' + langSelect.value : '';
             // 再ハイライト
-            if (typeof hljs !== 'undefined') hljs.highlightElement(code);
+            if (typeof hljs !== 'undefined') {
+                isConverting = true;
+                try {
+                    highlightCodeBlock(code);
+                } finally {
+                    isConverting = false;
+                }
+            }
         });
 
-        // ドロップダウンをpreの先頭に追加
-        pre.insertBefore(langSelect, pre.firstChild);
+        // ツールバーをpreの上に配置
+        const toolbar = document.createElement('div');
+        toolbar.className = 'code-block-toolbar';
+        toolbar.setAttribute('contenteditable', 'false');
+        toolbar.appendChild(langSelect);
+        pre.parentNode.insertBefore(toolbar, pre);
 
         // 既存のコピーボタンUI
         const container = document.createElement('div');

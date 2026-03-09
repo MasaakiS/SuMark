@@ -5,6 +5,10 @@ use chrono::{Local, Datelike, Timelike};
 use arboard::{Clipboard, ImageData};
 use base64::Engine;
 use std::borrow::Cow;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// ウィンドウクローズ許可フラグ（JS側で確認後にセットされる）
+static CLOSE_ALLOWED: AtomicBool = AtomicBool::new(false);
 
 // 現在の日付を返すコマンド
 #[tauri::command]
@@ -63,6 +67,12 @@ fn copy_image_to_clipboard(image_data: String) -> Result<(), String> {
     Ok(())
 }
 
+/// JS側から閉じてOKのフラグを立てるコマンド
+#[tauri::command]
+fn allow_close() {
+    CLOSE_ALLOWED.store(true, Ordering::SeqCst);
+}
+
 #[tauri::command]
 fn open_in_browser(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -96,8 +106,18 @@ fn main() {
             get_current_datetime,
             get_current_time,
             open_in_browser,
-            copy_image_to_clipboard
+            copy_image_to_clipboard,
+            allow_close
         ])
+        .on_window_event(|event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
+                if !CLOSE_ALLOWED.load(Ordering::SeqCst) {
+                    // JS側に確認を委譲（ウィンドウは閉じない）
+                    api.prevent_close();
+                    let _ = event.window().emit("app-close-requested", ());
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

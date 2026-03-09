@@ -159,9 +159,27 @@ function closeTab(id) {
 
     const tab = tabs[tabIndex];
 
+    // confirm() がエディタ内容をクリアする場合に備え、アクティブタブの内容を保存
+    let savedContent = null;
+    let savedScrollTop = 0;
+    const activeTab = getActiveTab();
+    if (activeTab && editor) {
+        savedContent = editor.innerHTML;
+        savedScrollTop = editor.parentElement.scrollTop;
+        activeTab.content = savedContent;
+        activeTab.scrollTop = savedScrollTop;
+    }
+
     // 保存されていない場合は確認
     if (tab.isModified) {
         const ok = confirm('"' + tab.title + '" は保存されていません。閉じますか？');
+
+        // confirm() 後にエディタ内容を復元（WebViewがクリアする場合がある）
+        if (savedContent !== null && editor) {
+            editor.innerHTML = savedContent;
+            editor.parentElement.scrollTop = savedScrollTop;
+        }
+
         if (!ok) return;
     }
 
@@ -205,6 +223,7 @@ function renderTabs() {
 
         const closeBtn = document.createElement('button');
         closeBtn.className = 'tab-close';
+        closeBtn.type = 'button';
         closeBtn.textContent = '×';
         closeBtn.addEventListener('mousedown', e => {
             e.preventDefault();
@@ -234,6 +253,22 @@ function markModified() {
         tab.isModified = true;
         renderTabs();
     }
+}
+
+/**
+ * 未保存タブ一覧を取得
+ * @returns {Array<Object>} isModified=true のタブ配列
+ */
+function getUnsavedTabs() {
+    return tabs.filter(tab => tab.isModified);
+}
+
+/**
+ * 未保存タブが1つ以上あるか判定
+ * @returns {boolean}
+ */
+function hasUnsavedTabs() {
+    return getUnsavedTabs().length > 0;
 }
 
 /**
