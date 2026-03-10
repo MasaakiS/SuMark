@@ -152,6 +152,15 @@ function handleKeyDown(e) {
         return;
     }
 
+    // Cmd/Ctrl+Q → アプリ終了確認フロー
+    if (mod && e.key.toLowerCase() === 'q') {
+        e.preventDefault();
+        if (typeof window.requestAppClose === 'function') {
+            window.requestAppClose();
+        }
+        return;
+    }
+
     // Cmd/Ctrl+Tab: 次のタブへ移動 / Cmd/Ctrl+Shift+Tab: 前のタブへ移動
     if (mod && e.key === 'Tab') {
         e.preventDefault();
