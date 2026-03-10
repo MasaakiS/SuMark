@@ -5,11 +5,7 @@ use chrono::{Local, Datelike, Timelike};
 use arboard::{Clipboard, ImageData};
 use base64::Engine;
 use std::borrow::Cow;
-use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
-
-/// ウィンドウクローズ許可フラグ（JS側で確認後にセットされる）
-static CLOSE_ALLOWED: AtomicBool = AtomicBool::new(false);
 
 // 現在の日付を返すコマンド
 #[tauri::command]
@@ -68,13 +64,6 @@ fn copy_image_to_clipboard(image_data: String) -> Result<(), String> {
     Ok(())
 }
 
-/// JS側から閉じてOKのフラグを立て、アプリを直接終了するコマンド
-#[tauri::command]
-fn allow_close(app_handle: tauri::AppHandle) {
-    CLOSE_ALLOWED.store(true, Ordering::SeqCst);
-    app_handle.exit(0);
-}
-
 #[tauri::command]
 fn open_in_browser(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -108,28 +97,23 @@ fn main() {
             get_current_datetime,
             get_current_time,
             open_in_browser,
-            copy_image_to_clipboard,
-            allow_close
+            copy_image_to_clipboard
         ])
         .on_window_event(|event| {
-            // アプリXボタン: CloseRequested をインターセプトし JS に委譲
+            // アプリXボタン: 常に防いで JS に委譲
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
-                if !CLOSE_ALLOWED.load(Ordering::SeqCst) {
-                    api.prevent_close();
-                    let _ = event.window().emit("app-close-requested", ());
-                }
+                api.prevent_close();
+                let _ = event.window().emit("app-close-requested", ());
             }
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            // Cmd+Q など OS 経由のアプリ終了: ExitRequested をインターセプトし JS に委譲
+            // Cmd+Q など OS 経由のアプリ終了: 常に防いで JS に委譲
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                if !CLOSE_ALLOWED.load(Ordering::SeqCst) {
-                    api.prevent_exit();
-                    if let Some(window) = app_handle.get_window("main") {
-                        let _ = window.emit("app-close-requested", ());
-                    }
+                api.prevent_exit();
+                if let Some(window) = app_handle.get_window("main") {
+                    let _ = window.emit("app-close-requested", ());
                 }
             }
         });

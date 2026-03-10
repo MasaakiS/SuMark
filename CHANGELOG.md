@@ -2,6 +2,14 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v0.8.4] - 2026-03-10
+### 修正
+- **未保存確認: アーキテクチャを完全周化**
+  - `CLOSE_ALLOWED` フラグと `allow_close` コマンドを廃止
+  - `CloseRequested` / `ExitRequested` は常に`prevent`+`emit`（フラグチェックなし）
+  - JS 側は確認OK後に `window.__TAURI__.app.exit(0)` で直接終了（イベントハンドラをバイパス）
+  - ダブル発火防止ガード `appCloseDialogShowing` を追加（Cmd+Q時に CloseRequested+ExitRequested が両方発火する場合でもダイアログが1回のみ表示）
+
 ## [v0.8.3] - 2026-03-10
 ### 修正
 - **未保存確認: allow_close を Rust 側で直接終了する方式に統一**

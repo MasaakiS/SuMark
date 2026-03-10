@@ -754,27 +754,34 @@ function setupEventListeners() {
     });
 
     // Tauri ウィンドウクローズ確認（アプリX / Cmd+Q 共通）
-    // Rust 側で CloseRequested を prevent_close し、カスタムイベントを emit する
+    // ダブル発火防止ガード（CloseRequested と ExitRequested が両方発火する場合に対応）
+    let appCloseDialogShowing = false;
     if (window.__TAURI__ && window.__TAURI__.event) {
         window.__TAURI__.event.listen('app-close-requested', async () => {
-            if (!hasUnsavedTabs()) {
-                // 未保存なし → Rust側で直接終了
-                await invoke('allow_close');
-                return;
-            }
+            if (appCloseDialogShowing) return;
+            appCloseDialogShowing = true;
+            try {
+                if (!hasUnsavedTabs()) {
+                    // 未保存なし → そのまま終了（app.exit(0)はハンドラをバイパスして直接終了）
+                    window.__TAURI__.app.exit(0);
+                    return;
+                }
 
-            const unsavedTabs = getUnsavedTabs();
-            const names = unsavedTabs.slice(0, 5).map(t => '・' + t.title).join('\n');
-            const extra = unsavedTabs.length > 5 ? '\n...他 ' + (unsavedTabs.length - 5) + ' 件' : '';
-            const message = '保存されていないタブがあります。\nアプリを終了しますか？\n\n' + names + extra;
+                const unsavedTabs = getUnsavedTabs();
+                const names = unsavedTabs.slice(0, 5).map(t => '・' + t.title).join('\n');
+                const extra = unsavedTabs.length > 5 ? '\n...他 ' + (unsavedTabs.length - 5) + ' 件' : '';
+                const message = '保存されていないタブがあります。\nアプリを終了しますか？\n\n' + names + extra;
 
-            // Tauri ネイティブダイアログ（WebViewの innerHTML を壊さない）
-            const ok = await window.__TAURI__.dialog.confirm(message, { title: '確認', type: 'warning' });
-            if (ok) {
-                // OK → Rust側で直接終了（appWindow.close()は不要・allowlist不要）
-                await invoke('allow_close');
+                // Tauri ネイティブダイアログ（WebViewの innerHTML を壊さない）
+                const ok = await window.__TAURI__.dialog.confirm(message, { title: '確認', type: 'warning' });
+                if (ok) {
+                    // OK → 強制終了（イベントハンドラをバイパス）
+                    window.__TAURI__.app.exit(0);
+                }
+                // キャンセル → 何もしない（Rust側で prevent 済み）
+            } finally {
+                appCloseDialogShowing = false;
             }
-            // キャンセル → 何もしない（Rust側で prevent_close/prevent_exit 済み）
         });
     }
     
