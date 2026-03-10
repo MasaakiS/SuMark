@@ -68,10 +68,11 @@ fn copy_image_to_clipboard(image_data: String) -> Result<(), String> {
     Ok(())
 }
 
-/// JS側から閉じてOKのフラグを立てるコマンド
+/// JS側から閉じてOKのフラグを立て、アプリを直接終了するコマンド
 #[tauri::command]
-fn allow_close() {
+fn allow_close(app_handle: tauri::AppHandle) {
     CLOSE_ALLOWED.store(true, Ordering::SeqCst);
+    app_handle.exit(0);
 }
 
 #[tauri::command]

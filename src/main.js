@@ -758,9 +758,8 @@ function setupEventListeners() {
     if (window.__TAURI__ && window.__TAURI__.event) {
         window.__TAURI__.event.listen('app-close-requested', async () => {
             if (!hasUnsavedTabs()) {
-                // 未保存なし → 閉じる
+                // 未保存なし → Rust側で直接終了
                 await invoke('allow_close');
-                window.__TAURI__.window.appWindow.close();
                 return;
             }
 
@@ -772,9 +771,8 @@ function setupEventListeners() {
             // Tauri ネイティブダイアログ（WebViewの innerHTML を壊さない）
             const ok = await window.__TAURI__.dialog.confirm(message, { title: '確認', type: 'warning' });
             if (ok) {
-                // OK → 閉じる
+                // OK → Rust側で直接終了（appWindow.close()は不要・allowlist不要）
                 await invoke('allow_close');
-                window.__TAURI__.window.appWindow.close();
             }
             // キャンセル → 何もしない（Rust側で prevent_close/prevent_exit 済み）
         });
