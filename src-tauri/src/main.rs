@@ -5,7 +5,10 @@ use chrono::{Local, Datelike, Timelike};
 use arboard::{Clipboard, ImageData};
 use base64::Engine;
 use std::borrow::Cow;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
+
+static CLOSE_ALLOWED: AtomicBool = AtomicBool::new(false);
 
 // 現在の日付を返すコマンド
 #[tauri::command]
@@ -90,6 +93,16 @@ fn open_in_browser(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn allow_close() {
+    CLOSE_ALLOWED.store(true, Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn exit_app(app_handle: tauri::AppHandle) {
+    app_handle.exit(0);
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -97,13 +110,18 @@ fn main() {
             get_current_datetime,
             get_current_time,
             open_in_browser,
-            copy_image_to_clipboard
+            copy_image_to_clipboard,
+            allow_close,
+            exit_app
         ])
         .on_window_event(|event| {
             // アプリXボタン: 常に防いで JS に委譲
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
+                if CLOSE_ALLOWED.load(Ordering::SeqCst) {
+                    return;
+                }
                 api.prevent_close();
-                let _ = event.window().emit("app-close-requested", ());
+                let _ = event.window().app_handle().emit_all("app-close-requested", ());
             }
         })
         .build(tauri::generate_context!())
@@ -111,10 +129,11 @@ fn main() {
         .run(|app_handle, event| {
             // Cmd+Q など OS 経由のアプリ終了: 常に防いで JS に委譲
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                api.prevent_exit();
-                if let Some(window) = app_handle.get_window("main") {
-                    let _ = window.emit("app-close-requested", ());
+                if CLOSE_ALLOWED.load(Ordering::SeqCst) {
+                    return;
                 }
+                api.prevent_exit();
+                let _ = app_handle.emit_all("app-close-requested", ());
             }
         });
 }

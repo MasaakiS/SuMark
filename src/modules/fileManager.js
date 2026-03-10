@@ -222,6 +222,7 @@ async function saveFile() {
             }
             tab.filePath = filePath;
             tab.title = filePath.split('/').pop().split('\\').pop();
+            tab.content = editor.innerHTML;
             tab.isModified = false;
             renderTabs();
             updateStatusBar();
@@ -249,6 +250,7 @@ async function saveAsFile() {
             await writeTextFile(filePath, markdown);
             tab.filePath = filePath;
             tab.title = filePath.split('/').pop().split('\\').pop();
+            tab.content = editor.innerHTML;
             tab.isModified = false;
             renderTabs();
             updateStatusBar();

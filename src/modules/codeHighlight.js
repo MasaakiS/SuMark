@@ -270,7 +270,7 @@ function updateAllLineNumbers() {
 
 /**
  * カーソル位置のコードブロックをデバウンス付きでハイライトする
- * 依存: global editor, highlightCodeBlock
+ * 依存: global editor, highlightCodeBlock, global isConverting
  */
 function debouncedHighlightCodeAtCursor() {
     if (codeHighlightTimer) clearTimeout(codeHighlightTimer);
@@ -285,10 +285,22 @@ function debouncedHighlightCodeAtCursor() {
                 // Adjust delay based on code size
                 const delay = lineCount > 100 ? 500 : 0;
                 
+                // Guard against input event loops: hljs.highlightElement modifies
+                // code.innerHTML inside contenteditable, which may trigger input
+                // events in WebKit. Setting isConverting prevents re-entrant calls.
+                const doHighlight = (codeNode) => {
+                    isConverting = true;
+                    try {
+                        highlightCodeBlock(codeNode);
+                    } finally {
+                        isConverting = false;
+                    }
+                };
+
                 if (delay > 0) {
-                    setTimeout(() => highlightCodeBlock(node), delay);
+                    setTimeout(() => doHighlight(node), delay);
                 } else {
-                    highlightCodeBlock(node);
+                    doHighlight(node);
                 }
                 return;
             }

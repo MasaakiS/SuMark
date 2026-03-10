@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
+#![allow(unexpected_cfgs, unused_mut, dropping_copy_types)]
+
 //! Wry is a Cross-platform WebView rendering library.
 //!
 //! To build a Window with WebView embedded, we could use [`application`] module to create

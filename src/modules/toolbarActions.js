@@ -519,7 +519,7 @@ function insertCodeBlock() {
     }
 
     const fields = [
-        { key: 'lang', label: 'プログラミング言語', type: 'select', value: 'javascript', options: CODE_LANGUAGES },
+        { key: 'lang', label: 'プログラミング言語', type: 'select', value: '', options: CODE_LANGUAGES },
     ];
 
     showModal('コードブロックを挿入', fields, (values) => {

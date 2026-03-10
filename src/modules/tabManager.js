@@ -259,6 +259,38 @@ function getUnsavedTabs() {
  * @returns {boolean}
  */
 function hasUnsavedTabs() {
+    // 入力イベント取りこぼし時の保険: アクティブタブの内容差分で dirty を補正
+    const activeTab = getActiveTab();
+    if (
+        activeTab &&
+        !activeTab.isModified &&
+        typeof editor !== 'undefined' &&
+        editor &&
+        activeTab.content !== editor.innerHTML
+    ) {
+        activeTab.isModified = true;
+        renderTabs();
+    }
+
+    // さらに保険: 無題タブで内容が存在するなら未保存扱いにする
+    if (
+        activeTab &&
+        !activeTab.isModified &&
+        !activeTab.filePath &&
+        typeof editor !== 'undefined' &&
+        editor
+    ) {
+        const text = (editor.innerText || '').replace(/\u200B/g, '').trim();
+        const hasStructuredContent = !!editor.querySelector(
+            'img, table, pre, blockquote, ul, ol, details, hr, h1, h2, h3, h4, h5, h6, input[type="checkbox"]'
+        );
+
+        if (text.length > 0 || hasStructuredContent) {
+            activeTab.isModified = true;
+            renderTabs();
+        }
+    }
+
     return getUnsavedTabs().length > 0;
 }
 

@@ -756,14 +756,24 @@ function setupEventListeners() {
     // Tauri ウィンドウクローズ確認（アプリX / Cmd+Q 共通）
     // ダブル発火防止ガード（CloseRequested と ExitRequested が両方発火する場合に対応）
     let appCloseDialogShowing = false;
-    if (window.__TAURI__ && window.__TAURI__.event) {
-        window.__TAURI__.event.listen('app-close-requested', async () => {
+    const requestAppClose = async () => {
             if (appCloseDialogShowing) return;
             appCloseDialogShowing = true;
             try {
-                if (!hasUnsavedTabs()) {
-                    // 未保存なし → そのまま終了（app.exit(0)はハンドラをバイパスして直接終了）
-                    window.__TAURI__.app.exit(0);
+                const hasUnsaved = hasUnsavedTabs();
+                const activeTab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+                console.log('[CloseFlow] app-close-requested', {
+                    hasUnsaved,
+                    activeTabId: activeTab ? activeTab.id : null,
+                    isModified: activeTab ? activeTab.isModified : null,
+                    filePath: activeTab ? activeTab.filePath : null,
+                    editorTextLength: editor ? (editor.innerText || '').trim().length : -1,
+                });
+
+                if (!hasUnsaved) {
+                    // 未保存なし → Rust 側で明示的に終了
+                    await invoke('allow_close');
+                    await invoke('exit_app');
                     return;
                 }
 
@@ -775,14 +785,23 @@ function setupEventListeners() {
                 // Tauri ネイティブダイアログ（WebViewの innerHTML を壊さない）
                 const ok = await window.__TAURI__.dialog.confirm(message, { title: '確認', type: 'warning' });
                 if (ok) {
-                    // OK → 強制終了（イベントハンドラをバイパス）
-                    window.__TAURI__.app.exit(0);
+                    await invoke('allow_close');
+                    await invoke('exit_app');
                 }
                 // キャンセル → 何もしない（Rust側で prevent 済み）
+            } catch (closeErr) {
+                console.error('Failed to close app:', closeErr);
+                showError('アプリを終了できませんでした。もう一度お試しください。');
             } finally {
                 appCloseDialogShowing = false;
             }
-        });
+    };
+
+    // keyboard.js からも同じ終了フローを使えるように公開
+    window.requestAppClose = requestAppClose;
+
+    if (window.__TAURI__ && window.__TAURI__.event) {
+        window.__TAURI__.event.listen('app-close-requested', requestAppClose);
     }
     
     // Initialize undo stack with initial state

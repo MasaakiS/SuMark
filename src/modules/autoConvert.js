@@ -13,7 +13,6 @@
 
 // ========== Editor Input Handler ==========
 function onEditorInput() {
-    console.log('[DEBUG] onEditorInput called');
     if (isConverting) return;
     if (isComposing) return; // Skip during IME composition
 
@@ -24,7 +23,6 @@ function onEditorInput() {
     } catch (err) {
         console.error('Auto-conversion error:', err);
     }
-    isConverting = false;
 
     updateWordCount();
     markModified();
@@ -63,6 +61,35 @@ function onEditorInput() {
             n = n.parentElement;
         }
     }
+
+    isConverting = false;
+}
+
+/**
+ * Normalize only line-start markdown marker characters.
+ * This prevents in-word conversions such as "マーク" -> "マ-ク".
+ */
+function normalizeMarkdownPrefix(text) {
+    if (typeof text !== 'string' || text.length === 0) return text;
+
+    // Keep whitespace normalization for matching stability.
+    let normalized = text.replace(/\u00A0/g, ' ').replace(/　/g, ' ');
+
+    // Normalize ordered-list digits only at the line start.
+    normalized = normalized.replace(/^[０-９]+/, m =>
+        m.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    );
+
+    // Normalize markdown marker characters only at the line start.
+    normalized = normalized.replace(/^([0-9]+)．/, '$1.');
+    normalized = normalized.replace(/^[ー－―−]{1,3}/, m => '-'.repeat(m.length));
+    normalized = normalized.replace(/^＃{1,6}/, m => '#'.repeat(m.length));
+    normalized = normalized.replace(/^＞{1,3}/, m => '>'.repeat(m.length));
+    normalized = normalized.replace(/^＊/, '*');
+    normalized = normalized.replace(/^［/, '[');
+    normalized = normalized.replace(/^(\[[ xX]?)］/, '$1]');
+
+    return normalized;
 }
 
 // ========== Block-Level Auto-Conversion ==========
@@ -101,18 +128,8 @@ function handleBlockAutoConversion() {
     if (isInsideTableCell(range.startContainer)) {
         console.log('[DEBUG] handleBlockAutoConversion: inside table cell, skipping list conversions');
         // Allow only non-list conversions (headings, blockquotes, HR) - skip list patterns
-        let text = block.textContent;
-        // Normalize text
-        text = text.replace(/\u00A0/g, ' ');
-        text = text.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
-        text = text.replace(/　/g, ' ');
-        text = text.replace(/．/g, '.');
-        text = text.replace(/[ー－―−]/g, '-');
-        text = text.replace(/＃/g, '#');
-        text = text.replace(/＞/g, '>');
-        text = text.replace(/＊/g, '*');
-        text = text.replace(/［/g, '[').replace(/］/g, ']');
-        
+        const text = normalizeMarkdownPrefix(block.textContent);
+
         // Only allow heading conversion in table cells
         const headingMatch = text.match(/^(#{1,6}) (.+)$/);
         if (headingMatch) {
@@ -129,34 +146,15 @@ function handleBlockAutoConversion() {
     let text = block.textContent;
     console.log('[DEBUG] handleBlockAutoConversion: text="' + text + '"');
 
-    // Normalize full-width characters to half-width for matching
+    // Normalize only line-start markdown markers for matching.
     const originalText = text;
-    // Non-breaking space (U+00A0) → normal space
-    text = text.replace(/\u00A0/g, ' ');
-    // Full-width numbers → half-width
-    text = text.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
-    // Full-width space → half-width
-    text = text.replace(/　/g, ' ');
-    // Full-width period → half-width
-    text = text.replace(/．/g, '.');
-    // Full-width hyphen/minus variants → half-width
-    text = text.replace(/[ー－―−]/g, '-');
-    // Full-width # → half-width
-    text = text.replace(/＃/g, '#');
-    // Full-width > → half-width
-    text = text.replace(/＞/g, '>');
-    // Full-width * → half-width
-    text = text.replace(/＊/g, '*');
-    // Full-width [ ] → half-width
-    text = text.replace(/［/g, '[').replace(/］/g, ']');
+    text = normalizeMarkdownPrefix(text);
 
-    // If text was normalized, update the block content
+    // If the line-start marker was normalized, reflect it in the editor.
     if (text !== originalText) {
         console.log('[DEBUG] Text normalized from "' + originalText + '" to "' + text + '"');
-        // Save caret offset
         const caretOffset = getCaretCharacterOffsetWithin(block);
         block.textContent = text;
-        // Restore caret
         setCaretCharacterOffset(block, caretOffset);
     }
 
@@ -428,10 +426,16 @@ function handleInlineAutoConversion() {
     }
 
     // Inline code: `text`
+    // Skip if this looks like a fenced code block (``` at start of line)
     const codeMatch = before.match(/`([^`]+)`$/);
     if (codeMatch) {
-        applyInlineAutoConvert(textNode, codeMatch, 'code', pos);
-        return;
+        const matchStart = before.length - codeMatch[0].length;
+        const textBeforeMatch = before.substring(0, matchStart);
+        // If preceded by ` (e.g. ```bash), this is a fenced code block marker, not inline code
+        if (!textBeforeMatch.endsWith('`')) {
+            applyInlineAutoConvert(textNode, codeMatch, 'code', pos);
+            return;
+        }
     }
 
     // Italic: *text* (not preceded by *)

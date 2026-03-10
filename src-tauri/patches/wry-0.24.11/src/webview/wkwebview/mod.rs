@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
+#![allow(unexpected_cfgs)]
+
 mod download;
 #[cfg(target_os = "macos")]
 mod file_drop;

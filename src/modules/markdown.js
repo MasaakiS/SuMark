@@ -140,7 +140,8 @@ function configureTurndown() {
             return node.classList && (
                 node.classList.contains('code-copy-btn') ||
                 node.classList.contains('code-copy-container') ||
-                node.classList.contains('image-copy-btn')
+                node.classList.contains('image-copy-btn') ||
+                node.classList.contains('code-block-toolbar')
             );
         },
         replacement: function() {
@@ -319,17 +320,26 @@ function configureTurndown() {
 
 // ========== Markdown Conversion ==========
 function getMarkdown() {
+    const editorEl = editor || document.getElementById('editor');
+    if (!editorEl) {
+        console.error('[getMarkdown] editor element not found');
+        return '';
+    }
+    if (!editor) {
+        editor = editorEl;
+    }
+
     if (!turndownService) {
         console.error('Turndown not available');
-        return editor.textContent || '';
+        return editorEl.textContent || '';
     }
 
     // Clone the editor content for conversion
-    const clone = editor.cloneNode(true);
+    const clone = editorEl.cloneNode(true);
 
     // Sync checkbox checked property to checked attribute
     // When innerHTML is serialized, only attributes are preserved, not properties
-    const originalCheckboxes = editor.querySelectorAll('input[type="checkbox"]');
+    const originalCheckboxes = editorEl.querySelectorAll('input[type="checkbox"]');
     const clonedCheckboxes = clone.querySelectorAll('input[type="checkbox"]');
     originalCheckboxes.forEach((original, i) => {
         const cloned = clonedCheckboxes[i];
@@ -442,12 +452,21 @@ function _normalizeNotionTable(lines) {
 
 
 function setMarkdown(md) {
-        console.log('[setMarkdown] called, md.length:', md.length);
+    console.log('[setMarkdown] called, md.length:', md.length);
+    const editorEl = editor || document.getElementById('editor');
+    if (!editorEl) {
+        console.error('[setMarkdown] editor element not found');
+        return;
+    }
+    if (!editor) {
+        editor = editorEl;
+    }
+
     // リセット: グローバル状態をクリア（複数ページロード時のメモリリーク防止）
     resetGlobalState();
     
     if (typeof marked === 'undefined') {
-        editor.textContent = md;
+        editorEl.textContent = md;
         return;
     }
 
@@ -491,19 +510,19 @@ function setMarkdown(md) {
     }) : dirtyHtml;
     
     try {
-        editor.innerHTML = cleanHtml;
-        console.log('[setMarkdown] editor.innerHTML length:', editor.innerHTML.length);
+        editorEl.innerHTML = cleanHtml;
+        console.log('[setMarkdown] editor.innerHTML length:', editorEl.innerHTML.length);
     } catch (e) {
         console.error('[setMarkdown] Exception:', e);
     }
 
     // Make checkboxes interactive
-    editor.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    editorEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
         cb.removeAttribute('disabled');
     });
 
     // Highlight code blocks
-    editor.querySelectorAll('pre code').forEach(block => {
+    editorEl.querySelectorAll('pre code').forEach(block => {
         if (typeof hljs !== 'undefined') {
             hljs.highlightElement(block);
         }

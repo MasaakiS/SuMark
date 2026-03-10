@@ -4,6 +4,7 @@ const path = require('path');
 const os = require('os');
 
 const platform = os.platform();
+const excludeVrt = process.env.PW_EXCLUDE_VRT === '1';
 let binaryPath;
 
 if (platform === 'darwin') {
@@ -29,6 +30,7 @@ module.exports = defineConfig({
         ['html', { open: 'never', outputFolder: 'test/playwright-report' }],
     ],
     outputDir: 'test/playwright-results',
+    testIgnore: excludeVrt ? ['**/12-visual-regression.spec.js'] : [],
 
     use: {
         actionTimeout: 10000,

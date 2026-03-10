@@ -19,7 +19,7 @@ async function exportPDF() {
         const clone = editor.cloneNode(true);
 
         // Remove UI elements from clone
-        clone.querySelectorAll('.code-copy-container, .code-copy-btn, .toc-delete-btn, .image-resize-handle, .image-copy-btn, .line-numbers-gutter').forEach(el => el.remove());
+        clone.querySelectorAll('.code-copy-container, .code-copy-btn, .toc-delete-btn, .image-resize-handle, .image-copy-btn, .line-numbers-gutter, .code-wrap-btn, .code-block-toolbar').forEach(el => el.remove());
 
         // Convert asset:// / https://asset.localhost/ URLs to Base64 for PDF export
         // On macOS, Tauri uses asset://localhost/ENCODED_PATH
