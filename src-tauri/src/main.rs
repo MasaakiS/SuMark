@@ -6,6 +6,7 @@ use arboard::{Clipboard, ImageData};
 use base64::Engine;
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::Manager;
 
 /// ウィンドウクローズ許可フラグ（JS側で確認後にセットされる）
 static CLOSE_ALLOWED: AtomicBool = AtomicBool::new(false);
@@ -110,14 +111,25 @@ fn main() {
             allow_close
         ])
         .on_window_event(|event| {
+            // アプリXボタン: CloseRequested をインターセプトし JS に委譲
             if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
                 if !CLOSE_ALLOWED.load(Ordering::SeqCst) {
-                    // JS側に確認を委譲（ウィンドウは閉じない）
                     api.prevent_close();
                     let _ = event.window().emit("app-close-requested", ());
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Cmd+Q など OS 経由のアプリ終了: ExitRequested をインターセプトし JS に委譲
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if !CLOSE_ALLOWED.load(Ordering::SeqCst) {
+                    api.prevent_exit();
+                    if let Some(window) = app_handle.get_window("main") {
+                        let _ = window.emit("app-close-requested", ());
+                    }
+                }
+            }
+        });
 }

@@ -769,12 +769,14 @@ function setupEventListeners() {
             const extra = unsavedTabs.length > 5 ? '\n...他 ' + (unsavedTabs.length - 5) + ' 件' : '';
             const message = '保存されていないタブがあります。\nアプリを終了しますか？\n\n' + names + extra;
 
-            if (confirm(message)) {
+            // Tauri ネイティブダイアログ（WebViewの innerHTML を壊さない）
+            const ok = await window.__TAURI__.dialog.confirm(message, { title: '確認', type: 'warning' });
+            if (ok) {
                 // OK → 閉じる
                 await invoke('allow_close');
                 window.__TAURI__.window.appWindow.close();
             }
-            // キャンセル → 何もしない（Rust側で prevent_close 済み）
+            // キャンセル → 何もしない（Rust側で prevent_close/prevent_exit 済み）
         });
     }
     

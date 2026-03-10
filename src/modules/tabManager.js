@@ -153,33 +153,24 @@ function switchTab(id) {
  * タブをクローズ
  * @param {number} id - クローズするタブのID
  */
-function closeTab(id) {
+async function closeTab(id) {
     const tabIndex = tabs.findIndex(t => t.id === id);
     if (tabIndex === -1) return;
 
     const tab = tabs[tabIndex];
 
-    // confirm() がエディタ内容をクリアする場合に備え、アクティブタブの内容を保存
-    let savedContent = null;
-    let savedScrollTop = 0;
-    const activeTab = getActiveTab();
-    if (activeTab && editor) {
-        savedContent = editor.innerHTML;
-        savedScrollTop = editor.parentElement.scrollTop;
-        activeTab.content = savedContent;
-        activeTab.scrollTop = savedScrollTop;
-    }
-
     // 保存されていない場合は確認
+    // Tauri ネイティブダイアログを使う（WebView の innerHTML を壊さない）
     if (tab.isModified) {
-        const ok = confirm('"' + tab.title + '" は保存されていません。閉じますか？');
-
-        // confirm() 後にエディタ内容を復元（WebViewがクリアする場合がある）
-        if (savedContent !== null && editor) {
-            editor.innerHTML = savedContent;
-            editor.parentElement.scrollTop = savedScrollTop;
+        let ok;
+        if (window.__TAURI__ && window.__TAURI__.dialog) {
+            ok = await window.__TAURI__.dialog.confirm(
+                '"' + tab.title + '" は保存されていません。閉じますか？',
+                { title: '確認', type: 'warning' }
+            );
+        } else {
+            ok = confirm('"' + tab.title + '" は保存されていません。閉じますか？');
         }
-
         if (!ok) return;
     }
 
