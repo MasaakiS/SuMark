@@ -576,11 +576,12 @@ function setupEventListeners() {
         console.log('[DEBUG] Tauri event API not available - file drop disabled');
     }
     
-    // ========== Unified File Drop Handling ==========
-    // fileDropEnabled=false in tauri.conf.json → HTML5 Drag & Drop API handles all drops
-    // This supports: Finder drops (dataTransfer.files), VSCode Explorer drops (text/uri-list)
+    // ========== Unified File Drop Handling (non-Tauri fallback) ==========
+    // When running outside Tauri (browser-only), HTML5 Drag & Drop API handles file drops.
+    // In Tauri, fileDropEnabled=true means native tauri://file-drop handles it;
+    // this handler only serves as a fallback for non-Tauri environments.
     const setupUnifiedDropHandler = () => {
-        console.log('[DEBUG] Setting up unified drop handlers (fileDropEnabled=false)...');
+        console.log('[DEBUG] Setting up unified drop handlers...');
 
         // Helper: check if drag contains files or file URIs
         const isFileDrag = (e) => {
@@ -630,7 +631,14 @@ function setupEventListeners() {
             e.preventDefault();
             e.stopPropagation();
 
-            console.log('[DEBUG] ===== DROP EVENT =====');
+            // In Tauri with fileDropEnabled=true, native tauri://file-drop handles file drops.
+            // If this HTML5 handler fires anyway, skip to avoid duplicate processing.
+            if (window.__TAURI__ && window.__TAURI__.event) {
+                console.log('[DEBUG] Tauri native file-drop is active, skipping HTML5 handler');
+                return;
+            }
+
+            console.log('[DEBUG] ===== DROP EVENT (non-Tauri) =====');
             console.log('[DEBUG] dataTransfer.types:', Array.from(e.dataTransfer.types || []));
             console.log('[DEBUG] dataTransfer.files.length:', e.dataTransfer.files?.length);
 
@@ -710,7 +718,7 @@ function setupEventListeners() {
         console.log('[DEBUG] Unified drop handlers registered');
     };
 
-    // Helper: process a dropped File object
+    // Helper: process a dropped File object (non-Tauri fallback only)
     async function processDroppedFile(file) {
         const ext = file.name.split('.').pop().toLowerCase();
         console.log('[DEBUG] processDroppedFile:', file.name, 'ext:', ext);
@@ -726,17 +734,17 @@ function setupEventListeners() {
                 console.log('[DEBUG] Using file.path:', file.path);
                 await openFileFromPath(file.path);
             } else {
-                // Read content directly via File API
-                console.log('[DEBUG] Reading file via text()...');
+                // Read content directly via File API (no path = no image resolution)
+                console.log('[DEBUG] Reading file via text() (no path available)...');
                 const text = await file.text();
                 console.log('[DEBUG] Loaded', text.length, 'chars from', file.name);
-                // Preprocess and create a new tab (same logic as openFileFromPath)
                 let processedText = text;
                 // Prevent indented lone '-' from being interpreted as Setext H2
                 processedText = processedText.replace(/^(\s+)-(\s*)$/gm, '$1- \u200B');
                 const processed = preprocessNotionMarkdown(processedText);
                 const html = (typeof marked !== 'undefined') ? marked.parse(processed) : processed;
                 createTab(null, file.name, html);
+                showWarn('ファイルパスを取得できないため、画像が表示されない場合があります。「開く」ボタンをご利用ください。');
             }
         } catch (err) {
             console.error('[ERROR] processDroppedFile:', err);
