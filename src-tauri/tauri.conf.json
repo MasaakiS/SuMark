@@ -80,7 +80,7 @@
         "minWidth": 800,
         "minHeight": 600,
         "fileDropEnabled": false,
-        "devTools": true
+        "devtools": true
       }
     ]
   }
