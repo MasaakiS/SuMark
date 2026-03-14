@@ -19,8 +19,18 @@ function normalizeFilePath(rawPath) {
         }
     }
 
+    // Decode percent-encoded characters (spaces, non-ascii, etc.)
+    try {
+        p = decodeURIComponent(p);
+    } catch (e) {
+        // Ignore invalid percent escapes
+    }
+
     // Normalize separators
     p = p.replace(/\\/g, '/');
+
+    // Collapse redundant slashes
+    p = p.replace(/\/+/g, '/');
 
     return p;
 }
