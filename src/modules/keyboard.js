@@ -119,6 +119,63 @@ function handleKeyDown(e) {
                 }
             }
         }
+
+        // Backspace within an empty list item at end should exit list into an empty paragraph
+        if (e.key === 'Backspace' && sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            if (range.collapsed) {
+                const block = getParentBlock(range.startContainer);
+                if (block && block.tagName === 'LI') {
+                    // Only treat as "empty" if no visible text (ignore <br>)
+                    const text = block.textContent.replace(/\u200B/g, '').trim();
+                    const isEmpty = text === '';
+
+                    // Ensure cursor is at start of the LI
+                    const testRange = document.createRange();
+                    testRange.selectNodeContents(block);
+                    testRange.setEnd(range.startContainer, range.startOffset);
+                    const isAtStart = testRange.toString().length === 0;
+
+                    if (isEmpty && isAtStart) {
+                        const list = block.parentNode;
+                        if (list && (list.tagName === 'UL' || list.tagName === 'OL')) {
+                            // Only trigger when this is the last list item
+                            if (!block.nextElementSibling) {
+                                e.preventDefault();
+
+                                const listParent = list.parentNode;
+                                const nextSibling = list.nextSibling;
+
+                                // Remove the empty list item
+                                block.remove();
+
+                                // If list is now empty, remove it
+                                if (list.children.length === 0) {
+                                    list.remove();
+                                }
+
+                                // Insert an empty paragraph after the list (or where the list was)
+                                const p = document.createElement('p');
+                                p.innerHTML = '<br>';
+                                if (listParent) {
+                                    if (nextSibling) {
+                                        listParent.insertBefore(p, nextSibling);
+                                    } else {
+                                        listParent.appendChild(p);
+                                    }
+                                } else {
+                                    editor.appendChild(p);
+                                }
+
+                                setCursorTo(p);
+                                markModified();
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Enter key: special handling
@@ -131,6 +188,109 @@ function handleKeyDown(e) {
     if (e.key === 'Tab') {
         handleTabKey(e);
         return;
+    }
+
+    // Arrow keys in table cells: move between cells when at boundaries
+    // (Up/Down always move if possible; Left/Right only if cursor is at edge)
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const arrowKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+        if (arrowKeys.includes(e.key)) {
+            const sel = window.getSelection();
+            if (sel.rangeCount && sel.isCollapsed) {
+                const range = sel.getRangeAt(0);
+                const cell = (range.startContainer.nodeType === 1
+                    ? range.startContainer.closest('td, th')
+                    : range.startContainer.parentElement && range.startContainer.parentElement.closest('td, th'));
+                if (cell) {
+                    const table = cell.closest('table');
+                    const row = cell.closest('tr');
+                    if (table && row) {
+                        const cells = Array.from(row.children).filter(c => c.tagName === 'TD' || c.tagName === 'TH');
+                        const idx = cells.indexOf(cell);
+
+                        const isCursorAtStart = (r, container) => {
+                            const testRange = r.cloneRange();
+                            testRange.selectNodeContents(container);
+                            testRange.setEnd(r.startContainer, r.startOffset);
+                            return testRange.toString().length === 0;
+                        };
+                        const isCursorAtEnd = (r, container) => {
+                            const testRange = r.cloneRange();
+                            testRange.selectNodeContents(container);
+                            testRange.setStart(r.startContainer, r.startOffset);
+                            return testRange.toString().length === 0;
+                        };
+                        const atStart = isCursorAtStart(range, cell);
+                        const atEnd = isCursorAtEnd(range, cell);
+
+                        const moveToCell = (targetCell) => {
+                            if (!targetCell) return false;
+                            const r = document.createRange();
+                            r.selectNodeContents(targetCell);
+                            r.collapse(true);
+                            sel.removeAllRanges();
+                            sel.addRange(r);
+                            return true;
+                        };
+
+                        let moved = false;
+
+                        if (e.key === 'ArrowUp') {
+                            // Move to cell above (same column index)
+                            const rows = Array.from(table.querySelectorAll('tr'));
+                            const rowIndex = rows.indexOf(row);
+                            if (rowIndex > 0) {
+                                const prevRow = rows[rowIndex - 1];
+                                const prevCells = Array.from(prevRow.children).filter(c => c.tagName === 'TD' || c.tagName === 'TH');
+                                const target = prevCells[Math.min(idx, prevCells.length - 1)];
+                                moved = moveToCell(target);
+                            }
+                        } else if (e.key === 'ArrowDown') {
+                            // Move to cell below (same column index)
+                            const rows = Array.from(table.querySelectorAll('tr'));
+                            const rowIndex = rows.indexOf(row);
+                            if (rowIndex < rows.length - 1) {
+                                const nextRow = rows[rowIndex + 1];
+                                const nextCells = Array.from(nextRow.children).filter(c => c.tagName === 'TD' || c.tagName === 'TH');
+                                const target = nextCells[Math.min(idx, nextCells.length - 1)];
+                                moved = moveToCell(target);
+                            }
+                        } else if (e.key === 'ArrowLeft' && atStart) {
+                            // Move to previous cell (or previous row end)
+                            if (idx > 0) {
+                                moved = moveToCell(cells[idx - 1]);
+                            } else {
+                                const rows = Array.from(table.querySelectorAll('tr'));
+                                const rowIndex = rows.indexOf(row);
+                                if (rowIndex > 0) {
+                                    const prevRow = rows[rowIndex - 1];
+                                    const prevCells = Array.from(prevRow.children).filter(c => c.tagName === 'TD' || c.tagName === 'TH');
+                                    moved = moveToCell(prevCells[prevCells.length - 1]);
+                                }
+                            }
+                        } else if (e.key === 'ArrowRight' && atEnd) {
+                            // Move to next cell (or next row start)
+                            if (idx < cells.length - 1) {
+                                moved = moveToCell(cells[idx + 1]);
+                            } else {
+                                const rows = Array.from(table.querySelectorAll('tr'));
+                                const rowIndex = rows.indexOf(row);
+                                if (rowIndex < rows.length - 1) {
+                                    const nextRow = rows[rowIndex + 1];
+                                    const nextCells = Array.from(nextRow.children).filter(c => c.tagName === 'TD' || c.tagName === 'TH');
+                                    moved = moveToCell(nextCells[0]);
+                                }
+                            }
+                        }
+
+                        if (moved) {
+                            e.preventDefault();
+                            return;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Ctrl/Cmd+; → 日付, Ctrl/Cmd+Shift+; (Ctrl/Cmd+:) → 時刻
@@ -741,6 +901,94 @@ function handleTabKey(e) {
             setCursorTo(block);
         }
         return;
+    }
+
+    // In table cells: move to the next cell on Tab, or previous cell on Shift+Tab
+    if (block && (block.tagName === 'TD' || block.tagName === 'TH' || (block.closest && block.closest('td, th')))) {
+        const cell = (block.tagName === 'TD' || block.tagName === 'TH') ? block : block.closest('td, th');
+        if (cell) {
+            const table = cell.closest('table');
+            if (table) {
+                const row = cell.closest('tr');
+                if (row) {
+                    const cells = Array.from(row.children).filter(c => c.tagName === 'TD' || c.tagName === 'TH');
+                    const idx = cells.indexOf(cell);
+                    let targetCell = null;
+                    let createdRow = false;
+
+                    if (e.shiftKey) {
+                        // Move to previous cell; if at start, go to previous row end
+                        if (idx > 0) {
+                            targetCell = cells[idx - 1];
+                        } else {
+                            let prevRow = row.previousElementSibling;
+                            if (!prevRow && row.parentElement && row.parentElement.tagName === 'TBODY') {
+                                const thead = table.querySelector('thead');
+                                if (thead) prevRow = thead.querySelector('tr:last-child');
+                            }
+                            if (prevRow) {
+                                const prevCells = Array.from(prevRow.children).filter(c => c.tagName === 'TD' || c.tagName === 'TH');
+                                targetCell = prevCells[prevCells.length - 1];
+                            }
+                        }
+                    } else {
+                        // Move to next cell; if at end, go to next row first cell
+                        if (idx < cells.length - 1) {
+                            targetCell = cells[idx + 1];
+                        } else {
+                            let nextRow = row.nextElementSibling;
+                            if (!nextRow && row.parentElement && row.parentElement.tagName === 'THEAD') {
+                                let tbody = table.querySelector('tbody');
+                                if (!tbody) {
+                                    tbody = document.createElement('tbody');
+                                    table.appendChild(tbody);
+                                }
+                                nextRow = tbody.firstElementChild;
+                            }
+
+                            if (!nextRow) {
+                                const colCount = cells.length;
+                                const newRow = createTableRow(colCount, 'td');
+                                const parent = row.parentElement;
+                                if (parent && parent.tagName === 'THEAD') {
+                                    let tbody = table.querySelector('tbody');
+                                    if (!tbody) {
+                                        tbody = document.createElement('tbody');
+                                        table.appendChild(tbody);
+                                    }
+                                    tbody.appendChild(newRow);
+                                } else if (parent) {
+                                    parent.appendChild(newRow);
+                                } else {
+                                    table.appendChild(newRow);
+                                }
+                                nextRow = newRow;
+                                createdRow = true;
+                            }
+
+                            if (nextRow) {
+                                const nextCells = Array.from(nextRow.children).filter(c => c.tagName === 'TD' || c.tagName === 'TH');
+                                if (nextCells.length > 0) targetCell = nextCells[0];
+                            }
+                        }
+                    }
+
+                    if (targetCell) {
+                        const range = document.createRange();
+                        range.selectNodeContents(targetCell);
+                        range.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+
+                        if (createdRow) {
+                            markModified();
+                            saveEditorState();
+                        }
+                        return;
+                    }
+                }
+            }
+        }
     }
 
 
