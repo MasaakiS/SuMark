@@ -4,6 +4,27 @@
 // newFile, openFileFromPath, openFile, resolveRelativeImages,
 // resolveRelativeCsvLinks, saveFile, saveAsFile, resolveImagesForSave
 
+// Normalize file paths that may be provided as file:// URLs (especially on Windows)
+function normalizeFilePath(rawPath) {
+    if (!rawPath) return rawPath;
+    let p = rawPath.trim();
+
+    // Strip file:// scheme if present
+    if (p.startsWith('file://')) {
+        // file:///C:/... or file://hostname/... need to be normalized to a local file path
+        p = p.replace(/^file:\/\//, '');
+        // Windows file URLs may start with /C:/... so remove leading slash
+        if (/^\/[A-Za-z]:\//.test(p)) {
+            p = p.substring(1);
+        }
+    }
+
+    // Normalize separators
+    p = p.replace(/\\/g, '/');
+
+    return p;
+}
+
 async function newFile() {
     createTab(null, '無題', '<p><br></p>');
     editor.focus();
@@ -12,10 +33,12 @@ async function newFile() {
 // Open a file from a given path (used by both dialog and drag-and-drop)
 async function openFileFromPath(filePath) {
     try {
-        console.log('[DEBUG openFileFromPath START] filePath:', filePath);
+        // Normalize file:// URLs to local filesystem paths (Windows may provide file:// paths)
+        const normalizedFilePath = normalizeFilePath(filePath);
+        console.log('[DEBUG openFileFromPath START] filePath:', filePath, 'normalized:', normalizedFilePath);
         
         // Check if file is already open
-        const existingTab = tabs.find(t => t.filePath === filePath);
+        const existingTab = tabs.find(t => t.filePath === normalizedFilePath);
         if (existingTab) {
             console.log('[DEBUG openFileFromPath] File already open, switching tab');
             switchTab(existingTab.id);
@@ -23,12 +46,12 @@ async function openFileFromPath(filePath) {
         }
 
         console.log('[DEBUG openFileFromPath] Reading file...');
-        let contents = await readTextFile(filePath);
+        let contents = await readTextFile(normalizedFilePath);
         console.log('[DEBUG openFileFromPath] File read successfully, contents length:', contents.length);
 
         // Resolve relative image paths to asset protocol URLs for display
-        const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
-        const fileDir = filePath.substring(0, lastSlash);
+        const lastSlash = Math.max(normalizedFilePath.lastIndexOf('/'), normalizedFilePath.lastIndexOf('\\'));
+        const fileDir = normalizedFilePath.substring(0, lastSlash);
         console.log('[DEBUG openFileFromPath] fileDir:', fileDir);
         console.log('[DEBUG openFileFromPath] Resolving relative images...');
         contents = resolveRelativeImages(contents, fileDir);
@@ -51,10 +74,10 @@ async function openFileFromPath(filePath) {
         contents = contents.replace(/^(\s*[-*+]\s+\[[ xX]\])\s*$/gm, '$1 \u200B');
 
         console.log('[DEBUG openFileFromPath] Parsing markdown to HTML...');
-        const filename = filePath.split('/').pop().split('\\').pop();
+        const filename = normalizedFilePath.split('/').pop().split('\\').pop();
         const html = (typeof marked !== 'undefined') ? marked.parse(contents) : contents;
         console.log('[DEBUG openFileFromPath] Creating tab...');
-        createTab(filePath, filename, html);
+        createTab(normalizedFilePath, filename, html);
         console.log('[DEBUG openFileFromPath] SUCCESS');
 
     } catch (err) {
