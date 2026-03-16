@@ -55,7 +55,14 @@ function throttle(fn, delay) {
  */
 function normalizeFilePath(path) {
     if (!path) return '';
-    return path.replace(/\\/g, '/').replace(/\/$/, '');
+    // Detect UNC path (\\server\share or //server/share)
+    const isUNC = /^\\\\|^\/\//.test(path);
+    let result = path.replace(/\\/g, '/');
+    if (isUNC) {
+        // Preserve leading // for UNC paths, normalize the rest
+        result = '//' + result.substring(2).replace(/\/+/g, '/');
+    }
+    return result.replace(/\/$/, '');
 }
 
 /**

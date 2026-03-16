@@ -11,12 +11,17 @@ function normalizeFilePath(rawPath) {
 
     // Strip file:// scheme if present
     if (p.startsWith('file://')) {
-        // file:///C:/... or file://hostname/... need to be normalized to a local file path
+        // file:///C:/... → /C:/... → C:/...
+        // file://server/share/... → //server/share/... (UNC path)
+        // file:////server/share/... → //server/share/... (UNC path alternate form)
         p = p.replace(/^file:\/\//, '');
         // Windows file URLs may start with /C:/... so remove leading slash
         if (/^\/[A-Za-z]:\//.test(p)) {
             p = p.substring(1);
         }
+        // UNC paths via file:// become /server/share (missing one /), restore it
+        // But file:////server/share becomes //server/share which is correct
+        // Also file:///C:/... becomes /C:/... which is handled above
     }
 
     // Decode percent-encoded characters (spaces, non-ascii, etc.)
@@ -26,11 +31,19 @@ function normalizeFilePath(rawPath) {
         // Ignore invalid percent escapes
     }
 
+    // Detect UNC path (\\server\share or //server/share)
+    const isUNC = /^\\\\|^\/\//.test(p);
+
     // Normalize separators
     p = p.replace(/\\/g, '/');
 
-    // Collapse redundant slashes
-    p = p.replace(/\/+/g, '/');
+    // Collapse redundant slashes (but not the leading // for UNC paths)
+    if (isUNC) {
+        // Preserve the leading // for UNC, normalize the rest
+        p = '//' + p.substring(2).replace(/\/+/g, '/');
+    } else {
+        p = p.replace(/\/+/g, '/');
+    }
 
     return p;
 }
@@ -123,7 +136,12 @@ async function openFile() {
 // This is a synchronous, lightweight string replacement (no file I/O)
 function resolveRelativeImages(markdown, fileDir) {
     // Normalize fileDir to use forward slashes and remove trailing slash
-    fileDir = fileDir.replace(/\\/g, '/').replace(/\/$/, '');
+    const isUNC = /^\\\\|^\/\//.test(fileDir);
+    fileDir = fileDir.replace(/\\/g, '/');
+    if (isUNC) {
+        fileDir = '//' + fileDir.substring(2).replace(/\/+/g, '/');
+    }
+    fileDir = fileDir.replace(/\/$/, '');
     console.log('[DEBUG resolveRelativeImages] fileDir:', fileDir);
 
     // Handle nested parentheses in URLs (e.g., Notion exports with unencoded parens)
@@ -296,8 +314,12 @@ async function saveAsFile() {
 
 // Convert asset:// URLs back to relative paths, and save Base64 images to files
 async function resolveImagesForSave(markdown, mdFilePath) {
-    // Normalize file path to use forward slashes
-    const normalizedPath = mdFilePath.replace(/\\/g, '/');
+    // Normalize file path to use forward slashes (preserve UNC prefix)
+    const isUNC = /^\\\\|^\/\//.test(mdFilePath);
+    let normalizedPath = mdFilePath.replace(/\\/g, '/');
+    if (isUNC) {
+        normalizedPath = '//' + normalizedPath.substring(2).replace(/\/+/g, '/');
+    }
     const lastSlash = normalizedPath.lastIndexOf('/');
     const fileDir = normalizedPath.substring(0, lastSlash);
     const mdFileName = normalizedPath.substring(lastSlash + 1).replace(/\.md$/i, '');
