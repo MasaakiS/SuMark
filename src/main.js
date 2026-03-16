@@ -488,6 +488,8 @@ function setupEventListeners() {
         { id: 'pdfBtn',       handler: exportPDF },
         { id: 'undoBtn',      handler: performUndo },
         { id: 'redoBtn',      handler: performRedo },
+        { id: 'searchBtn',    handler: showFindDialog },
+        { id: 'replaceBtn',   handler: showReplaceDialog },
         { id: 'boldBtn',      handler: () => document.execCommand('bold') },
         { id: 'italicBtn',    handler: () => document.execCommand('italic') },
         { id: 'strikeBtn',    handler: () => document.execCommand('strikethrough') },

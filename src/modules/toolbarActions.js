@@ -7,6 +7,108 @@
 // insertHorizontalRule, insertDate, insertTime, insertDateTime,
 // showEmojiPicker, CODE_LANGUAGES
 
+// ========== Search Highlight State ==========
+let currentSearchHighlights = [];
+let currentSearchIndex = -1;
+
+function clearSearchHighlights() {
+    if (!currentSearchHighlights || currentSearchHighlights.length === 0) return;
+    currentSearchHighlights.forEach(span => {
+        const parent = span.parentNode;
+        if (!parent) return;
+        parent.replaceChild(document.createTextNode(span.textContent), span);
+        parent.normalize();
+    });
+    currentSearchHighlights = [];
+    currentSearchIndex = -1;
+}
+
+function escapeRegExpForSearch(s) {
+    return s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+}
+
+function highlightSearchMatches(query, caseSensitive) {
+    clearSearchHighlights();
+    if (!query) return 0;
+
+    const flags = caseSensitive ? 'g' : 'gi';
+    const re = new RegExp(escapeRegExpForSearch(query), flags);
+
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+            if (node.parentNode && node.parentNode.classList && node.parentNode.classList.contains('search-highlight')) {
+                return NodeFilter.FILTER_REJECT;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+        }
+    });
+
+    const textNodes = [];
+    while (walker.nextNode()) {
+        textNodes.push(walker.currentNode);
+    }
+
+    textNodes.forEach(textNode => {
+        const text = textNode.nodeValue;
+        const matches = [...text.matchAll(re)];
+        if (!matches.length) return;
+
+        const frag = document.createDocumentFragment();
+        let lastIndex = 0;
+
+        matches.forEach(match => {
+            const matchIndex = match.index;
+            if (matchIndex > lastIndex) {
+                frag.appendChild(document.createTextNode(text.slice(lastIndex, matchIndex)));
+            }
+            const span = document.createElement('span');
+            span.className = 'search-highlight';
+            span.textContent = match[0];
+            frag.appendChild(span);
+            currentSearchHighlights.push(span);
+            lastIndex = matchIndex + match[0].length;
+        });
+
+        if (lastIndex < text.length) {
+            frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+        }
+
+        textNode.parentNode.replaceChild(frag, textNode);
+    });
+
+    currentSearchIndex = currentSearchHighlights.length > 0 ? 0 : -1;
+    if (currentSearchHighlights.length > 0) {
+        currentSearchHighlights[0].classList.add('active-search-highlight');
+    }
+    return currentSearchHighlights.length;
+}
+
+function moveToSearchHighlight(index) {
+    if (!currentSearchHighlights.length) return;
+    const normalized = ((index % currentSearchHighlights.length) + currentSearchHighlights.length) % currentSearchHighlights.length;
+    if (currentSearchIndex >= 0 && currentSearchHighlights[currentSearchIndex]) {
+        currentSearchHighlights[currentSearchIndex].classList.remove('active-search-highlight');
+    }
+    currentSearchIndex = normalized;
+    const el = currentSearchHighlights[currentSearchIndex];
+    if (!el) return;
+    el.classList.add('active-search-highlight');
+
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function moveToNextSearchHighlight() {
+    if (!currentSearchHighlights.length) return;
+    moveToSearchHighlight(currentSearchIndex + 1);
+}
+
 // ========== Formatting Commands ==========
 
 function applyHeading(level) {
@@ -206,7 +308,8 @@ function applyInlineCode() {
 }
 
 // ========== Custom Modal Dialog ==========
-function showModal(title, fields, callback) {
+function showModal(title, fields, callback, options = {}) {
+    // options: { okText, cancelText, keepOpenOnOk }
     const overlay = document.getElementById('modalOverlay');
     const titleEl = document.getElementById('modalTitle');
     const fieldsEl = document.getElementById('modalFields');
@@ -244,6 +347,26 @@ function showModal(title, fields, callback) {
             inputEl.id = 'modalInput' + i;
             inputEl.value = field.value || '';
             inputEl.placeholder = field.placeholder || '';
+        } else if (field.type === 'checkbox') {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'modal-field modal-field-checkbox';
+
+            const checkboxLabel = document.createElement('label');
+            checkboxLabel.style.display = 'flex';
+            checkboxLabel.style.alignItems = 'center';
+            checkboxLabel.style.gap = '8px';
+            checkboxLabel.style.cursor = 'pointer';
+
+            inputEl = document.createElement('input');
+            inputEl.type = 'checkbox';
+            inputEl.id = 'modalInput' + i;
+            inputEl.checked = Boolean(field.value);
+
+            checkboxLabel.appendChild(inputEl);
+            checkboxLabel.appendChild(document.createTextNode(field.label));
+            wrapper.appendChild(checkboxLabel);
+            fieldsEl.appendChild(wrapper);
+            return;
         } else {
             inputEl = document.createElement('input');
             inputEl.type = 'text';
@@ -258,6 +381,14 @@ function showModal(title, fields, callback) {
 
     overlay.style.display = 'flex';
 
+    // Position dialog in the center by default
+    const dialog = overlay.querySelector('.modal-dialog');
+    if (dialog) {
+        dialog.style.left = '50%';
+        dialog.style.top = '50%';
+        dialog.style.transform = 'translate(-50%, -50%)';
+    }
+
     // Focus first input/select
     const firstInput = fieldsEl.querySelector('input, select');
     if (firstInput) setTimeout(() => firstInput.focus(), 50);
@@ -268,17 +399,102 @@ function showModal(title, fields, callback) {
     const newCancel = cancelBtn.cloneNode(true);
     cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
 
+    if (options.okText) {
+        newOk.textContent = options.okText;
+    }
+    if (options.cancelText) {
+        newCancel.textContent = options.cancelText;
+    }
+
     function close() {
         overlay.style.display = 'none';
+        clearSearchHighlights();
+        // Remove drag listeners (if any)
+        document.removeEventListener('mousemove', onDrag);
+        document.removeEventListener('mouseup', endDrag);
+        document.removeEventListener('touchmove', onTouchDrag);
+        document.removeEventListener('touchend', endDrag);
     }
+
+    // Drag & move support (for moving the modal)
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+    let dragging = false;
+
+    function beginDrag(clientX, clientY) {
+        if (!dialog) return;
+        dragging = true;
+
+        const rect = dialog.getBoundingClientRect();
+        startLeft = rect.left;
+        startTop = rect.top;
+        dragStartX = clientX;
+        dragStartY = clientY;
+
+        // Convert % centering to absolute px so movement doesn't jump
+        dialog.style.left = `${rect.left}px`;
+        dialog.style.top = `${rect.top}px`;
+        dialog.style.transform = 'none';
+    }
+
+    function onDrag(e) {
+        if (!dragging || !dialog) return;
+        const clientX = e.clientX != null ? e.clientX : (e.touches && e.touches[0]?.clientX);
+        const clientY = e.clientY != null ? e.clientY : (e.touches && e.touches[0]?.clientY);
+        if (clientX == null || clientY == null) return;
+
+        const dx = clientX - dragStartX;
+        const dy = clientY - dragStartY;
+
+        dialog.style.left = (startLeft + dx) + 'px';
+        dialog.style.top = (startTop + dy) + 'px';
+    }
+
+    function onTouchDrag(e) {
+        onDrag(e);
+    }
+
+    function endDrag() {
+        dragging = false;
+    }
+
+    if (dialog) {
+        const titleEl = dialog.querySelector('.modal-title');
+        if (titleEl) {
+            titleEl.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                beginDrag(e.clientX, e.clientY);
+            });
+            titleEl.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                if (!touch) return;
+                beginDrag(touch.clientX, touch.clientY);
+            }, { passive: true });
+        }
+    }
+
+    document.addEventListener('mousemove', onDrag);
+    document.addEventListener('mouseup', endDrag);
+    document.addEventListener('touchmove', onTouchDrag, { passive: false });
+    document.addEventListener('touchend', endDrag);
 
     function submit() {
         const values = {};
         fields.forEach((field, i) => {
-            values[field.key] = document.getElementById('modalInput' + i).value;
+            const el = document.getElementById('modalInput' + i);
+            if (!el) return;
+            if (field.type === 'checkbox') {
+                values[field.key] = el.checked;
+            } else {
+                values[field.key] = el.value;
+            }
         });
-        close();
-        callback(values);
+        if (!options.keepOpenOnOk) {
+            close();
+        }
+        callback(values, close);
     }
 
     newOk.addEventListener('click', submit);
@@ -298,6 +514,112 @@ function showModal(title, fields, callback) {
             editor.focus();
         }
     };
+}
+
+function showFindDialog() {
+    const sel = window.getSelection();
+    const selectedText = sel ? sel.toString() : '';
+
+    const fields = [
+        { key: 'query', label: '検索', value: selectedText || '', placeholder: '検索する文字列' },
+        { key: 'caseSensitive', label: '大/小文字を区別', type: 'checkbox', value: false },
+    ];
+
+    let lastQuery = null;
+    let lastCaseSensitive = null;
+
+    showModal('検索', fields, (values) => {
+        const query = (values.query || '').trim();
+        if (!query) {
+            showWarn('検索語を入力してください');
+            return;
+        }
+
+        const caseSensitive = Boolean(values.caseSensitive);
+        const isSameSearch = query === lastQuery && caseSensitive === lastCaseSensitive;
+
+        if (!isSameSearch) {
+            lastQuery = query;
+            lastCaseSensitive = caseSensitive;
+
+            const count = highlightSearchMatches(query, caseSensitive);
+            if (count === 0) {
+                showWarn('一致する文字列は見つかりませんでした');
+                return;
+            }
+
+            showWarn(`${count} 件見つかりました`);
+            moveToSearchHighlight(0);
+            return;
+        }
+
+        // Same query: move to next match
+        moveToNextSearchHighlight();
+    }, {
+        okText: '次へ',
+        cancelText: '閉じる',
+        keepOpenOnOk: true,
+    });
+}
+
+function showReplaceDialog() {
+    const sel = window.getSelection();
+    const selectedText = sel ? sel.toString() : '';
+
+    const fields = [
+        { key: 'query', label: '検索', value: selectedText || '', placeholder: '検索する文字列' },
+        { key: 'replace', label: '置換', value: '', placeholder: '置換後の文字列（空の場合は削除）' },
+        { key: 'caseSensitive', label: '大/小文字を区別', type: 'checkbox', value: false },
+        { key: 'replaceAll', label: 'すべて置換', type: 'checkbox', value: true },
+    ];
+
+    showModal('置換', fields, (values) => {
+        const query = (values.query || '').trim();
+        if (!query) {
+            showWarn('検索語を入力してください');
+            return;
+        }
+
+        const replacement = values.replace || '';
+        const caseSensitive = Boolean(values.caseSensitive);
+        const global = Boolean(values.replaceAll);
+
+        const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+        const flags = caseSensitive ? (global ? 'g' : '') : (global ? 'gi' : 'i');
+        const re = new RegExp(escapeRegExp(query), flags);
+
+        const md = (typeof getMarkdown === 'function') ? getMarkdown() : '';
+        if (md === null || md === undefined) {
+            showError('Markdown を取得できませんでした');
+            return;
+        }
+
+        const matches = md.match(re);
+        if (!matches || matches.length === 0) {
+            showWarn('一致する文字列は見つかりませんでした');
+            return;
+        }
+
+        const replaced = md.replace(re, replacement);
+
+        if (typeof setMarkdown === 'function') {
+            setMarkdown(replaced);
+        } else {
+            // Fallback: directly replace editor text content
+            if (editor) editor.textContent = replaced;
+        }
+
+        // 保存状態を更新
+        if (typeof markModified === 'function') markModified();
+        if (typeof saveEditorState === 'function') saveEditorState();
+
+        showWarn(`${matches.length} 件を置換しました`);
+    });
+}
+
+// Backwards-compat shim (existing calls)
+function showFindReplace() {
+    showReplaceDialog();
 }
 
 // ========== Element Insertion ==========

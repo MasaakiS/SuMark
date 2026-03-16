@@ -17,6 +17,17 @@
     outline: none;
 }
 
+/* Highlight for search results */
+.search-highlight {
+    background: rgba(255, 229, 100, 0.55);
+    border-radius: 3px;
+}
+
+.active-search-highlight {
+    background: rgba(255, 202, 40, 0.8);
+    border-radius: 3px;
+}
+
 /* Placeholder */
 #editor:empty::before {
     content: attr(data-placeholder);

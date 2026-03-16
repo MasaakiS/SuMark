@@ -7,13 +7,13 @@ Tauriベースのデスクトップ向けWYSIWYG Markdownエディターです�
 - 📝 **WYSIWYG 編集**: Markdown を書きながらリアルタイムにリッチテキスト表示
 - 🎨 **豊富な機能**: GFM 準拠の Markdown 機能をフルサポート
 - ⌨️ **キーボードショートカット**: 日付・日時の素早い挿入、各種書式設定
-- 🖥️ **クロスプラットフォーム**: macOS / Windows / Linux (Chromebook) 対応
-- 🚀 **軽量高速**: Tauri ベースの高速デスクトップアプリ
+- 🖥️ **クロスプラットフォーム**: macOS / Windows / Linux 対応
+- 🚀 **デスクトップアプリ**: Tauri を使った軽量なネイティブ実行環境
 - 📊 **Mermaid 図**: フローチャート・シーケンス図などの図表表示
 - 😀 **絵文字サポート**: `:smile:` 形式のショートコードと絵文字ピッカー
 - 🗂️ **タブ UI**: 複数ファイルの同時編集
 - ▶ **トグル**: Notion 風の折りたたみブロック
-- 📄 **PDF エクスポート**: HTML 形式での PDF 出力
+- 📄 **PDF エクスポート**: Markdown を PDF に変換して保存
 - 📋 **画像コピー**: 挿入画像をワンクリックでクリップボードにコピー
 - 📥 **Notion エクスポート対応**: Notion の Markdown + CSV を Markdown + テーブルに自動変換
 
@@ -74,6 +74,8 @@ Tauriベースのデスクトップ向けWYSIWYG Markdownエディターです�
 | `Cmd/Ctrl+Shift+X` | 取り消し線 |
 | `Cmd/Ctrl+K` | リンク挿入 |
 | `Cmd/Ctrl+E` | インラインコード |
+| `Cmd/Ctrl+F` | 検索（ハイライト / 次へ） |
+| `Cmd/Ctrl+R` | 置換 |
 | `Cmd/Ctrl+Z` | 元に戻す |
 | `Cmd/Ctrl+Shift+Z` | やり直し |
 | `Ctrl+;` | 日付挿入 |
@@ -190,38 +192,50 @@ npm run build
 ```
 .
 ├── src/                        # フロントエンド
-│   ├── index.html             # メインHTML
-│   ├── main.js                # エントリーポイント（初期化・イベント）
-│   ├── utils.js               # ユーティリティ関数
-│   ├── nodeUtils.js           # DOM ノード操作
-│   ├── pasteUtils.js          # ペースト処理
-│   ├── codeHighlight.js       # コードブロックハイライト
-│   ├── mathRender.js          # KaTeX 数式レンダリング
-│   ├── mermaidManager.js      # Mermaid 図表管理
-│   ├── tocManager.js          # 目次生成・管理
-│   ├── toggleBlock.js         # トグルブロック管理
-│   ├── autoConvert.js         # 自動変換処理
-│   ├── markdown.js            # Markdown 変換ロジック
-│   ├── keyboard.js            # キーボードイベント
-│   ├── styles/                # スタイルシート（7ファイルに分割）
-│   │   ├── base.css           # リセット・スクロールバー・ユーティリティ
-│   │   ├── layout.css         # ツールバー・タブ・ステータスバー
-│   │   ├── editor.css         # エディタ本体
-│   │   ├── markdown.css       # Markdown レンダリング
-│   │   ├── components.css     # Mermaid・TOC・画像ビューア等
-│   │   ├── dialogs.css        # モーダル・コンテキストメニュー
-│   │   └── print.css          # 印刷/PDF 用
-│   └── vendor/                # サードパーティライブラリ
-├── src-tauri/                 # Rustバックエンド
-│   ├── src/main.rs            # Tauriメインプロセス
-│   ├── Cargo.toml             # Rust依存関係
-│   ├── build.rs               # ビルドスクリプト
-│   └── tauri.conf.json        # Tauri設定
-├── docs/                      # 設計・実装ドキュメント
-├── test/                      # テスト（Playwright E2E）
-├── package.json               # Node.js依存関係
-├── CHANGELOG.md               # バージョン履歴
-└── README.md                  # このファイル
+│   ├── index.html              # メインHTML
+│   ├── main.js                 # エントリーポイント（初期化・イベント）
+│   ├── modules/                # 機能ごとの分割モジュール
+│   │   ├── autoConvert.js      # 自動変換（Markdown→リッチテキスト）
+│   │   ├── codeHighlight.js    # コードブロックハイライト
+│   │   ├── editorZoom.js       # エディタズーム操作
+│   │   ├── exportManager.js    # PDFエクスポート
+│   │   ├── fileManager.js      # ファイル操作（開く/保存）
+│   │   ├── imageManager.js     # 画像挿入・リサイズ・コピー
+│   │   ├── keyboard.js         # ショートカット・キーイベント
+│   │   ├── markdown.js         # Markdown ↔ HTML 変換
+│   │   ├── mathRender.js       # KaTeX 数式レンダリング
+│   │   ├── mermaidManager.js   # Mermaid 図表レンダリング
+│   │   ├── nodeUtils.js        # DOM操作ユーティリティ
+│   │   ├── pasteUtils.js       # ペースト処理（Markdown/テーブル対応）
+│   │   ├── tableManager.js     # テーブル操作（行列追加/削除など）
+│   │   ├── tabManager.js       # タブ管理
+│   │   ├── tocManager.js       # 目次生成・管理
+│   │   ├── toggleBlock.js      # トグルブロック管理
+│   │   ├── toolbarActions.js   # ツールバー関連（挿入/ダイアログ）
+│   │   ├── undoRedo.js         # Undo/Redo スタック管理
+│   │   └── utils.js            # 共通ユーティリティ
+│   ├── styles/                 # スタイルシート（7ファイル）
+│   │   ├── base.css
+│   │   ├── layout.css
+│   │   ├── editor.css
+│   │   ├── markdown.css
+│   │   ├── components.css
+│   │   ├── dialogs.css
+│   │   └── print.css
+│   └── vendor/                 # サードパーティライブラリ
+├── src-tauri/                  # Tauri / Rust バックエンド
+│   ├── src/                    # Rust ソース
+│   │   └── main.rs             # Tauri メインプロセス
+│   ├── Cargo.toml              # Rust 依存関係
+│   ├── build.rs                # ビルドスクリプト
+│   ├── tauri.conf.json         # Tauri 設定
+│   └── icons/                  # バイナリに含めるアイコン
+├── docs/                       # 設計・実装ドキュメント
+├── test/                       # テスト（Playwright E2E 等）
+├── scripts/                    # ビルド/解析用補助スクリプト
+├── package.json                # Node.js 依存関係・npmスクリプト
+├── CHANGELOG.md                # 変更履歴
+└── README.md                   # このドキュメント
 ```
 
 設計・実装に関する詳細ドキュメントは [docs/](docs/README.md) を参照してください。

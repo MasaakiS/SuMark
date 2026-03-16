@@ -55,6 +55,24 @@ function handleKeyDown(e) {
         return;
     }
 
+    // Cmd/Ctrl+F: 検索
+    if (mod && e.key === 'f') {
+        e.preventDefault();
+        if (typeof showFindDialog === 'function') {
+            showFindDialog();
+        }
+        return;
+    }
+
+    // Cmd/Ctrl+R: 置換
+    if (mod && e.key === 'r') {
+        e.preventDefault();
+        if (typeof showReplaceDialog === 'function') {
+            showReplaceDialog();
+        }
+        return;
+    }
+
     // Backspace/Delete: handle non-editable elements (TOC, Mermaid, etc.)
     if (e.key === 'Backspace' || e.key === 'Delete') {
         const sel = window.getSelection();
