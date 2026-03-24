@@ -195,6 +195,40 @@ function resolveRelativeImages(markdown, fileDir) {
         }
     }
 
+    // Additional: Handle HTML <img> tags with relative paths (e.g. width付きイメージ保存時)
+    const htmlImgRegex = /<img[^>]*src="([^"]+)"[^>]*>/gi;
+    while ((match = htmlImgRegex.exec(markdown)) !== null) {
+        const fullMatch = match[0];
+        const rawPath = match[1];
+
+        // Skip absolute locations / data / asset already
+        if (rawPath.startsWith('data:') || rawPath.startsWith('http://') ||
+            rawPath.startsWith('https://') || rawPath.startsWith('/') ||
+            rawPath.startsWith('asset://')) {
+            continue;
+        }
+
+        let decodedPath;
+        try {
+            decodedPath = decodeURIComponent(rawPath);
+        } catch (e) {
+            decodedPath = rawPath;
+        }
+
+        decodedPath = decodedPath.replace(/\\/g, '/');
+        const absolutePath = fileDir + '/' + decodedPath;
+
+        try {
+            const assetUrl = testConvertFileSrc(absolutePath);
+            if (assetUrl) {
+                const replaced = fullMatch.replace(`src="${rawPath}"`, `src="${assetUrl}"`);
+                replacements.push({ original: fullMatch, replacement: replaced });
+            }
+        } catch (err) {
+            console.warn('Could not convert HTML image path to asset URL:', absolutePath, 'Error:', err.message);
+        }
+    }
+
     // Apply replacements
     let result = markdown;
     for (const r of replacements) {

@@ -175,6 +175,21 @@ test.describe('Markdown 自動変換テスト', () => {
             expect(hasHr).toBe(true);
         });
 
+        test('画像タグの相対パスを asset:// に変換して表示できる', async ({ app }) => {
+            const result = await app.page.evaluate(() => {
+                const original = '<img src="images/test.png" alt="test" width="100">';
+                // Avoid depending on actual filesystem for this test by mocking converter
+                const originalConverter = window.testConvertFileSrc;
+                window.testConvertFileSrc = () => 'asset://localhost/%2Fmock%2Fimages%2Ftest.png';
+                const converted = resolveRelativeImages(original, '/mock');
+                window.testConvertFileSrc = originalConverter;
+                return converted;
+            });
+
+            expect(result).toContain('asset://localhost/%2Fmock%2Fimages%2Ftest.png');
+            expect(result).toContain('src="asset://localhost/%2Fmock%2Fimages%2Ftest.png"');
+        });
+
         test('[text](url) から a に変換される', async ({ app }) => {
             await app.helpers.typeInEditor('[link](https://example.com) ');
             await app.helpers.wait(800);
