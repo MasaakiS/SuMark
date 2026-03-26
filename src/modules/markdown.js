@@ -541,6 +541,16 @@ function setMarkdown(md) {
 
     // Add line numbers to code blocks
     updateAllLineNumbers();
+
+    // Ensure code block copy/wrap UI is initialized (race-safe path)
+    if (typeof addCopyButtonsToCodeBlocks === 'function') {
+        addCopyButtonsToCodeBlocks();
+        editorEl.querySelectorAll('pre').forEach(pre => {
+            if (typeof setupCodeWrapButton === 'function') {
+                setupCodeWrapButton(pre);
+            }
+        });
+    }
     
     // Restore code wrap states
     restoreCodeWrapStates();

@@ -1238,6 +1238,11 @@ function addCopyButtonsToCodeBlocks() {
         container.appendChild(btnCopy);
         container.appendChild(btnNum);
         pre.appendChild(container);
+
+        // Ensure wrap toggle button appears as soon as copy buttons are added.
+        if (typeof setupCodeWrapButton === 'function') {
+            setupCodeWrapButton(pre);
+        }
     });
 }
 

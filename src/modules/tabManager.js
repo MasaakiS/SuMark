@@ -137,6 +137,16 @@ function switchTab(id) {
 
     // コードブロックに行番号を追加
     updateAllLineNumbers();
+
+    // Ensure copy/wrap buttons are available after tab switch
+    if (typeof addCopyButtonsToCodeBlocks === 'function') {
+        addCopyButtonsToCodeBlocks();
+        editor.querySelectorAll('pre').forEach(pre => {
+            if (typeof setupCodeWrapButton === 'function') {
+                setupCodeWrapButton(pre);
+            }
+        });
+    }
     
     // コード折り返し状態を復元
     restoreCodeWrapStates();
