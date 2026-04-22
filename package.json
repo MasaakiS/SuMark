@@ -1,6 +1,6 @@
 {
   "name": "sumark",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "description": "SuMark - A powerful WYSIWYG Markdown editor",
   "main": "src/index.html",
   "scripts": {
@@ -17,6 +17,7 @@
     "test:lint": "node scripts/validate-css-js-sync.js",
     "test:full": "npm run test:lint && npm run test:e2e",
     "test:e2e": "PW_EXCLUDE_VRT=1 npx playwright test",
+    "test:e2e:md-check": "COPILOT_MD_CHECK=1 COPILOT_MD_CHECK_MAX=12 COPILOT_MD_MODEL=raptor-mini PW_EXCLUDE_VRT=1 npx playwright test --workers=2",
     "test:e2e:headed": "PW_EXCLUDE_VRT=1 npx playwright test --headed",
     "test:e2e:ui": "PW_EXCLUDE_VRT=1 npx playwright test --ui",
     "test:e2e:report": "npx playwright show-report test/playwright-report",
