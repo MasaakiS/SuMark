@@ -211,6 +211,20 @@ test.describe('Markdown 自動変換テスト', () => {
             expect(copyButtons).toBeGreaterThan(0);
             expect(wrapButtons).toBeGreaterThan(0);
         });
+
+        test('bash コードブロックにシンタックスハイライトが適用される', async ({ app }) => {
+            const md = '```bash\n# comment\necho "hello"\n```';
+            await app.page.evaluate((markdown) => {
+                if (typeof setMarkdown === 'function') setMarkdown(markdown);
+            }, md);
+            await app.helpers.wait(800);
+
+            const bashClass = await app.page.locator('#editor pre code.language-bash.hljs').count();
+            const commentSpan = await app.page.locator('#editor pre code.language-bash .hljs-comment').count();
+
+            expect(bashClass).toBeGreaterThan(0);
+            expect(commentSpan).toBeGreaterThan(0);
+        });
     });
 
     test.describe('数式変換（KaTeX）', () => {
