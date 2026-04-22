@@ -15,6 +15,7 @@
  */
 
 const { test, expect } = require('./fixtures');
+const { validateMarkdownWithCopilot, checkSemanticEquivalence } = require('./copilotMarkdownValidator');
 
 // ページ上で setMarkdown() を呼んで描画完了を待つヘルパー
 async function loadMarkdown(page, md) {
@@ -27,7 +28,9 @@ async function loadMarkdown(page, md) {
 
 // ページ上で getMarkdown() を呼んで返す
 async function dumpMarkdown(page) {
-    return await page.evaluate(() => window.getMarkdown());
+    const saved = await page.evaluate(() => window.getMarkdown());
+    await validateMarkdownWithCopilot(saved, { source: '08-roundtrip.spec.js:dumpMarkdown' });
+    return saved;
 }
 
 // フルラウンドトリップ: md → setMarkdown → getMarkdown → setMarkdown → 検証コールバック
@@ -906,6 +909,74 @@ code block
             const saved2 = await dumpMarkdown(app.page);
             
             expect(saved2.length).toBeGreaterThan(0);
+        });
+    });
+
+    // ─────────────────────────────────────────────
+    // 意味的同等性チェック (Copilot CLI)
+    // test:e2e:md-check スクリプト実行時のみ有効
+    // ─────────────────────────────────────────────
+    test.describe('意味的同等性 (Copilot CLIチェック)', () => {
+        test.describe.configure({ timeout: 120000 });
+
+        test('見出し・リスト・テーブルが混在するドキュメントで意味が保持される', async ({ app }) => {
+            const original = [
+                '# タイトル',
+                '',
+                '## セクション1',
+                '',
+                '- リスト項目A',
+                '- リスト項目B',
+                '',
+                '## セクション2',
+                '',
+                '| 名前 | 値 |',
+                '|------|-----|',
+                '| Alpha | 100 |',
+                '| Beta  | 200 |',
+                '',
+                '> 重要な引用文',
+            ].join('\n');
+
+            await loadMarkdown(app.page, original);
+            const converted = await dumpMarkdown(app.page);
+            await checkSemanticEquivalence(original, converted, '08-roundtrip: 混在ドキュメント意味的同等性');
+        });
+
+        test('太字・斜体・取り消し線が変換後も意味的に保持される', async ({ app }) => {
+            const original = '**太字** と *斜体* と ~~取り消し線~~ のテキスト';
+
+            await loadMarkdown(app.page, original);
+            const converted = await dumpMarkdown(app.page);
+            await checkSemanticEquivalence(original, converted, '08-roundtrip: インライン装飾意味的同等性');
+        });
+
+        test('ネストリストが変換後も意味的に保持される', async ({ app }) => {
+            const original = [
+                '- 親項目1',
+                '  - 子項目1-1',
+                '  - 子項目1-2',
+                '- 親項目2',
+                '  - 子項目2-1',
+            ].join('\n');
+
+            await loadMarkdown(app.page, original);
+            const converted = await dumpMarkdown(app.page);
+            await checkSemanticEquivalence(original, converted, '08-roundtrip: ネストリスト意味的同等性');
+        });
+
+        test('コードブロックの内容が変換後も意味的に保持される', async ({ app }) => {
+            const original = [
+                '```javascript',
+                'function hello(name) {',
+                '    return `Hello, ${name}!`;',
+                '}',
+                '```',
+            ].join('\n');
+
+            await loadMarkdown(app.page, original);
+            const converted = await dumpMarkdown(app.page);
+            await checkSemanticEquivalence(original, converted, '08-roundtrip: コードブロック意味的同等性');
         });
     });
 });

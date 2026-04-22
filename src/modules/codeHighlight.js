@@ -67,7 +67,9 @@ function highlightCodeBlock(codeEl) {
     if (codeEl.classList.contains('language-mermaid')) return;
 
     // Check line count - skip highlighting for large code blocks (500+ lines)
-    const plainText = codeEl.textContent;
+    // Use innerText to preserve <br> as newlines (insertLineBreak inserts <br> in contenteditable)
+    // Fallback to textContent if innerText is unavailable (e.g. detached nodes)
+    const plainText = codeEl.isConnected ? codeEl.innerText : codeEl.textContent;
     const lineCount = plainText.split('\n').length;
     
     if (lineCount > 500) {
@@ -222,12 +224,14 @@ function updateLineNumbers(pre) {
 function setupCodeWrapButton(pre) {
     if (!pre || pre.tagName !== 'PRE') return;
     
-    // Check if button already exists
-    if (pre.querySelector('.code-wrap-btn')) return;
+    // Find container in the toolbar above pre (code-block-toolbar is the previous sibling)
+    const toolbar = pre.previousElementSibling;
+    if (!toolbar || !toolbar.classList.contains('code-block-toolbar')) return;
     
-    // Wait for container to be created by addCopyButtonsToCodeBlocks
-    // If container doesn't exist yet, skip (will be called again later)
-    const container = pre.querySelector('.code-copy-container');
+    // Check if button already exists in toolbar
+    if (toolbar.querySelector('.code-wrap-btn')) return;
+    
+    const container = toolbar.querySelector('.code-copy-container');
     if (!container) return;
     
     // Create wrap toggle button
@@ -318,7 +322,11 @@ function toggleCodeWrap(pre) {
     const code = pre.querySelector('code');
     if (!code) return;
     
-    const button = pre.querySelector('.code-wrap-btn');
+    // Button is in the toolbar above pre
+    const toolbar = pre.previousElementSibling;
+    const button = toolbar && toolbar.classList.contains('code-block-toolbar')
+        ? toolbar.querySelector('.code-wrap-btn')
+        : null;
     if (!button) return;
     
     // Toggle wrap class

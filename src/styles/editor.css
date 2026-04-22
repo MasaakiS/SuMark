@@ -2,8 +2,8 @@
 #editor {
     min-height: 100%;
     padding: 40px 60px;
-    max-width: 900px;
-    margin: 0 auto;
+    max-width: none;
+    margin: 0;
     outline: none;
     font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Yu Gothic', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 16px;

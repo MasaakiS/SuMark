@@ -205,8 +205,15 @@ npm run test:e2e:headed            # ブラウザ表示で実行
 - 無断で大きなファイルフォーマットの置換や他コンポーネントの大改造は行わない。
 - ユーザー環境に依存するパスや個人情報をコミットしない（絶対パス等）。
 
-## JSとCSSの連携・UI修正時の注意
+## GitHub CLI（gh）の利用
+- このプロジェクトでは `gh` を利用して issue 操作やリリース・PR 操作を行うことを推奨します。
+- 例:
+  - `gh issue close 12 --comment "fix(issue #12): ..."`
+  - `gh release create v0.9.3 --title "v0.9.3" --notes "..."`
+  - `gh pr create --base main --head feature/xxx --title "..." --body "..."`
+- `gh` が無い場合は、最初に `brew install gh` / `sudo apt install gh` 等で導入してください。
 
+## JSとCSSの連携・UI修正時の注意
 ### JSとCSSの関係性
 - JSで操作・生成するDOM要素のクラス/IDは、必ずCSSで定義・調整すること。
 - クラス/ID名の変更時は、JS・CSS両方の影響範囲を必ず確認する。

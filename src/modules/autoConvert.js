@@ -72,8 +72,13 @@ function onEditorInput() {
 function normalizeMarkdownPrefix(text) {
     if (typeof text !== 'string' || text.length === 0) return text;
 
-    // Keep whitespace normalization for matching stability.
-    let normalized = text.replace(/\u00A0/g, ' ').replace(/　/g, ' ');
+    // Normalize non-breaking/full-width spaces only in the markdown prefix area
+    // (first ~10 chars) to avoid destroying browser's &nbsp; at content positions.
+    // In contenteditable, browsers insert &nbsp; to prevent HTML whitespace collapse;
+    // globally replacing them causes trailing spaces to vanish.
+    const prefixLen = Math.min(10, text.length);
+    let normalized = text.substring(0, prefixLen).replace(/\u00A0/g, ' ').replace(/　/g, ' ')
+        + text.substring(prefixLen);
 
     // Normalize ordered-list digits only at the line start.
     normalized = normalized.replace(/^[０-９]+/, m =>
@@ -150,8 +155,13 @@ function handleBlockAutoConversion() {
     const originalText = text;
     text = normalizeMarkdownPrefix(text);
 
-    // If the line-start marker was normalized, reflect it in the editor.
-    if (text !== originalText) {
+    // If normalization only changed whitespace variants (space/NBSP/full-width),
+    // do not rewrite DOM text because contenteditable may lose trailing spaces.
+    const normalizedForCompare = text.replace(/[\u00A0　]/g, ' ');
+    const originalForCompare = originalText.replace(/[\u00A0　]/g, ' ');
+
+    // If the line-start marker itself was normalized, reflect it in the editor.
+    if (text !== originalText && normalizedForCompare !== originalForCompare) {
         console.log('[DEBUG] Text normalized from "' + originalText + '" to "' + text + '"');
         const caretOffset = getCaretCharacterOffsetWithin(block);
         block.textContent = text;
@@ -406,6 +416,15 @@ function handleInlineAutoConversion() {
     const range = sel.getRangeAt(0);
     const textNode = range.startContainer;
     if (textNode.nodeType !== Node.TEXT_NODE) return;
+
+    // Skip conversion inside code blocks (<pre><code>)
+    let ancestor = textNode.parentNode;
+    while (ancestor && ancestor !== editor) {
+        if (ancestor.tagName === 'PRE' || (ancestor.tagName === 'CODE' && ancestor.parentNode && ancestor.parentNode.tagName === 'PRE')) {
+            return;
+        }
+        ancestor = ancestor.parentNode;
+    }
 
     const text = textNode.textContent;
     const pos = range.startOffset;

@@ -205,8 +205,8 @@ test.describe('Markdown 自動変換テスト', () => {
             }, md);
             await app.helpers.wait(800);
 
-            const copyButtons = await app.page.locator('#editor pre .code-copy-btn').count();
-            const wrapButtons = await app.page.locator('#editor pre .code-wrap-btn').count();
+            const copyButtons = await app.page.locator('#editor .code-block-toolbar .code-copy-btn').count();
+            const wrapButtons = await app.page.locator('#editor .code-block-toolbar .code-wrap-btn').count();
 
             expect(copyButtons).toBeGreaterThan(0);
             expect(wrapButtons).toBeGreaterThan(0);

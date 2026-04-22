@@ -1171,12 +1171,14 @@ function addCopyButtonsToCodeBlocks() {
         toolbar.className = 'code-block-toolbar';
         toolbar.setAttribute('contenteditable', 'false');
         toolbar.appendChild(langSelect);
-        pre.parentNode.insertBefore(toolbar, pre);
 
-        // 既存のコピーボタンUI
+        // ボタンコンテナをツールバー内に右寄せで配置
         const container = document.createElement('div');
         container.className = 'code-copy-container';
         container.setAttribute('contenteditable', 'false');
+        toolbar.appendChild(container);
+
+        pre.parentNode.insertBefore(toolbar, pre);
 
         // Helper: get raw code text
         function getRawText() {
@@ -1237,7 +1239,6 @@ function addCopyButtonsToCodeBlocks() {
 
         container.appendChild(btnCopy);
         container.appendChild(btnNum);
-        pre.appendChild(container);
 
         // Ensure wrap toggle button appears as soon as copy buttons are added.
         if (typeof setupCodeWrapButton === 'function') {

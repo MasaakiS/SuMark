@@ -485,6 +485,12 @@
     -webkit-user-select: none;
 }
 
+.code-block-toolbar .code-copy-container {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
 /* ========== Code Block - Language Select ========== */
 .code-lang-select {
     display: inline-block;

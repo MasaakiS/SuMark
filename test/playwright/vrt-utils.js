@@ -11,6 +11,7 @@ const pixelmatchModule = require('pixelmatch');
 const pixelmatch = pixelmatchModule.default || pixelmatchModule;
 const fs = require('fs');
 const path = require('path');
+const { validateMarkdownWithCopilot } = require('./copilotMarkdownValidator');
 
 const DIFF_OUTPUT_DIR = path.join(__dirname, '../playwright-results/vrt-diffs');
 
@@ -117,6 +118,7 @@ async function roundtripVRT(page, markdown, testName, options = {}) {
 
     // 3. 保存 (getMarkdown)
     const savedMarkdown = await page.evaluate(() => window.getMarkdown());
+    await validateMarkdownWithCopilot(savedMarkdown, { source: 'vrt-utils.js:roundtripVRT' });
 
     // 4. エディタをクリアして再読み込み（ファイルを開き直した状態）
     await page.evaluate(() => {

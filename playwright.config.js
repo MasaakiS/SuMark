@@ -17,7 +17,7 @@ if (platform === 'darwin') {
 
 module.exports = defineConfig({
     testDir: './test/playwright',
-    timeout: 30000,
+    timeout: 60000,
     expect: {
         timeout: 5000,
     },

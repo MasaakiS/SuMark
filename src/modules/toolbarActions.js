@@ -927,7 +927,11 @@ function doInsertCodeBlock(lang, savedRange, selectedText) {
 function restoreCodeWrapStates() {
     editor.querySelectorAll('pre code[data-wrap="true"]').forEach(code => {
         code.classList.add('wrap-enabled');
-        const button = code.closest('pre').querySelector('.code-wrap-btn');
+        const pre = code.closest('pre');
+        const toolbar = pre && pre.previousElementSibling;
+        const button = toolbar && toolbar.classList.contains('code-block-toolbar')
+            ? toolbar.querySelector('.code-wrap-btn')
+            : null;
         if (button) {
             button.classList.add('wrap-enabled');
         }

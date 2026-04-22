@@ -41,7 +41,7 @@
 }
 
 .markdown-body p {
-    margin-bottom: 16px;
+    margin-bottom: 10px;
 }
 
 .markdown-body ul,
@@ -208,22 +208,7 @@
     font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
 }
 
-.markdown-body pre .code-copy-container {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    display: flex;
-    gap: 4px;
-    opacity: 0;
-    transition: opacity 0.2s;
-    z-index: 10;
-}
-
-.markdown-body pre:hover .code-copy-container {
-    opacity: 1;
-}
-
-.markdown-body pre .code-copy-btn {
+.code-block-toolbar .code-copy-btn {
     padding: 3px 8px;
     font-size: 11px;
     color: #666;
@@ -239,18 +224,18 @@
     transition: background-color 0.2s, color 0.2s;
 }
 
-.markdown-body pre .code-copy-btn:hover {
+.code-block-toolbar .code-copy-btn:hover {
     background-color: #d0d0d0;
     color: #333;
 }
 
-.markdown-body pre .code-copy-btn.copied {
+.code-block-toolbar .code-copy-btn.copied {
     background-color: #28a745;
     color: white;
     border-color: #28a745;
 }
 
-.markdown-body pre .code-wrap-btn {
+.code-block-toolbar .code-wrap-btn {
     padding: 3px 8px;
     font-size: 11px;
     color: #666;
@@ -266,12 +251,12 @@
     transition: background-color 0.2s, color 0.2s;
 }
 
-.markdown-body pre .code-wrap-btn:hover {
+.code-block-toolbar .code-wrap-btn:hover {
     background-color: #d0d0d0;
     color: #333;
 }
 
-.markdown-body pre .code-wrap-btn.wrap-enabled {
+.code-block-toolbar .code-wrap-btn.wrap-enabled {
     background-color: #0066cc;
     color: white;
     border-color: #0066cc;
