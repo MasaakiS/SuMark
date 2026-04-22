@@ -396,8 +396,9 @@
     padding-left: 1.6em;
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5em;
+    align-items: flex-start;
+    column-gap: 0.5em;
+    row-gap: 0;
 }
 
 /* ネストされたリスト（Tabインデント後）はフル幅で改行表示 */
@@ -424,8 +425,20 @@
     padding-left: 1.6em;
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5em;
+    align-items: flex-start;
+    column-gap: 0.5em;
+    row-gap: 0;
+}
+
+/* Keep code block toolbar and pre stacked cleanly inside task items */
+.markdown-body .task-list-item > .code-block-toolbar,
+.markdown-body .task-list-item > pre,
+.markdown-body li:has(> input[type="checkbox"]) > .code-block-toolbar,
+.markdown-body li:has(> input[type="checkbox"]) > pre {
+    flex-basis: 100%;
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
 }
 
 /* ネストされたリスト（Tabインデント後）はフル幅で改行表示 */

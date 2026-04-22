@@ -140,6 +140,8 @@ function configureTurndown() {
             return node.classList && (
                 node.classList.contains('code-copy-btn') ||
                 node.classList.contains('code-copy-container') ||
+                node.classList.contains('code-wrap-btn') ||
+                node.classList.contains('code-lang-select') ||
                 node.classList.contains('image-copy-btn') ||
                 node.classList.contains('code-block-toolbar')
             );
