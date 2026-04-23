@@ -160,6 +160,92 @@ function switchTab(id) {
 }
 
 /**
+ * Show an unsaved tab confirmation dialog with Save / Don't Save / Cancel options.
+ * @param {Object} tab - The tab object being closed.
+ * @returns {Promise<'save'|'discard'|'cancel'>}
+ */
+function showUnsavedCloseDialog(tab) {
+    const overlay = document.getElementById('modalOverlay');
+    const titleEl = document.getElementById('modalTitle');
+    const fieldsEl = document.getElementById('modalFields');
+    const okBtn = document.getElementById('modalOk');
+    const cancelBtn = document.getElementById('modalCancel');
+    const extraBtn = document.getElementById('modalExtra');
+
+    if (!overlay || !titleEl || !fieldsEl || !okBtn || !cancelBtn || !extraBtn) {
+        return Promise.resolve('cancel');
+    }
+
+    titleEl.textContent = '確認';
+    fieldsEl.innerHTML = '<div class="modal-field" style="margin-bottom:0;">"' + escapeHtml(tab.title) + '" は保存されていません。変更を保存しますか？</div>';
+    okBtn.textContent = '保存';
+    cancelBtn.textContent = 'キャンセル';
+    extraBtn.textContent = '保存しない';
+    extraBtn.style.display = 'inline-flex';
+    fieldsEl.onkeydown = null;
+
+    overlay.style.display = 'flex';
+
+    let resolveChoice;
+    const handleOverlayClick = e => {
+        if (e.target === overlay) {
+            cleanup();
+            resolveChoice('cancel');
+        }
+    };
+
+    const handleKeyDown = e => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            cleanup();
+            resolveChoice('cancel');
+        }
+    };
+
+    const handleSave = async () => {
+        cleanup();
+        await saveFile();
+        resolveChoice(tab.isModified ? 'cancel' : 'save');
+    };
+
+    const handleDiscard = () => {
+        cleanup();
+        resolveChoice('discard');
+    };
+
+    const handleCancel = () => {
+        cleanup();
+        resolveChoice('cancel');
+    };
+
+    const cleanup = () => {
+        overlay.style.display = 'none';
+        titleEl.textContent = '';
+        fieldsEl.innerHTML = '';
+        fieldsEl.onkeydown = null;
+        okBtn.textContent = 'OK';
+        cancelBtn.textContent = 'キャンセル';
+        extraBtn.style.display = 'none';
+        document.removeEventListener('keydown', handleKeyDown);
+        okBtn.removeEventListener('click', handleSave);
+        extraBtn.removeEventListener('click', handleDiscard);
+        cancelBtn.removeEventListener('click', handleCancel);
+        overlay.removeEventListener('click', handleOverlayClick);
+    };
+
+    const promise = new Promise(resolve => {
+        resolveChoice = resolve;
+        okBtn.addEventListener('click', handleSave);
+        extraBtn.addEventListener('click', handleDiscard);
+        cancelBtn.addEventListener('click', handleCancel);
+        overlay.addEventListener('click', handleOverlayClick);
+        document.addEventListener('keydown', handleKeyDown);
+    });
+
+    return promise;
+}
+
+/**
  * タブをクローズ
  * @param {number} id - クローズするタブのID
  */
@@ -170,18 +256,10 @@ async function closeTab(id) {
     const tab = tabs[tabIndex];
 
     // 保存されていない場合は確認
-    // Tauri ネイティブダイアログを使う（WebView の innerHTML を壊さない）
     if (tab.isModified) {
-        let ok;
-        if (window.__TAURI__ && window.__TAURI__.dialog) {
-            ok = await window.__TAURI__.dialog.confirm(
-                '"' + tab.title + '" は保存されていません。閉じますか？',
-                { title: '確認', type: 'warning' }
-            );
-        } else {
-            ok = confirm('"' + tab.title + '" は保存されていません。閉じますか？');
-        }
-        if (!ok) return;
+        const choice = await showUnsavedCloseDialog(tab);
+        if (choice === 'cancel') return;
+        if (choice === 'save' && tab.isModified) return;
     }
 
     tabs.splice(tabIndex, 1);
@@ -201,6 +279,28 @@ async function closeTab(id) {
 /**
  * タブUIをレンダリング
  */
+function getTabPreviewText(tab) {
+    if (tab.filePath) {
+        return tab.title;
+    }
+
+    let text = '';
+    if (tab.id === activeTabId && typeof editor !== 'undefined' && editor) {
+        text = editor.innerText || editor.textContent || '';
+    } else {
+        const temp = document.createElement('div');
+        temp.innerHTML = tab.content || '';
+        text = temp.innerText || temp.textContent || '';
+    }
+
+    text = text.replace(/\u200B/g, '').replace(/\r\n|\r/g, '\n');
+    const firstLine = text.split('\n').map(line => line.trim()).find(line => line.length > 0) || '';
+    if (!firstLine) {
+        return '無題';
+    }
+    return firstLine.length > 32 ? firstLine.slice(0, 32) + '…' : firstLine;
+}
+
 function renderTabs() {
     if (!tabList) return;
     tabList.innerHTML = '';
@@ -208,11 +308,11 @@ function renderTabs() {
     tabs.forEach(tab => {
         const el = document.createElement('div');
         el.className = 'tab-item' + (tab.id === activeTabId ? ' active' : '');
-        el.title = tab.filePath || tab.title;
+        el.title = tab.filePath || getTabPreviewText(tab);
 
         const titleSpan = document.createElement('span');
         titleSpan.className = 'tab-title';
-        titleSpan.textContent = tab.title;
+        titleSpan.textContent = getTabPreviewText(tab);
         el.appendChild(titleSpan);
 
         if (tab.isModified) {

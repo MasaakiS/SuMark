@@ -283,7 +283,19 @@ async function resolveRelativeCsvLinks(markdown, fileDir) {
     return result;
 }
 
-async function saveFile() {
+function normalizeFilename(filename) {
+    if (!filename || typeof filename !== 'string') {
+        return 'Untitled';
+    }
+    const clean = filename
+        .trim()
+        .replace(/[\\/\?%\*:\|"<>]/g, '-')
+        .replace(/\s+/g, ' ')
+        .slice(0, 120);
+    return clean || 'Untitled';
+}
+
+async function saveFile(defaultPath = null) {
     const tab = getActiveTab();
     if (!tab) return;
 
@@ -291,9 +303,13 @@ async function saveFile() {
         let filePath = tab.filePath;
 
         if (!filePath) {
-            filePath = await tauriSave({
+            const saveOptions = {
                 filters: [{ name: 'Markdown', extensions: ['md'] }]
-            });
+            };
+            if (defaultPath) {
+                saveOptions.defaultPath = defaultPath;
+            }
+            filePath = await tauriSave(saveOptions);
         }
 
         if (filePath) {
