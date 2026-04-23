@@ -28,38 +28,14 @@ jobs:
         id: changelog
         shell: bash
         run: |
-          REF="${GITHUB_REF_NAME}"
-
-          if [[ ! "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Non-version ref '$REF' detected; skipping changelog extraction."
-            {
-              echo "body<<CHANGELOG_DELIM_EOF"
-              echo "_Changelog extraction skipped for ref: $REF_"
-              echo "CHANGELOG_DELIM_EOF"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          VERSION="${REF#v}"
+          VERSION="${GITHUB_REF_NAME#v}"
           echo "Extracting changelog for version: ${VERSION}"
-          esc_version="$(printf '%s' "$VERSION" | sed -e 's/[.[\\*^$(){}+?|\\/]/\\&/g')"
-
-          awk "/^## \\[v${esc_version}\\]/{found=1; next} /^## \\[v/{if(found) exit} found" CHANGELOG.md > /tmp/changelog_body.txt
-          if [[ ! -s /tmp/changelog_body.txt ]]; then
-            echo "ERROR: No changelog section found for v${VERSION} in CHANGELOG.md"
-            exit 1
-          fi
+          awk "/^## \[v${VERSION}\]/{found=1; next} /^## \[v/{if(found) exit} found" CHANGELOG.md > /tmp/changelog_body.txt
           {
             echo "body<<CHANGELOG_DELIM_EOF"
             cat /tmp/changelog_body.txt
             echo "CHANGELOG_DELIM_EOF"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Set sanitized ref
-        shell: bash
-        run: |
-          SANITIZED_REF="${GITHUB_REF_NAME//\//-}"
-          echo "SANITIZED_REF=$SANITIZED_REF" >> "$GITHUB_ENV"
 
       - name: Create draft release
         id: create
@@ -85,9 +61,9 @@ jobs:
             ### Portable (no install required)
             | OS | File |
             |---|---|
-            | macOS | `SuMark-portable-macos-${{ env.SANITIZED_REF }}.zip` |
-            | Windows | `SuMark-portable-windows-${{ env.SANITIZED_REF }}.zip` |
-            | Linux / Chromebook (x86_64) | `SuMark-linux-x86_64-${{ env.SANITIZED_REF }}.AppImage` |
+            | macOS | `SuMark-portable-macos-${{ github.ref_name }}.zip` |
+            | Windows | `SuMark-portable-windows-${{ github.ref_name }}.zip` |
+            | Linux / Chromebook (x86_64) | `SuMark-linux-x86_64-${{ github.ref_name }}.AppImage` |
           draft: true
           prerelease: false
 
@@ -119,12 +95,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Set sanitized ref
-        shell: bash
-        run: |
-          SANITIZED_REF="${GITHUB_REF_NAME//\//-}"
-          echo "SANITIZED_REF=$SANITIZED_REF" >> "$GITHUB_ENV"
-
       - name: Build Tauri app (macOS)
         uses: tauri-apps/tauri-action@v0
         env:
@@ -140,7 +110,7 @@ jobs:
         run: |
           APP_PATH=$(find src-tauri/target -name "SuMark.app" -type d | head -1)
           if [ -n "$APP_PATH" ]; then
-            ditto -c -k --sequesterRsrc "$APP_PATH" "SuMark-portable-macos-${SANITIZED_REF}.zip"
+            ditto -c -k --sequesterRsrc "$APP_PATH" "SuMark-portable-macos-${{ github.ref_name }}.zip"
           fi
 
       - name: Upload portable zip (macOS)
@@ -148,7 +118,7 @@ jobs:
         with:
           draft: true
           tag_name: ${{ github.ref_name }}
-          files: SuMark-portable-macos-${{ env.SANITIZED_REF }}.zip
+          files: SuMark-portable-macos-${{ github.ref_name }}.zip
 
   # Linux / Windows 用のビルド
   build_others:
@@ -240,12 +210,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Set sanitized ref
-        shell: bash
-        run: |
-          SANITIZED_REF="${GITHUB_REF_NAME//\//-}"
-          echo "SANITIZED_REF=$SANITIZED_REF" >> "$GITHUB_ENV"
-
       - name: Setup environment for ARM64 cross-compilation
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
@@ -271,9 +235,15 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "SuMark.exe" | Where-Object { $_.DirectoryName -like "*release*" -and $_.DirectoryName -notlike "*deps*" } | Select-Object -First 1
+          $exe = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*.exe" | Where-Object {
+            $_.DirectoryName -like "*release*" -and $_.DirectoryName -notlike "*deps*" -and $_.Name -notlike "*setup*"
+          } | Select-Object -First 1
           if ($exe) {
-            Compress-Archive -Path $exe.FullName -DestinationPath "SuMark-portable-windows-${SANITIZED_REF}.zip"
+            Write-Host "Found exe: $($exe.FullName)"
+            Compress-Archive -Path $exe.FullName -DestinationPath "SuMark-portable-windows-${{ github.ref_name }}.zip"
+          } else {
+            Write-Host 'No executable found for portable zip creation.'
+            Exit 1
           }
 
       - name: Upload portable zip (Windows)
@@ -282,14 +252,14 @@ jobs:
         with:
           draft: true
           tag_name: ${{ github.ref_name }}
-          files: SuMark-portable-windows-${{ env.SANITIZED_REF }}.zip
+          files: SuMark-portable-windows-${{ github.ref_name }}.zip
 
       - name: Upload AppImage (Linux)
         if: matrix.platform == 'ubuntu-22.04' && matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           APPIMAGE=$(find src-tauri/target -name "*.AppImage" -type f | head -1)
           if [ -n "$APPIMAGE" ]; then
-            cp "$APPIMAGE" "SuMark-linux-x86_64-${SANITIZED_REF}.AppImage"
+            cp "$APPIMAGE" "SuMark-linux-x86_64-${{ github.ref_name }}.AppImage"
           fi
 
       - name: Upload AppImage artifact (Linux)
@@ -298,4 +268,4 @@ jobs:
         with:
           draft: true
           tag_name: ${{ github.ref_name }}
-          files: SuMark-linux-x86_64-${{ env.SANITIZED_REF }}.AppImage
+          files: SuMark-linux-x86_64-${{ github.ref_name }}.AppImage
