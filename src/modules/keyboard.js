@@ -707,9 +707,14 @@ function handleEnterKey(e) {
             afterRange.setEndAfter(block.lastChild);
             const afterFrag = afterRange.extractContents();
 
-            // Clean up: remove trailing whitespace from current item
-            // Remove extracted content's leading whitespace
-            const afterText = afterFrag.textContent;
+            // Keep extracted DOM structure as-is (e.g. code block toolbar + pre).
+            // Flattening with textContent causes UI labels to leak into plain text.
+            const hasAfterContent = Array.from(afterFrag.childNodes).some(node => {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    return node.textContent.trim() !== '';
+                }
+                return true;
+            });
 
             // Create new LI with checkbox
             const newLi = document.createElement('li');
@@ -719,10 +724,16 @@ function handleEnterKey(e) {
             newCb.checked = false;
             newLi.appendChild(newCb);
 
-            if (afterText.trim()) {
-                newLi.appendChild(document.createTextNode(' ' + afterText.trim()));
-            } else {
-                newLi.appendChild(document.createTextNode(' '));
+            // Preserve a space after checkbox for caret placement consistency.
+            const spacer = document.createTextNode(' ');
+            newLi.appendChild(spacer);
+
+            if (hasAfterContent) {
+                const firstNode = afterFrag.firstChild;
+                if (firstNode && firstNode.nodeType === Node.TEXT_NODE) {
+                    firstNode.textContent = firstNode.textContent.replace(/^\s+/, '');
+                }
+                newLi.appendChild(afterFrag);
             }
 
             // Insert after current LI
@@ -734,14 +745,10 @@ function handleEnterKey(e) {
             }
 
             // Set cursor after the checkbox space in new item
-            const textNode = newLi.lastChild;
+            const textNode = spacer;
             if (textNode && textNode.nodeType === Node.TEXT_NODE) {
                 const newRange = document.createRange();
-                // Position cursor at the end of the text node
-                // If afterText is empty (typical case), textNode contains only ' ' (space), so length is 1
-                // If afterText has content, position at the end
-                const cursorPos = afterText.trim() ? textNode.textContent.length : 1;
-                newRange.setStart(textNode, cursorPos);
+                newRange.setStart(textNode, 1);
                 newRange.collapse(true);
                 sel2.removeAllRanges();
                 sel2.addRange(newRange);
