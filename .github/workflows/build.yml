@@ -235,14 +235,15 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path "src-tauri/target" -Recurse -Filter "*.exe" | Where-Object {
-            $_.DirectoryName -like "*release*" -and $_.DirectoryName -notlike "*deps*" -and $_.Name -notlike "*setup*"
+          $releaseDir = "src-tauri/target/${{ matrix.target }}/release"
+          $exe = Get-ChildItem -Path $releaseDir -Filter "*.exe" -File | Where-Object {
+            $_.Name -notlike "*setup*"
           } | Select-Object -First 1
           if ($exe) {
             Write-Host "Found exe: $($exe.FullName)"
             Compress-Archive -Path $exe.FullName -DestinationPath "SuMark-portable-windows-${{ github.ref_name }}.zip"
           } else {
-            Write-Host 'No executable found for portable zip creation.'
+            Write-Host "No executable found for portable zip creation in $releaseDir."
             Exit 1
           }
 
