@@ -484,9 +484,18 @@ function setMarkdown(md) {
     md = md.replace(/^(\s+)-(\s*)$/gm, '$1- \u200B');
 
     // Notion エクスポート形式の複数行テーブルセルを正規化
-    const preprocessed = preprocessNotionMarkdown(md);
+    let preprocessed = preprocessNotionMarkdown(md);
 
-    const dirtyHtml = marked.parse(preprocessed);
+    // Normalize display math blocks that start with a single "$" on its own line and end with "$$".
+    // This appears in some markdown exports and should be treated as standard display math.
+    preprocessed = preprocessed.replace(/^\$\s*\n([\s\S]+?)\n\$\$\s*$/gm, '$$$$\n$1\n$$$$');
+
+    let dirtyHtml = marked.parse(preprocessed);
+
+    // Normalize display math blocks where the markdown parser inserts <br> for newline breaks
+    // inside what should be a single $$...$$ block.
+    dirtyHtml = dirtyHtml.replace(/\$\$<br\s*\/?>\s*([\s\S]*?)<br\s*\/?>\$\$/g, '$$$$\n$1\n$$$$');
+    dirtyHtml = dirtyHtml.replace(/\$<br\s*\/?>\s*([\s\S]*?)<br\s*\/?>\$\$/g, '$$$$\n$1\n$$$$');
 
     // Sanitize HTML to prevent XSS attacks while preserving custom UI elements
     const cleanHtml = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(dirtyHtml, {

@@ -246,5 +246,18 @@ test.describe('Markdown 自動変換テスト', () => {
             const normalized = (mathAttr || '').replace(/\s+/g, '');
             expect(normalized).toContain('\\int_0^1x^2dx');
         });
+
+        test('行頭 $ から始まり $$ で終わるブロック数式もレンダリングされる', async ({ app }) => {
+            const markdown = '$\n\\int_0^\\infty f(x) dx = \\lim_{n \\to \\infty} \\sum_{i=1}^{n} f(x_i) \\Delta x\n$$';
+            await app.page.evaluate(md => window.setMarkdown(md), markdown);
+            await app.helpers.wait(800);
+
+            const mathDisplayCount = await app.page.locator('#editor .math-display').count();
+            expect(mathDisplayCount).toBe(1);
+            const mathAttr = await app.page.locator('#editor .math-display').first().getAttribute('data-math');
+            const normalized = (mathAttr || '').replace(/\s+/g, '');
+            expect(normalized).toContain('\\int_0^\\infty');
+            expect(normalized).toContain('\\Delta');
+        });
     });
 });

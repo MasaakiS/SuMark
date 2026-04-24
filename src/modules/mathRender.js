@@ -51,29 +51,40 @@ function renderMathBlocks() {
         if (!textNode.parentNode || !editor.contains(textNode)) return;
         
         const text = textNode.textContent;
-        const displayMathRegex = /\$\$([^$]+?)\$\$/g;
+        const displayMathPatterns = [
+            /\$\$([\s\S]+?)\$\$/g,
+            /\$\s*\n([\s\S]+?)\n\$\$/g,
+        ];
         let match;
         const replacements = [];
 
-        while ((match = displayMathRegex.exec(text)) !== null) {
-            replacements.push({
-                start: match.index,
-                end: match.index + match[0].length,
-                math: match[1],
-                type: 'display'
-            });
-        }
+        displayMathPatterns.forEach((pattern, patternIndex) => {
+            while ((match = pattern.exec(text)) !== null) {
+                // Avoid overlapping matches for $$...$$ blocks when the second pattern
+                // could start at the second '$' of an opening '$$'.
+                if (patternIndex === 1 && match.index > 0 && text[match.index - 1] === '$') {
+                    continue;
+                }
+                replacements.push({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                    math: match[1],
+                    type: 'display'
+                });
+            }
+        });
         
         if (replacements.length > 0) {
-            // Process replacements in reverse order to maintain indices
-            replacements.reverse().forEach(rep => {
-                const beforeText = text.substring(0, rep.start);
-                const afterText = text.substring(rep.end);
-                const parent = textNode.parentNode;
-                
-                const frag = document.createDocumentFragment();
-                if (beforeText) frag.appendChild(document.createTextNode(beforeText));
-                
+            replacements.sort((a, b) => a.start - b.start);
+            const parent = textNode.parentNode;
+            const frag = document.createDocumentFragment();
+            let lastIndex = 0;
+
+            replacements.forEach(rep => {
+                if (rep.start > lastIndex) {
+                    frag.appendChild(document.createTextNode(text.substring(lastIndex, rep.start)));
+                }
+
                 const div = document.createElement('div');
                 div.className = 'math-display';
                 div.setAttribute('data-math', rep.math);
@@ -85,17 +96,16 @@ function renderMathBlocks() {
                     div.textContent = '$$' + rep.math + '$$';
                 }
                 frag.appendChild(div);
-                
-                const afterNode = document.createTextNode(afterText);
-                frag.appendChild(afterNode);
-                
-                parent.replaceChild(frag, textNode);
-                
-                // Update textNode reference for next iteration
-                if (afterText) {
-                    textNode = afterNode;
-                }
+                lastIndex = rep.end;
             });
+
+            if (lastIndex < text.length) {
+                frag.appendChild(document.createTextNode(text.substring(lastIndex)));
+            }
+
+            if (parent) {
+                parent.replaceChild(frag, textNode);
+            }
         }
     });
 
@@ -129,7 +139,7 @@ function renderMathBlocks() {
         if (!textNode.parentNode || !editor.contains(textNode)) return;
         
         const text = textNode.textContent;
-        const inlineMathRegex = /\$([^$]+?)\$/g;
+        const inlineMathRegex = /\$([^$\n]+?)\$/g;
         let match;
         const replacements = [];
         
@@ -147,14 +157,16 @@ function renderMathBlocks() {
         }
         
         if (replacements.length > 0) {
-            replacements.reverse().forEach(rep => {
-                const beforeText = text.substring(0, rep.start);
-                const afterText = text.substring(rep.end);
-                const parent = textNode.parentNode;
-                
-                const frag = document.createDocumentFragment();
-                if (beforeText) frag.appendChild(document.createTextNode(beforeText));
-                
+            replacements.sort((a, b) => a.start - b.start);
+            const parent = textNode.parentNode;
+            const frag = document.createDocumentFragment();
+            let lastIndex = 0;
+
+            replacements.forEach(rep => {
+                if (rep.start > lastIndex) {
+                    frag.appendChild(document.createTextNode(text.substring(lastIndex, rep.start)));
+                }
+
                 const span = document.createElement('span');
                 span.className = 'math-inline';
                 span.setAttribute('data-math', rep.math);
@@ -166,16 +178,16 @@ function renderMathBlocks() {
                     span.textContent = '$' + rep.math + '$';
                 }
                 frag.appendChild(span);
-                
-                const afterNode = document.createTextNode(afterText);
-                frag.appendChild(afterNode);
-                
-                parent.replaceChild(frag, textNode);
-                
-                if (afterText) {
-                    textNode = afterNode;
-                }
+                lastIndex = rep.end;
             });
+
+            if (lastIndex < text.length) {
+                frag.appendChild(document.createTextNode(text.substring(lastIndex)));
+            }
+
+            if (parent) {
+                parent.replaceChild(frag, textNode);
+            }
         }
     });
 

@@ -408,6 +408,7 @@ function showModal(title, fields, callback, options = {}) {
 
     function close() {
         overlay.style.display = 'none';
+        fieldsEl.onkeydown = null;
         clearSearchHighlights();
         // Remove drag listeners (if any)
         document.removeEventListener('mousemove', onDrag);

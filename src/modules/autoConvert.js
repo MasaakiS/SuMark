@@ -532,7 +532,7 @@ function handleInlineAutoConversion() {
 
     // Display math: $$...$$ (must match before inline math to avoid conflict)
     // Use negative lookahead/lookbehind to avoid matching inline math
-    const displayMathMatch = before.match(/\$\$([^$]+?)\$\$$/);
+    const displayMathMatch = before.match(/\$\$([\s\S]+?)\$\$$/);
     if (displayMathMatch && window.katex) {
         const math = displayMathMatch[1];
         const fullMatch = displayMathMatch[0];
@@ -571,7 +571,7 @@ function handleInlineAutoConversion() {
     }
 
     // Inline math: $...$ (but not preceded by $ to avoid conflict with $$)
-    const inlineMathMatch = before.match(/\$([^$]+?)\$$/);
+    const inlineMathMatch = before.match(/\$([^$\n]+?)\$$/);
     if (inlineMathMatch && window.katex) {
         const math = inlineMathMatch[1];
         const fullMatch = inlineMathMatch[0];

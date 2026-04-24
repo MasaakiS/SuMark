@@ -457,8 +457,8 @@ function setupEventListeners() {
         // Click on non-editable element (TOC, Mermaid preview): select it so Backspace/Delete can remove it
         const nonEditable = e.target.closest('[contenteditable="false"]');
         if (nonEditable && nonEditable !== editor && editor.contains(nonEditable)) {
-            // Don't interfere with buttons inside non-editable elements
-            if (e.target.closest('button')) return;
+            // Don't interfere with interactive controls inside non-editable elements
+            if (e.target.closest('button, select, input, textarea')) return;
             const sel = window.getSelection();
             const range = document.createRange();
             range.selectNode(nonEditable);
@@ -763,48 +763,148 @@ function setupEventListeners() {
         e.returnValue = '';
     });
 
+    async function saveUnsavedTabs(unsavedTabs) {
+        const originalTab = getActiveTab();
+        for (const tab of unsavedTabs) {
+            if (!tab.isModified) continue;
+            switchTab(tab.id);
+            const preview = normalizeFilename(getTabPreviewText(tab));
+            const defaultPath = preview.endsWith('.md') ? preview : preview + '.md';
+            await saveFile(defaultPath);
+            if (tab.isModified) {
+                if (originalTab && getActiveTab() && getActiveTab().id !== originalTab.id) {
+                    switchTab(originalTab.id);
+                }
+                return false;
+            }
+        }
+        if (originalTab && getActiveTab() && getActiveTab().id !== originalTab.id) {
+            switchTab(originalTab.id);
+        }
+        return true;
+    }
+
+    function showAppCloseDialog(unsavedTabs) {
+        const overlay = document.getElementById('modalOverlay');
+        const titleEl = document.getElementById('modalTitle');
+        const fieldsEl = document.getElementById('modalFields');
+        const okBtn = document.getElementById('modalOk');
+        const cancelBtn = document.getElementById('modalCancel');
+        const extraBtn = document.getElementById('modalExtra');
+
+        if (!overlay || !titleEl || !fieldsEl || !okBtn || !cancelBtn || !extraBtn) {
+            return Promise.resolve('cancel');
+        }
+
+        const names = unsavedTabs.slice(0, 5).map(t => '・' + escapeHtml(getTabPreviewText(t))).join('<br>');
+        const extra = unsavedTabs.length > 5 ? '<br>...他 ' + (unsavedTabs.length - 5) + ' 件' : '';
+        titleEl.textContent = '確認';
+        fieldsEl.innerHTML = '<div class="modal-field" style="margin-bottom:0;">保存されていないタブがあります。アプリを終了しますか？</div>' +
+            '<div class="modal-field" style="margin-top: 8px; white-space: pre-wrap;">' + names + extra + '</div>';
+        okBtn.textContent = unsavedTabs.length === 1 ? '保存' : 'すべて保存';
+        cancelBtn.textContent = 'キャンセル';
+        extraBtn.textContent = '保存しない';
+        extraBtn.style.display = 'inline-flex';
+
+        overlay.style.display = 'flex';
+
+        let resolveChoice;
+        const cleanup = () => {
+            overlay.style.display = 'none';
+            titleEl.textContent = '';
+            fieldsEl.innerHTML = '';
+            fieldsEl.onkeydown = null;
+            okBtn.textContent = 'OK';
+            cancelBtn.textContent = 'キャンセル';
+            extraBtn.style.display = 'none';
+            document.removeEventListener('keydown', handleKeyDown);
+            okBtn.removeEventListener('click', handleSave);
+            extraBtn.removeEventListener('click', handleDiscard);
+            cancelBtn.removeEventListener('click', handleCancel);
+            overlay.removeEventListener('click', handleOverlayClick);
+        };
+
+        const handleOverlayClick = e => {
+            if (e.target === overlay) {
+                cleanup();
+                resolveChoice('cancel');
+            }
+        };
+
+        const handleKeyDown = e => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                cleanup();
+                resolveChoice('cancel');
+            }
+        };
+
+        const handleSave = async () => {
+            cleanup();
+            const saved = await saveUnsavedTabs(unsavedTabs);
+            resolveChoice(saved ? 'save' : 'cancel');
+        };
+
+        const handleDiscard = () => {
+            cleanup();
+            resolveChoice('discard');
+        };
+
+        const handleCancel = () => {
+            cleanup();
+            resolveChoice('cancel');
+        };
+
+        const promise = new Promise(resolve => {
+            resolveChoice = resolve;
+            okBtn.addEventListener('click', handleSave);
+            extraBtn.addEventListener('click', handleDiscard);
+            cancelBtn.addEventListener('click', handleCancel);
+            overlay.addEventListener('click', handleOverlayClick);
+            document.addEventListener('keydown', handleKeyDown);
+        });
+
+        return promise;
+    }
+
     // Tauri ウィンドウクローズ確認（アプリX / Cmd+Q 共通）
     // ダブル発火防止ガード（CloseRequested と ExitRequested が両方発火する場合に対応）
     let appCloseDialogShowing = false;
     const requestAppClose = async () => {
-            if (appCloseDialogShowing) return;
-            appCloseDialogShowing = true;
-            try {
-                const hasUnsaved = hasUnsavedTabs();
-                const activeTab = typeof getActiveTab === 'function' ? getActiveTab() : null;
-                console.log('[CloseFlow] app-close-requested', {
-                    hasUnsaved,
-                    activeTabId: activeTab ? activeTab.id : null,
-                    isModified: activeTab ? activeTab.isModified : null,
-                    filePath: activeTab ? activeTab.filePath : null,
-                    editorTextLength: editor ? (editor.innerText || '').trim().length : -1,
-                });
+        if (appCloseDialogShowing) return;
+        appCloseDialogShowing = true;
+        try {
+            const hasUnsaved = hasUnsavedTabs();
+            const activeTab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+            console.log('[CloseFlow] app-close-requested', {
+                hasUnsaved,
+                activeTabId: activeTab ? activeTab.id : null,
+                isModified: activeTab ? activeTab.isModified : null,
+                filePath: activeTab ? activeTab.filePath : null,
+                editorTextLength: editor ? (editor.innerText || '').trim().length : -1,
+            });
 
-                if (!hasUnsaved) {
-                    // 未保存なし → Rust 側で明示的に終了
-                    await invoke('allow_close');
-                    await invoke('exit_app');
-                    return;
-                }
-
-                const unsavedTabs = getUnsavedTabs();
-                const names = unsavedTabs.slice(0, 5).map(t => '・' + t.title).join('\n');
-                const extra = unsavedTabs.length > 5 ? '\n...他 ' + (unsavedTabs.length - 5) + ' 件' : '';
-                const message = '保存されていないタブがあります。\nアプリを終了しますか？\n\n' + names + extra;
-
-                // Tauri ネイティブダイアログ（WebViewの innerHTML を壊さない）
-                const ok = await window.__TAURI__.dialog.confirm(message, { title: '確認', type: 'warning' });
-                if (ok) {
-                    await invoke('allow_close');
-                    await invoke('exit_app');
-                }
-                // キャンセル → 何もしない（Rust側で prevent 済み）
-            } catch (closeErr) {
-                console.error('Failed to close app:', closeErr);
-                showError('アプリを終了できませんでした。もう一度お試しください。');
-            } finally {
-                appCloseDialogShowing = false;
+            if (!hasUnsaved) {
+                await invoke('allow_close');
+                await invoke('exit_app');
+                return;
             }
+
+            const unsavedTabs = getUnsavedTabs();
+            const choice = await showAppCloseDialog(unsavedTabs);
+            if (choice === 'save') {
+                await invoke('allow_close');
+                await invoke('exit_app');
+            } else if (choice === 'discard') {
+                await invoke('allow_close');
+                await invoke('exit_app');
+            }
+        } catch (closeErr) {
+            console.error('Failed to close app:', closeErr);
+            showError('アプリを終了できませんでした。もう一度お試しください。');
+        } finally {
+            appCloseDialogShowing = false;
+        }
     };
 
     // keyboard.js からも同じ終了フローを使えるように公開
