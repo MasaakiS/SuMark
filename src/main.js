@@ -457,8 +457,8 @@ function setupEventListeners() {
         // Click on non-editable element (TOC, Mermaid preview): select it so Backspace/Delete can remove it
         const nonEditable = e.target.closest('[contenteditable="false"]');
         if (nonEditable && nonEditable !== editor && editor.contains(nonEditable)) {
-            // Don't interfere with buttons inside non-editable elements
-            if (e.target.closest('button')) return;
+            // Don't interfere with interactive controls inside non-editable elements
+            if (e.target.closest('button, select, input, textarea')) return;
             const sel = window.getSelection();
             const range = document.createRange();
             range.selectNode(nonEditable);

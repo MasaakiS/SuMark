@@ -96,11 +96,11 @@ async function openFileFromPath(filePath) {
         // Empty task items need ZWSP for marked to recognize them as task list
         contents = contents.replace(/^(\s*[-*+]\s+\[[ xX]\])\s*$/gm, '$1 \u200B');
 
-        console.log('[DEBUG openFileFromPath] Parsing markdown to HTML...');
-        const filename = normalizedFilePath.split('/').pop().split('\\').pop();
-        const html = (typeof marked !== 'undefined') ? marked.parse(contents) : contents;
         console.log('[DEBUG openFileFromPath] Creating tab...');
-        createTab(normalizedFilePath, filename, html);
+        const filename = normalizedFilePath.split('/').pop().split('\\').pop();
+        const tab = createTab(normalizedFilePath, filename, '<p><br></p>');
+        setMarkdown(contents);
+        tab.content = editor.innerHTML;
         console.log('[DEBUG openFileFromPath] SUCCESS');
 
     } catch (err) {

@@ -7,7 +7,7 @@
  * 環境変数:
  *   COPILOT_MD_CHECK=1        チェック有効 (既定は無効)
  *   COPILOT_MD_CHECK_MAX=20   1テスト実行あたりの最大チェック回数
- *   COPILOT_MD_MODEL          利用モデル (既定: raptor-mini)
+ *   COPILOT_MD_MODEL          利用モデル (既定: gpt-5-mini)
  *
  * 通常の `npm run test:e2e` ではチェックは無効。
  * `npm run test:e2e:md-check` を使うと有効になる。
@@ -32,7 +32,7 @@ function maxChecks() {
 }
 
 function copilotModel() {
-    return process.env.COPILOT_MD_MODEL || 'raptor-mini';
+    return process.env.COPILOT_MD_MODEL || 'gpt-5-mini';
 }
 
 function copilotSessionId() {

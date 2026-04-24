@@ -11,10 +11,12 @@
     color: #333;
     word-wrap: break-word;
     overflow-wrap: break-word;
+    caret-color: #4a9eff;
 }
 
 #editor:focus {
     outline: none;
+    caret-color: #4a9eff;
 }
 
 /* Highlight for search results */
