@@ -349,6 +349,27 @@ function init() {
     // Create initial tab
     createTab(null, '無題', '<p><br></p>');
 
+    // Open files passed via command-line args (drag onto app icon, "Open with")
+    if (window.__TAURI__) {
+        (async () => {
+            try {
+                const initialFiles = await invoke('get_initial_files');
+                if (initialFiles && initialFiles.length > 0) {
+                    for (const filePath of initialFiles) {
+                        // Extract extension from the filename component only (handles dots in dir names)
+                        const filename = filePath.split('/').pop().split('\\').pop();
+                        const ext = filename.split('.').pop().toLowerCase();
+                        if (['md', 'markdown', 'txt'].includes(ext)) {
+                            await openFileFromPath(filePath);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn('[INIT] Could not retrieve initial files:', err);
+            }
+        })();
+    }
+
     // Initial state
     updateWordCount();
     editor.focus();
