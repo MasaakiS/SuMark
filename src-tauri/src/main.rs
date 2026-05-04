@@ -6,7 +6,11 @@ use arboard::{Clipboard, ImageData};
 use base64::Engine;
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use tauri::Manager;
+
+/// Files passed via command-line arguments (e.g. drag-onto-icon, "Open with")
+struct InitialFiles(Mutex<Vec<String>>);
 
 static CLOSE_ALLOWED: AtomicBool = AtomicBool::new(false);
 
@@ -93,6 +97,16 @@ fn open_in_browser(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Returns file paths passed as command-line arguments and clears the internal list.
+/// The frontend calls this once after initialization to open any files the OS requested.
+#[tauri::command]
+fn get_initial_files(state: tauri::State<InitialFiles>) -> Vec<String> {
+    let mut files = state.0.lock().unwrap();
+    let result = files.clone();
+    files.clear();
+    result
+}
+
 #[tauri::command]
 fn allow_close() {
     CLOSE_ALLOWED.store(true, Ordering::SeqCst);
@@ -104,7 +118,15 @@ fn exit_app(app_handle: tauri::AppHandle) {
 }
 
 fn main() {
+    // Collect file paths from command-line arguments (skip argv[0] = program name,
+    // and any flags starting with '-').  These are opened by the frontend after init.
+    let file_args: Vec<String> = std::env::args()
+        .skip(1)
+        .filter(|arg| !arg.starts_with('-'))
+        .collect();
+
     tauri::Builder::default()
+        .manage(InitialFiles(Mutex::new(file_args)))
         .invoke_handler(tauri::generate_handler![
             get_current_date,
             get_current_datetime,
@@ -112,7 +134,8 @@ fn main() {
             open_in_browser,
             copy_image_to_clipboard,
             allow_close,
-            exit_app
+            exit_app,
+            get_initial_files
         ])
         .on_window_event(|event| {
             // アプリXボタン: 常に防いで JS に委譲
