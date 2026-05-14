@@ -625,7 +625,7 @@ function showFindReplace() {
 
 // ========== Element Insertion ==========
 
-function insertLink() {
+async function insertLink() {
     // Save selection before opening dialog
     const sel = window.getSelection();
     let savedRange = null;
@@ -680,6 +680,44 @@ function insertLink() {
         markModified();
         saveEditorState(); // Save state after inserting link
     });
+
+    // Add file selection button after modal is displayed
+    const fieldsEl = document.getElementById('modalFields');
+    if (fieldsEl) {
+        // Remove existing file button if present
+        const existingBtn = fieldsEl.querySelector('.modal-file-select-btn');
+        if (existingBtn) existingBtn.remove();
+
+        // Create file selection button
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.marginTop = '12px';
+        const fileBtn = document.createElement('button');
+        fileBtn.className = 'modal-file-select-btn';
+        fileBtn.textContent = 'ファイルを選択';
+        fileBtn.style.cssText = 'padding:8px 12px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;font-size:14px;width:100%;';
+        
+        fileBtn.addEventListener('click', async () => {
+            try {
+                const selected = await tauriOpen({
+                    multiple: false
+                });
+                
+                if (selected) {
+                    // Set the selected path to the URL field
+                    const urlInput = document.getElementById('modalInput0');
+                    if (urlInput) {
+                        urlInput.value = selected;
+                        urlInput.focus();
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to open file dialog:', err);
+            }
+        });
+
+        buttonContainer.appendChild(fileBtn);
+        fieldsEl.appendChild(buttonContainer);
+    }
 }
 
 async function insertImage() {

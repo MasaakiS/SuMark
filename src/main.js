@@ -430,7 +430,77 @@ function setupEventListeners() {
         }
     });
 
-    // Link click handling - Cmd/Ctrl+click opens in browser
+    // Helper function to check if URL is a web URL
+    function isWebUrl(url) {
+        if (!url) return false;
+        return /^https?:\/\//.test(url) || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) || url.startsWith('mailto:');
+    }
+
+    const IN_APP_TEXT_EXTENSIONS = new Set([
+        'md', 'markdown', 'txt', 'text', 'log',
+        'csv', 'tsv',
+        'json', 'jsonc', 'yaml', 'yml', 'toml', 'ini', 'conf', 'env',
+        'xml', 'html', 'htm',
+        'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'css', 'scss', 'less',
+        'py', 'rb', 'go', 'rs', 'java', 'kt', 'swift', 'php', 'sql',
+        'sh', 'bash', 'zsh', 'fish', 'bat', 'cmd',
+        'c', 'cc', 'cpp', 'cxx', 'h', 'hpp', 'cs', 'lua', 'r',
+    ]);
+
+    function getFileExtension(filePath) {
+        const cleanPath = String(filePath || '').split(/[?#]/)[0].toLowerCase();
+        const fileName = cleanPath.split('/').pop() || '';
+        const dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex < 0 || dotIndex === fileName.length - 1) return '';
+        return fileName.slice(dotIndex + 1);
+    }
+
+    function shouldOpenInEditor(filePath) {
+        const ext = getFileExtension(filePath);
+        return ext ? IN_APP_TEXT_EXTENSIONS.has(ext) : false;
+    }
+
+    // Helper function to resolve local file paths (handling relative paths)
+    async function handleLocalFileLink(filePath) {
+        try {
+            let resolvedPath = filePath;
+            
+            // If path is relative, resolve it from the current file's directory
+            if (!filePath.startsWith('/') && !filePath.startsWith('~') && !(/^[a-zA-Z]:/.test(filePath))) {
+                // Relative path detected
+                const currentTab = getActiveTab();
+                const currentFile = currentTab?.filePath;
+                if (currentFile) {
+                    const currentDir = currentFile.substring(0, currentFile.lastIndexOf('/'));
+                    resolvedPath = resolveRelativePath(currentDir, filePath);
+                } else {
+                    showError('現在のファイルが不明なため、相対パスを解決できません');
+                    return;
+                }
+            }
+            
+            // Check if file exists
+            const fileExists = await exists(resolvedPath);
+            if (!fileExists) {
+                showError(`ファイルが見つかりません: ${resolvedPath}`);
+                return;
+            }
+            
+            // Open text-like files in the editor; others use the OS default app
+            if (shouldOpenInEditor(resolvedPath)) {
+                await openFileFromPath(resolvedPath);
+            } else if (shellOpen) {
+                await shellOpen(resolvedPath);
+            } else {
+                showError('ファイルを開けませんでした: ' + resolvedPath);
+            }
+        } catch (err) {
+            console.error('Failed to handle local file link:', err);
+            showError('ファイルを開く際にエラーが発生しました: ' + err.message);
+        }
+    }
+
+    // Link click handling - Cmd/Ctrl+click opens in browser or local file
     editor.addEventListener('click', e => {
         // Toggle delete button
         if (e.target.closest('.toggle-delete-btn')) {
@@ -493,8 +563,17 @@ function setupEventListeners() {
             if (e.metaKey || e.ctrlKey) {
                 e.preventDefault();
                 const url = link.getAttribute('href') || link.href;
-                if (url && shellOpen) {
-                    shellOpen(url).catch(err => console.error('Failed to open URL:', err));
+                if (url) {
+                    // Check if it's a web URL or local file path
+                    if (isWebUrl(url)) {
+                        // Web URL - open in browser
+                        if (shellOpen) {
+                            shellOpen(url).catch(err => console.error('Failed to open URL:', err));
+                        }
+                    } else {
+                        // Local file path - open in editor
+                        handleLocalFileLink(url);
+                    }
                 }
             }
         }
