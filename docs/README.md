@@ -8,9 +8,10 @@
 
 | ファイル | 概要 |
 |---|---|
-| [MODULES.md](MODULES.md) | モジュール構成・依存関係・各モジュールの関数一覧 |
-| [DEPENDENCY_MAP.md](DEPENDENCY_MAP.md) | JavaScript 関数間の依存マップ |
-| [DEPENDENCY_MAP_VISUAL.md](DEPENDENCY_MAP_VISUAL.md) | 依存関係の視覚的ダイアグラム |
+| [MODULES.md](MODULES.md) | モジュール構成・依存関係・各モジュールの関数一覧（最新） |
+| [DEPENDENCY_MAP_VISUAL.md](DEPENDENCY_MAP_VISUAL.md) | 実装済みモジュールの依存関係ダイアグラム |
+| [DEPENDENCY_MAP.md](DEPENDENCY_MAP.md) | 分割計画の原本（歴史的記録。分割は完了済み） |
+| [VENDOR_VERSIONS.md](VENDOR_VERSIONS.md) | バンドル済みベンダーライブラリのバージョン管理 |
 
 ## 関連ドキュメント（他の場所）
 

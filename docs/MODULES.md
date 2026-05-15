@@ -20,37 +20,37 @@ index.html
 
 | ファイル | 行数 | 主な役割 |
 |---|---:|---|
-| `main.js` | 1,161 | 初期化、イベント登録、ペースト処理、ユーティリティ |
-| `modules/utils.js` | 153 | 共有ユーティリティ（`escapeHtml` 等） |
+| `main.js` | 1,468 | 初期化、イベント登録、ペースト処理、ユーティリティ |
+| `modules/utils.js` | 160 | 共有ユーティリティ（`escapeHtml`、`debounce`、`throttle` 等） |
 | `modules/nodeUtils.js` | 175 | DOM ノード操作（パス取得、選択範囲保存/復元、末尾空行判定） |
 | `modules/pasteUtils.js` | 144 | ペースト判定・変換（TSV→テーブル、Markdown判定等） |
-| `modules/codeHighlight.js` | 320 | シンタックスハイライト、行番号、キャレット管理 |
-| `modules/mathRender.js` | 182 | KaTeX 数式レンダリング |
-| `modules/mermaidManager.js` | 601 | Mermaid ダイアグラム管理（挿入/表示/編集） |
+| `modules/codeHighlight.js` | 340 | シンタックスハイライト、行番号、キャレット管理、折り返し制御 |
+| `modules/mathRender.js` | 194 | KaTeX 数式レンダリング |
+| `modules/mermaidManager.js` | 601 | Mermaid ダイアグラム管理（挿入/表示/編集/モード切替） |
 | `modules/tocManager.js` | 152 | 目次（TOC）生成・復元・操作 |
 | `modules/toggleBlock.js` | 276 | トグル（details/summary）ブロック管理 |
-| `modules/tabManager.js` | 297 | タブ管理（作成/切替/クローズ/名称同期） |
+| `modules/tabManager.js` | 465 | タブ管理（作成/切替/クローズ/未保存確認/ステータスバー） |
 | `modules/editorZoom.js` | 79 | エディタズーム（拡大/縮小/リセット） |
 | `modules/undoRedo.js` | 166 | Undo/Redo スタック管理 |
-| `modules/tableManager.js` | 389 | テーブル操作（行列追加/削除、コンテキストメニュー） |
-| `modules/imageManager.js` | 484 | 画像管理（エラー表示、リサイズ、保存、ペースト） |
-| `modules/toolbarActions.js` | 892 | ツールバーアクション（書式設定、挿入、モーダル） |
-| `modules/fileManager.js` | 413 | ファイル操作（新規/開く/保存/画像パス解決） |
+| `modules/tableManager.js` | 389 | テーブル操作（挿入/行列追加削除/コンテキストメニュー/CSV読込） |
+| `modules/imageManager.js` | 484 | 画像管理（エラー表示、リサイズ、拡大ビュー、保存、ペースト） |
+| `modules/toolbarActions.js` | 1,257 | ツールバーアクション（書式設定、挿入、モーダル、検索/置換） |
+| `modules/fileManager.js` | 520 | ファイル操作（新規/開く/保存/画像パス解決/CSV読込） |
 | `modules/exportManager.js` | 254 | PDF エクスポート |
-| `modules/markdown.js` | 542 | Markdown ↔ HTML 変換（Turndown設定 + marked解析） |
-| `modules/autoConvert.js` | 624 | エディタ入力時の自動変換（ブロック/インライン） |
-| `modules/keyboard.js` | 778 | キーボードイベント処理（ショートカット、Enter、Tab） |
-| **合計** | **8,082** | |
+| `modules/markdown.js` | 582 | Markdown ↔ HTML 変換（Turndown設定 + marked解析） |
+| `modules/autoConvert.js` | 647 | エディタ入力時の自動変換（ブロック/インライン） |
+| `modules/keyboard.js` | 1,060 | キーボードイベント処理（ショートカット、Enter、Tab、テーブルナビ） |
+| **合計** | **9,413** | |
 
 ## モジュール詳細
 
-### main.js（1,161 行）
+### main.js（1,468 行）
 
 エントリーポイント。初期化処理とイベントリスナー登録、および他モジュールに分類されない機能を保持。
 
 **公開関数/変数:**
 - `insertTextAtCursor(text)` — カーソル位置にテキスト挿入
-- `showBanner(msg, type, duration)` — 通知バナー表示
+- `showBanner(msg, type)` — 通知バナー表示
 - `showWarn(msg)` / `showError(msg)` — 警告/エラー通知
 - `resetGlobalState()` — グローバル状態リセット
 - `init()` — アプリケーション初期化
@@ -61,7 +61,8 @@ index.html
 - `getParentBlock(node)` / `setCursorTo(el)` / `setCursorToEnd(el)` — カーソル操作
 - `updateWordCount()` — 文字数カウント更新
 - `setupCodeCopyButtons()` / `addCopyButtonsToCodeBlocks()` — コードコピーボタン
-- `editor`, `isConverting`, `isComposing`, `inputCharCount`, `EMOJI_MAP` — グローバル状態
+- `testConvertFileSrc(path)` — asset:// URL テスト用ユーティリティ
+- `editor`, `isConverting`, `isComposing`, `inputCharCount`, `isProcessingDrop`, `EMOJI_MAP` — グローバル状態
 
 ### modules/markdown.js（542 行）
 
@@ -91,15 +92,15 @@ marked.js + DOMPurify でサニタイズされた HTML を生成。
 
 **依存先:** `editor`, `isConverting`, `isComposing`, `inputCharCount`, `EMOJI_MAP`, `getParentBlock`, `setCursorTo`, `setCursorToEnd`, `updateWordCount` (main.js), 各モジュール関数
 
-### modules/keyboard.js（778 行）
+### modules/keyboard.js（1,060 行）
 
-キーボードショートカットと特殊キー（Enter、Tab）の処理。
+キーボードショートカットと特殊キー（Enter、Tab）の処理。テーブルセル間のナビゲーションも含む。
 
 **公開関数:**
 - `handleKeyDown(e)` — `keydown` イベントハンドラ
 
 **内部関数:**
-- `handleEnterKey(e)` — Enter キー処理（見出し→段落、コードブロック脱出、リスト継続/終了、トグル操作、``` コードブロック生成）
+- `handleEnterKey(e)` — Enter キー処理（見出し→段落、コードブロック脱出、リスト継続/終了、トグル操作、``` コードブロック生成、Shift+Enter ソフト改行）
 - `handleTabKey(e)` — Tab キー処理（コードブロック内タブ、リストインデント/アウトデント）
 
 **ショートカット一覧:**
@@ -108,6 +109,8 @@ marked.js + DOMPurify でサニタイズされた HTML を生成。
 | Cmd/Ctrl+Z | Undo |
 | Cmd/Ctrl+Shift+Z / Cmd/Ctrl+Y | Redo |
 | Cmd/Ctrl+P | PDF エクスポート |
+| Cmd/Ctrl+F | 検索ダイアログ |
+| Cmd/Ctrl+R | 置換ダイアログ |
 | Cmd/Ctrl+S | 保存 |
 | Cmd/Ctrl+Shift+S | 名前を付けて保存 |
 | Cmd/Ctrl+N | 新規ファイル |
@@ -115,16 +118,29 @@ marked.js + DOMPurify でサニタイズされた HTML を生成。
 | Cmd/Ctrl+B/I/E/K | 太字/斜体/コード/リンク |
 | Cmd/Ctrl+Shift+X | 取り消し線 |
 | Cmd/Ctrl+W | タブを閉じる |
+| Cmd/Ctrl+Q | アプリ終了確認 |
 | Cmd/Ctrl+Tab | 次のタブ |
+| Cmd/Ctrl+Shift+Tab | 前のタブ |
 | Cmd/Ctrl+; / Cmd/Ctrl+: | 日付/時刻挿入 |
+| Shift+Enter | ソフト改行（2スペース＋改行） |
+| Arrow keys（テーブルセル内） | セル間ナビゲーション |
 
 **依存先:** `editor`, `isComposing`, `inputCharCount`, `getParentBlock`, `setCursorTo`, `setCursorToEnd` (main.js), tabManager, undoRedo, fileManager, exportManager, codeHighlight, mermaidManager, toolbarActions 各モジュール
 
-### modules/utils.js（153 行）
+### modules/utils.js（160 行）
 
 全モジュールから参照される共有ユーティリティ。最初に読み込まれる必要がある。
 
-**公開関数:** `escapeHtml(str)` 等
+**公開関数:**
+- `escapeHtml(str)` — HTML特殊文字をエスケープ
+- `debounce(fn, delay)` — デバウンス関数生成
+- `throttle(fn, delay)` — スロットル関数生成
+- `normalizeFilePath(path)` — ファイルパス正規化（Windows/macOSパス対応）
+- `resolveRelativePath(fileDir, relativePath)` — 相対パスを絶対パスに解決
+- `simulateKeyPress(element, key)` — キー入力のシミュレーション
+- `getLocalStorage(key, defaultValue)` / `setLocalStorage(key, value)` — localStorage 操作
+- `uniqueArray(arr)` — 配列の重複排除
+- `deepClone(obj)` — オブジェクトのディープクローン
 
 ### modules/nodeUtils.js（175 行）
 
@@ -136,7 +152,7 @@ DOM ノード操作ユーティリティ。
 - `saveSelection()` / `restoreSelection()` — 選択範囲の保存/復元
 - `getNodePath(node)` / `getNodeByPath(path)` — DOM パスの取得/復元
 
-### modules/codeHighlight.js（320 行）
+### modules/codeHighlight.js（340 行）
 
 コードブロックのシンタックスハイライトと行番号管理。
 
@@ -147,17 +163,25 @@ DOM ノード操作ユーティリティ。
 - `updateAllLineNumbers()` — 全行番号更新
 - `getCaretCharacterOffsetWithin(el)` / `setCaretCharacterOffset(el, offset)` — キャレット位置管理
 - `debouncedHighlightCodeAtCursor()` — デバウンス付きハイライト
+- `setupCodeWrapButton(pre)` — コード折り返しボタンの設置
+- `toggleCodeWrap(pre)` — コード折り返しのトグル
 
-### modules/tabManager.js（297 行）
+### modules/tabManager.js（465 行）
 
 マルチタブ管理。
 
 **公開関数:**
+- `initTabManager()` — タブマネージャー初期化（DOM要素取得）
 - `createTab(filePath, title, content)` — 新規タブ作成
+- `getActiveTab()` — アクティブタブオブジェクト取得
 - `switchTab(tabId)` — タブ切替
-- `closeTab(tabId)` — タブを閉じる
+- `closeTab(tabId)` — タブを閉じる（未保存確認ダイアログ付き）
 - `markModified()` — 変更済みマーク
-- `updateTabTitle(tabId, title)` — タブタイトル更新
+- `getUnsavedTabs()` — 未保存タブ一覧取得
+- `hasUnsavedTabs()` — 未保存タブの有無確認
+- `updateStatusBar()` — ステータスバー更新
+- `renderTabs()` — タブ一覧の再描画
+- `setupTabKeyboardShortcuts()` — タブ関連キーボードショートカット設定
 
 **公開変数:** `tabs`, `activeTabId`
 
@@ -178,22 +202,30 @@ Undo/Redo スタック管理（最大 100 履歴）。
 
 **公開関数:**
 - `isInsideTableCell(node)` — テーブルセル内判定
+- `insertTable()` — テーブル挿入（モーダル経由）
 - `handleTableAction(action)` — テーブル操作（行列追加/削除）
-- `createTableRow(cols)` — テーブル行生成
+- `createTableRow(colCount, tag)` — テーブル行生成
+- `setupTableContextMenu()` — テーブル右クリックメニュー設定
+- `csvToMarkdownTable(csvText, title)` — CSV テキストを Markdown テーブルに変換
+- `parseCsv(text)` — CSV パース
 
 ### modules/imageManager.js（484 行）
 
-画像管理（エラーハンドリング、リサイズ、ファイル保存、ペースト）。
+画像管理（エラーハンドリング、リサイズ、ファイル保存、ペースト、拡大ビュー）。
 
 **公開関数:**
+- `setupImageMutationObserver()` — 画像要素の動的監視（MutationObserver）
 - `setupImageErrorHandling()` — 画像読み込みエラーハンドリング
 - `setupImageResize()` — 画像リサイズ機能
+- `setupImageViewer()` — 画像拡大ビューア初期化
+- `openImageViewer(img)` — 拡大ビューアを開く
+- `closeImageViewer()` — 拡大ビューアを閉じる
 - `pasteImageFile(file)` — 画像ペースト
-- `mimeToExt(mime)` / `generateImageFileName()` / `saveImageFile(...)` — 画像ファイル操作
+- `mimeToExt(mime)` / `generateImageFileName(alt, counter, ext)` / `saveImageFile(...)` — 画像ファイル操作
 
-### modules/toolbarActions.js（892 行）
+### modules/toolbarActions.js（1,257 行）
 
-ツールバーの全アクション。
+ツールバーの全アクション。検索/置換機能を含む。
 
 **公開関数:**
 - `applyHeading(level)` — 見出し適用
@@ -201,15 +233,20 @@ Undo/Redo スタック管理（最大 100 履歴）。
 - `applyBlockquote()` — 引用適用
 - `applyInlineCode()` — インラインコード適用
 - `insertLink()` / `insertImage()` — リンク/画像挿入
-- `insertCodeBlock()` / `doInsertCodeBlock(lang)` — コードブロック挿入
+- `insertCodeBlock()` / `doInsertCodeBlock(lang, savedRange, selectedText)` — コードブロック挿入
 - `insertTaskList()` — タスクリスト挿入
 - `insertHorizontalRule()` — 水平線挿入
 - `insertDate()` / `insertTime()` / `insertDateTime()` — 日時挿入
 - `showEmojiPicker()` — 絵文字ピッカー表示
-- `showModal(options)` — モーダルダイアログ表示
+- `showModal(title, fields, callback, options)` — モーダルダイアログ表示
 - `restoreCodeWrapStates()` — コード折り返し状態復元
+- `showFindDialog()` — 検索ダイアログ表示
+- `showReplaceDialog()` — 置換ダイアログ表示
+- `showFindReplace()` — 検索/置換パネルのトグル表示
+- `highlightSearchMatches(query, caseSensitive)` — 検索ハイライト
+- `moveToNextSearchHighlight()` — 次の検索結果へ移動
 
-### modules/fileManager.js（413 行）
+### modules/fileManager.js（520 行）
 
 ファイル I/O 操作（Tauri API 経由）。
 
@@ -217,9 +254,12 @@ Undo/Redo スタック管理（最大 100 履歴）。
 - `newFile()` — 新規ファイル
 - `openFile()` — ファイルを開く（ダイアログ）
 - `openFileFromPath(path)` — パス指定でファイルを開く
-- `saveFile()` / `saveAsFile()` — 保存 / 名前を付けて保存
-- `resolveRelativeImages(html, basePath)` — 相対画像パス解決
-- `resolveImagesForSave(html, filePath)` — 保存時の画像パス解決
+- `saveFile(defaultPath)` — 保存
+- `saveAsFile()` — 名前を付けて保存
+- `resolveRelativeImages(markdown, fileDir)` — 相対画像パス解決
+- `resolveRelativeCsvLinks(markdown, fileDir)` — 相対 CSV リンクパス解決
+- `resolveImagesForSave(markdown, mdFilePath)` — 保存時の画像パス解決
+- `normalizeFilename(filename)` — ファイル名の正規化
 
 ### modules/exportManager.js（254 行）
 
@@ -319,3 +359,5 @@ vendor/ (marked, hljs, TurndownService, mermaid, katex, DOMPurify)
 | v0.7.0 | 8 モジュール追加分離（tabManager, editorZoom, undoRedo, tableManager, imageManager, toolbarActions, fileManager, exportManager） |
 | v0.7.1 | モジュールディレクトリ再編成（src/*.js → src/modules/*.js） |
 | v0.7.2 | 3 モジュール追加分離（markdown.js, autoConvert.js, keyboard.js）— main.js 3,051→1,161 行 |
+| v0.9.x | 各モジュールに機能追加：tabManager に未保存確認・ステータスバー機能追加、tableManager に CSV 読込・コンテキストメニュー追加、toolbarActions に検索/置換機能追加、imageManager に拡大ビューア追加、keyboard.js にテーブルナビ・Shift+Enter・Cmd+Q 対応追加、utils.js に debounce/throttle/localStorage 等ユーティリティ追加、codeHighlight.js にコード折り返し機能追加 |
+| v1.0.1 | 現行バージョン — 合計 9,413 行 |
