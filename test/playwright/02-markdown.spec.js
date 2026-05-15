@@ -225,6 +225,16 @@ test.describe('Markdown 自動変換テスト', () => {
             expect(bashClass).toBeGreaterThan(0);
             expect(commentSpan).toBeGreaterThan(0);
         });
+
+        test('タスクリスト内のコードブロックヘッダーが全幅で表示される', async ({ app }) => {
+            const md = '- [ ] Task item\n\n    ```js\n    console.log("hello");\n    ```';
+            await app.page.evaluate((markdown) => {
+                if (typeof setMarkdown === 'function') setMarkdown(markdown);
+            }, md);
+            await app.helpers.wait(800);
+
+            await app.helpers.assertStackedCodeBlockLayout('#editor li:has(input[type="checkbox"])');
+        });
     });
 
     test.describe('数式変換（KaTeX）', () => {

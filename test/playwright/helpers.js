@@ -226,6 +226,48 @@ class PlaywrightHelpers {
         return count > 0;
     }
 
+    /**
+     * 指定したコンテキスト内で、コードブロックの toolbar と pre が
+     * 縦に積まれ、同じ幅で揃っていることを検証する。
+     */
+    async assertStackedCodeBlockLayout(scopeSelector) {
+        const scope = this.page.locator(scopeSelector).first();
+        const scopeCount = await scope.count();
+        if (scopeCount !== 1) {
+            throw new Error(`scope not found: ${scopeSelector}`);
+        }
+
+        const toolbar = scope.locator('.code-block-toolbar').first();
+        const pre = scope.locator('pre').first();
+
+        if (await toolbar.count() !== 1) {
+            throw new Error(`code block toolbar not found in: ${scopeSelector}`);
+        }
+        if (await pre.count() !== 1) {
+            throw new Error(`code block pre not found in: ${scopeSelector}`);
+        }
+
+        const toolbarBox = await toolbar.boundingBox();
+        const preBox = await pre.boundingBox();
+
+        if (!toolbarBox) {
+            throw new Error(`toolbar bounding box is null: ${scopeSelector}`);
+        }
+        if (!preBox) {
+            throw new Error(`pre bounding box is null: ${scopeSelector}`);
+        }
+
+        if (Math.abs(toolbarBox.x - preBox.x) > 1) {
+            throw new Error(`toolbar/pre x mismatch: ${scopeSelector}`);
+        }
+        if (Math.abs(toolbarBox.width - preBox.width) > 1) {
+            throw new Error(`toolbar/pre width mismatch: ${scopeSelector}`);
+        }
+        if (!(toolbarBox.y < preBox.y)) {
+            throw new Error(`toolbar is not above pre: ${scopeSelector}`);
+        }
+    }
+
     /** テーブルの行数を取得 */
     async getTableRowCount() {
         return await this.page.locator('#editor table tr').count();

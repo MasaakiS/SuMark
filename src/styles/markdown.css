@@ -419,7 +419,7 @@
 }
 
 /* Defensive: hide bullet for any li containing a checkbox (even if parent lacks contains-task-list) */
-.markdown-body li:has(> input[type="checkbox"]) {
+.markdown-body li:has(input[type="checkbox"]) {
     list-style-type: none;
     position: relative;
     padding-left: 1.6em;
@@ -433,23 +433,24 @@
 /* Keep code block toolbar and pre stacked cleanly inside task items */
 .markdown-body .task-list-item > .code-block-toolbar,
 .markdown-body .task-list-item > pre,
-.markdown-body li:has(> input[type="checkbox"]) > .code-block-toolbar,
-.markdown-body li:has(> input[type="checkbox"]) > pre {
-    flex-basis: 100%;
+.markdown-body li:has(input[type="checkbox"]) > .code-block-toolbar,
+.markdown-body li:has(input[type="checkbox"]) > pre {
+    flex: 0 0 100%;
     width: 100%;
     min-width: 0;
+    box-sizing: border-box;
     margin-left: 0;
 }
 
 /* ネストされたリスト（Tabインデント後）はフル幅で改行表示 */
-.markdown-body li:has(> input[type="checkbox"]) > ul,
-.markdown-body li:has(> input[type="checkbox"]) > ol {
+.markdown-body li:has(input[type="checkbox"]) > ul,
+.markdown-body li:has(input[type="checkbox"]) > ol {
     flex-basis: 100%;
     width: 100%;
     margin-left: 0;
 }
 
-.markdown-body li:has(> input[type="checkbox"]) > input[type="checkbox"] {
+.markdown-body li:has(input[type="checkbox"]) > input[type="checkbox"] {
     position: relative;
     left: 0;
     top: 0;
