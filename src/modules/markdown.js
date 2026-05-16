@@ -451,6 +451,25 @@ function _normalizeNotionTable(lines) {
     return result;
 }
 
+/**
+ * 一部ドキュメントで使われる全角混在の目次表記を、標準的なMarkdownリンクへ正規化する。
+ * 例: 1．［項目］（#見出し） → 1. [項目](#見出し)
+ */
+function normalizeLegacyJapaneseTocNotation(md) {
+    let normalized = md;
+
+    // "##目次" のような見出しを "## 目次" に正規化
+    normalized = normalized.replace(/^(\s*#{1,6})(目次)\s*$/gm, '$1 $2');
+
+    // 全角/半角記号が混在した目次リンク形式を標準リンクへ寄せる
+    normalized = normalized.replace(
+        /^(\s*\d+)\s*[\.．]\s*[［\[](.+?)[\]］]\s*[（(]\s*[#＃]([^)）\s]+)\s*[)）]\s*$/gm,
+        '$1. [$2](#$3)'
+    );
+
+    return normalized;
+}
+
 
 
 function setMarkdown(md) {
@@ -485,6 +504,9 @@ function setMarkdown(md) {
 
     // Notion エクスポート形式の複数行テーブルセルを正規化
     let preprocessed = preprocessNotionMarkdown(md);
+
+    // 過去ドキュメントの非標準TOC表記を標準Markdownリンクに寄せる
+    preprocessed = normalizeLegacyJapaneseTocNotation(preprocessed);
 
     // Normalize display math blocks that start with a single "$" on its own line and end with "$$".
     // This appears in some markdown exports and should be treated as standard display math.
@@ -548,6 +570,7 @@ function setMarkdown(md) {
     // Reconstruct TOC containers from parsed markdown, then restore heading IDs and add delete buttons
     reconstructTocContainers();
     restoreTocHeadingIds();
+    ensureHeadingIdsForInPageLinks();
     setupTocDeleteButtons();
 
     // Add line numbers to code blocks

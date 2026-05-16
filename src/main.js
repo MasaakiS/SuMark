@@ -500,6 +500,51 @@ function setupEventListeners() {
         }
     }
 
+    // Resolve in-page hash links (e.g. #section, ＃section) to an element in editor
+    function resolveInPageHashTarget(href) {
+        if (!href) return null;
+
+        const trimmed = href.trim();
+        if (!(trimmed.startsWith('#') || trimmed.startsWith('＃'))) {
+            return null;
+        }
+
+        let hash = trimmed.substring(1);
+        try {
+            hash = decodeURIComponent(hash);
+        } catch (_) {
+            // Keep raw hash if decode fails
+        }
+        hash = hash.trim();
+        if (!hash) return null;
+
+        // Prefer ID match first
+        const byId = editor.querySelector('#' + CSS.escape(hash));
+        if (byId) return byId;
+
+        // Fallback: heading text exact match
+        const headings = editor.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        for (const h of headings) {
+            if (h.textContent.trim() === hash) {
+                return h;
+            }
+        }
+
+        return null;
+    }
+
+    function scrollToAnchorTarget(targetEl) {
+        if (!targetEl) return;
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Brief highlight effect
+        targetEl.style.transition = 'background-color 0.3s';
+        targetEl.style.backgroundColor = '#fff3cd';
+        setTimeout(() => {
+            targetEl.style.backgroundColor = '';
+            setTimeout(() => { targetEl.style.transition = ''; }, 300);
+        }, 1500);
+    }
+
     // Link click handling - Cmd/Ctrl+click opens in browser or local file
     editor.addEventListener('click', e => {
         // Toggle delete button
@@ -528,19 +573,9 @@ function setupEventListeners() {
         const tocLink = e.target.closest('.toc-link');
         if (tocLink) {
             e.preventDefault();
-            const targetId = tocLink.getAttribute('href');
-            if (targetId && targetId.startsWith('#')) {
-                const targetEl = editor.querySelector(targetId);
-                if (targetEl) {
-                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    // Brief highlight effect
-                    targetEl.style.transition = 'background-color 0.3s';
-                    targetEl.style.backgroundColor = '#fff3cd';
-                    setTimeout(() => {
-                        targetEl.style.backgroundColor = '';
-                        setTimeout(() => { targetEl.style.transition = ''; }, 300);
-                    }, 1500);
-                }
+            const targetEl = resolveInPageHashTarget(tocLink.getAttribute('href') || '');
+            if (targetEl) {
+                scrollToAnchorTarget(targetEl);
             }
             return;
         }
@@ -560,9 +595,19 @@ function setupEventListeners() {
 
         const link = e.target.closest('a');
         if (link) {
+            const href = link.getAttribute('href') || '';
+
+            // Standard in-page markdown links should jump on normal click
+            const inPageTarget = resolveInPageHashTarget(href);
+            if (inPageTarget) {
+                e.preventDefault();
+                scrollToAnchorTarget(inPageTarget);
+                return;
+            }
+
             if (e.metaKey || e.ctrlKey) {
                 e.preventDefault();
-                const url = link.getAttribute('href') || link.href;
+                const url = href || link.href;
                 if (url) {
                     // Check if it's a web URL or local file path
                     if (isWebUrl(url)) {

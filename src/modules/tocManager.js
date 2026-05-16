@@ -150,3 +150,67 @@ function restoreTocHeadingIds() {
         }
     });
 }
+
+/**
+ * 一般的なMarkdown内部リンク（[text](#見出し)）向けに、見出しIDを補完する。
+ * 既存IDは尊重し、未設定の見出しのみ対象。
+ */
+function ensureHeadingIdsForInPageLinks() {
+    const editorEl = editor || document.getElementById('editor');
+    if (!editorEl) {
+        return;
+    }
+
+    const links = editorEl.querySelectorAll('a[href^="#"], a[href^="＃"]');
+    if (links.length === 0) {
+        return;
+    }
+
+    const headings = Array.from(editorEl.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+    if (headings.length === 0) {
+        return;
+    }
+
+    const usedIds = new Set();
+    editorEl.querySelectorAll('[id]').forEach(el => {
+        if (el.id) usedIds.add(el.id);
+    });
+
+    links.forEach(link => {
+        const href = (link.getAttribute('href') || '').trim();
+        if (!(href.startsWith('#') || href.startsWith('＃'))) {
+            return;
+        }
+
+        let targetId = href.substring(1);
+        try {
+            targetId = decodeURIComponent(targetId);
+        } catch (_) {
+            // Keep raw hash when decode fails
+        }
+        targetId = targetId.trim();
+        if (!targetId) {
+            return;
+        }
+
+        // Already exists in document
+        if (editorEl.querySelector('#' + CSS.escape(targetId))) {
+            return;
+        }
+
+        // Assign ID to the first heading whose visible text equals the hash label
+        const targetHeading = headings.find(h => !h.id && h.textContent.trim() === targetId);
+        if (!targetHeading) {
+            return;
+        }
+
+        let candidate = targetId;
+        let suffix = 1;
+        while (usedIds.has(candidate)) {
+            suffix++;
+            candidate = targetId + '-' + suffix;
+        }
+        targetHeading.id = candidate;
+        usedIds.add(candidate);
+    });
+}
