@@ -47,6 +47,7 @@ graph TD
     A -->|setup| C3
     A -->|setup| D1
     A -->|setup| D2
+    A -->|setup| D3
     A -->|setup| D4
     A -->|setup| D5
     A -->|setup| D6
@@ -59,6 +60,7 @@ graph TD
     A -->|setup| E3
     
     C1 -->|依存| B2
+    D3 -->|依存| B1
     D2 -->|呼び出し| C1
     D2 -->|呼び出し| C2
     D2 -->|呼び出し| C3

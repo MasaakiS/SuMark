@@ -186,19 +186,22 @@ npm run test:lint  # CSS-JS 検証実行
 ```
 
 ### C. テスト拡充（E2E テスト全体）
-- 11 個の Playwright テストファイル（計 147 テスト）
-- **基本操作**: 01-basic.spec.js
-- **Markdown 変換**: 02-markdown.spec.js（数式・コード・テーブル等）
-- **ツールバー**: 03-toolbar.spec.js
-- **テーブル操作**: 04-table.spec.js（セル内ブロック要素禁止検証含む）
-- **キーボードショートカット**: 05-shortcuts.spec.js
-- **タブ操作**: 06-tabs.spec.js
-- **エラーハンドリング**: 07-error-handling.spec.js
-- **ラウンドトリップ**: 08-roundtrip.spec.js（Markdown ↔ HTML 往復検証）
-- **推奨事項**: 09-recommended.spec.js
-- **Tauri 拡張アクセス**: 10-tauri-ext-access.spec.js
-- **エディタ追加機能**: 11-editor-extras.spec.js
-- **合計**: 147 テスト全てパス済み
+- 14 個の Playwright テストファイル（計 175 テスト）
+- **基本操作**: 01-basic.spec.js（9 テスト）
+- **Markdown 変換**: 02-markdown.spec.js（25 テスト、数式・コード・テーブル等）
+- **ツールバー**: 03-toolbar.spec.js（19 テスト）
+- **テーブル操作**: 04-table.spec.js（7 テスト、セル内ブロック要素禁止検証含む）
+- **キーボードショートカット**: 05-shortcuts.spec.js（14 テスト）
+- **タブ操作**: 06-tabs.spec.js（12 テスト）
+- **エラーハンドリング**: 07-error-handling.spec.js（7 テスト）
+- **ラウンドトリップ**: 08-roundtrip.spec.js（59 テスト、Markdown ↔ HTML 往復検証）
+- **推奨事項**: 09-recommended.spec.js（3 テスト）
+- **Tauri 拡張アクセス**: 10-tauri-ext-access.spec.js（5 テスト）
+- **エディタ追加機能**: 11-editor-extras.spec.js（3 テスト）
+- **ローカルファイルリンク**: 12-local-file-links.spec.js（10 テスト）
+- **ビジュアルリグレッション**: 12-visual-regression.spec.js（1 テスト）
+- **スペース入力**: 13-space-input.spec.js（1 テスト）
+- **合計**: 175 テスト全てパス済み
 
 実行コマンド:
 ```bash

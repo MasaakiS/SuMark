@@ -163,4 +163,28 @@ test.describe('タブ操作テスト', () => {
         const hasMark = await app.helpers.activeTabHasModifiedMark();
         expect(hasMark).toBe(true);
     });
+    test('タブ切替後もコードブロックヘッダーが崩れない', async ({ app }) => {
+        const md = '```js\nconsole.log("tab switch");\n```';
+        await app.page.evaluate((markdown) => {
+            if (typeof setMarkdown === 'function') setMarkdown(markdown);
+        }, md);
+        await app.helpers.wait(800);
+
+        await app.helpers.pressShortcut('n');
+        await app.helpers.wait(500);
+        await app.helpers.typeInEditor('second tab');
+        await app.helpers.wait(500);
+
+        const tabs = app.page.locator('.tab-item');
+        await tabs.first().click();
+        await app.helpers.wait(800);
+
+        const langSelectCount = await app.page.locator('#editor .code-block-toolbar .code-lang-select').count();
+        const copyBtnCount = await app.page.locator('#editor .code-block-toolbar .code-copy-btn').count();
+        const preCount = await app.page.locator('#editor pre').count();
+
+        expect(preCount).toBeGreaterThan(0);
+        expect(langSelectCount).toBeGreaterThan(0);
+        expect(copyBtnCount).toBeGreaterThan(0);
+    });
 });

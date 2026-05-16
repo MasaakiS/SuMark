@@ -16,35 +16,35 @@ index.html
 **読み込み順序は厳密に管理されています。** 各モジュールが依存するグローバル関数・変数は、
 先に読み込まれるモジュールまたは main.js の初期化前に定義されている必要があります。
 
-## ファイル一覧と行数
+## ファイル一覧
 
-| ファイル | 行数 | 主な役割 |
-|---|---:|---|
-| `main.js` | 1,468 | 初期化、イベント登録、ペースト処理、ユーティリティ |
-| `modules/utils.js` | 160 | 共有ユーティリティ（`escapeHtml`、`debounce`、`throttle` 等） |
-| `modules/nodeUtils.js` | 175 | DOM ノード操作（パス取得、選択範囲保存/復元、末尾空行判定） |
-| `modules/pasteUtils.js` | 144 | ペースト判定・変換（TSV→テーブル、Markdown判定等） |
-| `modules/codeHighlight.js` | 340 | シンタックスハイライト、行番号、キャレット管理、折り返し制御 |
-| `modules/mathRender.js` | 194 | KaTeX 数式レンダリング |
-| `modules/mermaidManager.js` | 601 | Mermaid ダイアグラム管理（挿入/表示/編集/モード切替） |
-| `modules/tocManager.js` | 152 | 目次（TOC）生成・復元・操作 |
-| `modules/toggleBlock.js` | 276 | トグル（details/summary）ブロック管理 |
-| `modules/tabManager.js` | 465 | タブ管理（作成/切替/クローズ/未保存確認/ステータスバー） |
-| `modules/editorZoom.js` | 79 | エディタズーム（拡大/縮小/リセット） |
-| `modules/undoRedo.js` | 166 | Undo/Redo スタック管理 |
-| `modules/tableManager.js` | 389 | テーブル操作（挿入/行列追加削除/コンテキストメニュー/CSV読込） |
-| `modules/imageManager.js` | 484 | 画像管理（エラー表示、リサイズ、拡大ビュー、保存、ペースト） |
-| `modules/toolbarActions.js` | 1,257 | ツールバーアクション（書式設定、挿入、モーダル、検索/置換） |
-| `modules/fileManager.js` | 520 | ファイル操作（新規/開く/保存/画像パス解決/CSV読込） |
-| `modules/exportManager.js` | 254 | PDF エクスポート |
-| `modules/markdown.js` | 582 | Markdown ↔ HTML 変換（Turndown設定 + marked解析） |
-| `modules/autoConvert.js` | 647 | エディタ入力時の自動変換（ブロック/インライン） |
-| `modules/keyboard.js` | 1,060 | キーボードイベント処理（ショートカット、Enter、Tab、テーブルナビ） |
-| **合計** | **9,413** | |
+| ファイル | 主な役割 |
+|---|---|
+| `main.js` | 初期化、イベント登録、ペースト処理、ユーティリティ |
+| `modules/utils.js` | 共有ユーティリティ（`escapeHtml`、`debounce`、`throttle` 等） |
+| `modules/nodeUtils.js` | DOM ノード操作（パス取得、選択範囲保存/復元、末尾空行判定） |
+| `modules/pasteUtils.js` | ペースト判定・変換（TSV→テーブル、Markdown判定等） |
+| `modules/codeHighlight.js` | シンタックスハイライト、行番号、キャレット管理、折り返し制御 |
+| `modules/mathRender.js` | KaTeX 数式レンダリング |
+| `modules/mermaidManager.js` | Mermaid ダイアグラム管理（挿入/表示/編集/モード切替） |
+| `modules/tocManager.js` | 目次（TOC）生成・復元・操作 |
+| `modules/toggleBlock.js` | トグル（details/summary）ブロック管理 |
+| `modules/tabManager.js` | タブ管理（作成/切替/クローズ/未保存確認/ステータスバー） |
+| `modules/editorZoom.js` | エディタズーム（拡大/縮小/リセット） |
+| `modules/undoRedo.js` | Undo/Redo スタック管理 |
+| `modules/tableManager.js` | テーブル操作（挿入/行列追加削除/コンテキストメニュー/CSV読込） |
+| `modules/imageManager.js` | 画像管理（エラー表示、リサイズ、拡大ビュー、保存、ペースト） |
+| `modules/toolbarActions.js` | ツールバーアクション（書式設定、挿入、モーダル、検索/置換） |
+| `modules/fileManager.js` | ファイル操作（新規/開く/保存/画像パス解決/CSV読込） |
+| `modules/exportManager.js` | PDF エクスポート |
+| `modules/markdown.js` | Markdown ↔ HTML 変換（Turndown設定 + marked解析） |
+| `modules/autoConvert.js` | エディタ入力時の自動変換（ブロック/インライン） |
+| `modules/keyboard.js` | キーボードイベント処理（ショートカット、Enter、Tab、テーブルナビ） |
+
 
 ## モジュール詳細
 
-### main.js（1,468 行）
+### main.js
 
 エントリーポイント。初期化処理とイベントリスナー登録、および他モジュールに分類されない機能を保持。
 
@@ -64,7 +64,7 @@ index.html
 - `testConvertFileSrc(path)` — asset:// URL テスト用ユーティリティ
 - `editor`, `isConverting`, `isComposing`, `inputCharCount`, `isProcessingDrop`, `EMOJI_MAP` — グローバル状態
 
-### modules/markdown.js（542 行）
+### modules/markdown.js
 
 Markdown ↔ HTML の双方向変換。Turndown に 20+ のカスタムルールを設定し、
 marked.js + DOMPurify でサニタイズされた HTML を生成。
@@ -77,7 +77,7 @@ marked.js + DOMPurify でサニタイズされた HTML を生成。
 
 **依存先:** `editor`, `resetGlobalState` (main.js), vendor ライブラリ群, 各モジュールの後処理関数
 
-### modules/autoConvert.js（624 行）
+### modules/autoConvert.js
 
 エディタ入力時のリアルタイム Markdown 自動変換。ブロックレベル（# → 見出し、- → リスト等）と
 インライン（**太字**、`コード`、URL、絵文字、数式等）の両方を処理。
@@ -92,7 +92,7 @@ marked.js + DOMPurify でサニタイズされた HTML を生成。
 
 **依存先:** `editor`, `isConverting`, `isComposing`, `inputCharCount`, `EMOJI_MAP`, `getParentBlock`, `setCursorTo`, `setCursorToEnd`, `updateWordCount` (main.js), 各モジュール関数
 
-### modules/keyboard.js（1,060 行）
+### modules/keyboard.js
 
 キーボードショートカットと特殊キー（Enter、Tab）の処理。テーブルセル間のナビゲーションも含む。
 
@@ -127,7 +127,7 @@ marked.js + DOMPurify でサニタイズされた HTML を生成。
 
 **依存先:** `editor`, `isComposing`, `inputCharCount`, `getParentBlock`, `setCursorTo`, `setCursorToEnd` (main.js), tabManager, undoRedo, fileManager, exportManager, codeHighlight, mermaidManager, toolbarActions 各モジュール
 
-### modules/utils.js（160 行）
+### modules/utils.js
 
 全モジュールから参照される共有ユーティリティ。最初に読み込まれる必要がある。
 
@@ -142,7 +142,7 @@ marked.js + DOMPurify でサニタイズされた HTML を生成。
 - `uniqueArray(arr)` — 配列の重複排除
 - `deepClone(obj)` — オブジェクトのディープクローン
 
-### modules/nodeUtils.js（175 行）
+### modules/nodeUtils.js
 
 DOM ノード操作ユーティリティ。
 
@@ -152,7 +152,7 @@ DOM ノード操作ユーティリティ。
 - `saveSelection()` / `restoreSelection()` — 選択範囲の保存/復元
 - `getNodePath(node)` / `getNodeByPath(path)` — DOM パスの取得/復元
 
-### modules/codeHighlight.js（340 行）
+### modules/codeHighlight.js
 
 コードブロックのシンタックスハイライトと行番号管理。
 
@@ -166,7 +166,7 @@ DOM ノード操作ユーティリティ。
 - `setupCodeWrapButton(pre)` — コード折り返しボタンの設置
 - `toggleCodeWrap(pre)` — コード折り返しのトグル
 
-### modules/tabManager.js（465 行）
+### modules/tabManager.js
 
 マルチタブ管理。
 
@@ -185,7 +185,7 @@ DOM ノード操作ユーティリティ。
 
 **公開変数:** `tabs`, `activeTabId`
 
-### modules/undoRedo.js（166 行）
+### modules/undoRedo.js
 
 Undo/Redo スタック管理（最大 100 履歴）。
 
@@ -196,7 +196,7 @@ Undo/Redo スタック管理（最大 100 履歴）。
 
 **公開変数:** `currentState`, `isUndoRedoOperation`
 
-### modules/tableManager.js（389 行）
+### modules/tableManager.js
 
 テーブル操作とコンテキストメニュー。
 
@@ -209,7 +209,7 @@ Undo/Redo スタック管理（最大 100 履歴）。
 - `csvToMarkdownTable(csvText, title)` — CSV テキストを Markdown テーブルに変換
 - `parseCsv(text)` — CSV パース
 
-### modules/imageManager.js（484 行）
+### modules/imageManager.js
 
 画像管理（エラーハンドリング、リサイズ、ファイル保存、ペースト、拡大ビュー）。
 
@@ -223,7 +223,7 @@ Undo/Redo スタック管理（最大 100 履歴）。
 - `pasteImageFile(file)` — 画像ペースト
 - `mimeToExt(mime)` / `generateImageFileName(alt, counter, ext)` / `saveImageFile(...)` — 画像ファイル操作
 
-### modules/toolbarActions.js（1,257 行）
+### modules/toolbarActions.js
 
 ツールバーの全アクション。検索/置換機能を含む。
 
@@ -246,7 +246,7 @@ Undo/Redo スタック管理（最大 100 履歴）。
 - `highlightSearchMatches(query, caseSensitive)` — 検索ハイライト
 - `moveToNextSearchHighlight()` — 次の検索結果へ移動
 
-### modules/fileManager.js（520 行）
+### modules/fileManager.js
 
 ファイル I/O 操作（Tauri API 経由）。
 
@@ -261,14 +261,14 @@ Undo/Redo スタック管理（最大 100 履歴）。
 - `resolveImagesForSave(markdown, mdFilePath)` — 保存時の画像パス解決
 - `normalizeFilename(filename)` — ファイル名の正規化
 
-### modules/exportManager.js（254 行）
+### modules/exportManager.js
 
 PDF エクスポート。
 
 **公開関数:**
 - `exportPDF()` — PDF 出力
 
-### modules/mermaidManager.js（601 行）
+### modules/mermaidManager.js
 
 Mermaid ダイアグラムの生成・表示・編集。
 
@@ -277,14 +277,14 @@ Mermaid ダイアグラムの生成・表示・編集。
 - `showMermaidInsertDialog()` — Mermaid 挿入ダイアログ
 - `insertMermaidBlock(source)` — Mermaid ブロック挿入
 
-### modules/mathRender.js（182 行）
+### modules/mathRender.js
 
 KaTeX 数式レンダリング。
 
 **公開関数:**
 - `renderMathBlocks()` — 数式ブロックの描画
 
-### modules/tocManager.js（152 行）
+### modules/tocManager.js
 
 目次（Table of Contents）の管理。
 
@@ -294,7 +294,7 @@ KaTeX 数式レンダリング。
 - `reconstructTocContainers()` — Markdown→HTML 復元時の TOC 再構築
 - `restoreTocHeadingIds()` — 見出し ID の復元
 
-### modules/toggleBlock.js（276 行）
+### modules/toggleBlock.js
 
 トグル（details/summary）ブロックの管理。
 
@@ -303,7 +303,7 @@ KaTeX 数式レンダリング。
 - `insertToggleBlock()` — トグルブロック挿入
 - `ensureToggleDeleteButton(summary)` — 削除ボタン保証
 
-### modules/editorZoom.js（79 行）
+### modules/editorZoom.js
 
 エディタ表示倍率の制御。
 
@@ -311,7 +311,7 @@ KaTeX 数式レンダリング。
 - `applyEditorZoom()` — ズーム適用
 - `zoomIn()` / `zoomOut()` / `zoomReset()` — ズーム操作
 
-### modules/pasteUtils.js（144 行）
+### modules/pasteUtils.js
 
 ペースト時の判定・変換ユーティリティ。
 

@@ -1,6 +1,6 @@
 # Vendor Libraries Version Record
 
-**Last Updated**: 2026-04-22  
+**Last Updated**: 2026-05-16  
 **Update Note**: All vendor libraries upgraded to latest stable versions. No known critical vulnerabilities reported in these versions as of 2026-04-22.
 
 ## Bundled Libraries
