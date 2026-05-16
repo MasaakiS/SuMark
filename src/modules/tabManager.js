@@ -80,15 +80,15 @@ function switchTab(id) {
                     'br', 'strong', 'em', 'del', 's', 'a', 'img',
                     'table', 'thead', 'tbody', 'tr', 'th', 'td',
                     'details', 'summary',
-                    'div', 'span', 'input',
+                    'div', 'span', 'input', 'select', 'option', 'button',
                 ],
                 ALLOWED_ATTR: [
                     'href', 'title', 'src', 'alt', 'width', 'height',
                     'class', 'id', 'style',
-                    'type', 'checked', 'disabled',
+                    'type', 'checked', 'disabled', 'value',
                     'open',
                     'contenteditable',
-                    'data-mermaid-source', 'data-math', 'data-wrap',
+                    'data-mermaid-source', 'data-math', 'data-wrap', 'data-code-lang',
                 ],
                 ALLOW_DATA_ATTR: true,
                 ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP
@@ -100,6 +100,8 @@ function switchTab(id) {
     } catch (e) {
         console.error('[TabSwitch] Exception:', e);
     }
+    // Rebuild code block toolbar after sanitize; select/button can be stripped in restored HTML.
+    editor.querySelectorAll('.code-block-toolbar').forEach(el => el.remove());
     editor.parentElement.scrollTop = tab.scrollTop;
     
     // エディタが編集可能要素で始まることを確認
