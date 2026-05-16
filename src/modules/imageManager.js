@@ -11,6 +11,9 @@
 
 // ========== Image Error Handling ==========
 let imageMutationObserver = null;
+// Track processed images in a WeakSet to avoid mutating the DOM (which would trigger dirty state)
+let processedImages = new WeakSet();
+let failedImages = new WeakSet();
 
 /**
  * 画像のMutationObserverをセットアップ（新規画像の自動エラーハンドリング）
@@ -55,22 +58,21 @@ function setupImageMutationObserver() {
  */
 function handleSingleImage(img) {
     // Skip if already processed
-    if (img.dataset.errorHandled) {
+    if (processedImages.has(img)) {
         return;
     }
-    img.dataset.errorHandled = 'true';
+    processedImages.add(img);
     
     // Function to handle error and display alt text
     const handleImageError = function() {
         // Skip if already showing alt text or if image loaded successfully
-        if (this.classList.contains('img-error-processed')) {
+        if (failedImages.has(this)) {
             return;
         }
         if (this.complete && this.naturalWidth > 0) {
             return; // Image loaded successfully
         }
-        
-        this.classList.add('img-error-processed');
+        failedImages.add(this);
         
         const alt = this.getAttribute('alt') || '画像を読み込めません';
         const src = this.getAttribute('src') || '';
@@ -94,17 +96,18 @@ function handleSingleImage(img) {
         // Replace image with error container
         if (this.parentNode) {
             this.parentNode.replaceChild(container, this);
-            markModified();
+
+            // Image load failure is a runtime display issue, not a user edit.
+            // Keep pristine tabs aligned with the rendered HTML to avoid false dirty markers.
+            const activeTab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+            if (activeTab && !activeTab.isModified) {
+                activeTab.content = editor.innerHTML;
+            }
         }
     };
     
     // Add error event listener
     img.addEventListener('error', handleImageError);
-    
-    // Also add load event to mark successful loads
-    img.addEventListener('load', function() {
-        this.classList.add('img-loaded-successfully');
-    });
     
     // Check current state
     if (img.complete) {

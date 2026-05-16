@@ -58,16 +58,19 @@ function getActiveTab() {
  * @param {number} id - 切り替え先のタブID
  */
 function switchTab(id) {
-    // 現在のタブの状態を保存
-    const current = getActiveTab();
-    if (current) {
-        current.content = editor.innerHTML;
-        current.scrollTop = editor.parentElement.scrollTop;
-    }
+    beginProgrammaticEditorUpdate();
 
-    activeTabId = id;
-    const tab = getActiveTab();
-    if (!tab) return;
+    try {
+        // 現在のタブの状態を保存
+        const current = getActiveTab();
+        if (current) {
+            current.content = editor.innerHTML;
+            current.scrollTop = editor.parentElement.scrollTop;
+        }
+
+        activeTabId = id;
+        const tab = getActiveTab();
+        if (!tab) return;
 
     try {
         console.log('[TabSwitch] Restoring tab content:', tab);
@@ -107,12 +110,6 @@ function switchTab(id) {
     // エディタが編集可能要素で始まることを確認
     ensureEditableStart();
     
-    // タブ切り替え時にUndo/Redoスタックをリセット
-    undoStack = [];
-    redoStack = [];
-    currentState = null;
-    saveEditorState(); // 保存状態の初期化
-
     // チェックボックスをインタラクティブにする
     editor.querySelectorAll('input[type="checkbox"]').forEach(cb => {
         cb.removeAttribute('disabled');
@@ -120,7 +117,9 @@ function switchTab(id) {
 
     // コードブロックをハイライト
     editor.querySelectorAll('pre code').forEach(block => {
-        if (typeof hljs !== 'undefined') hljs.highlightElement(block);
+        if (typeof hljs !== 'undefined' && !block.dataset.highlighted) {
+            hljs.highlightElement(block);
+        }
     });
 
     // Mermaid ダイアグラムをレンダリング
@@ -156,9 +155,23 @@ function switchTab(id) {
     // 画像エラーハンドリングをセットアップ
     setupImageErrorHandling();
 
-    renderTabs();
-    updateWordCount();
-    updateStatusBar();
+    // タブ復元後の後処理でDOMが変化するため、未変更タブは最終HTMLを基準にそろえる
+    if (!tab.isModified) {
+        tab.content = editor.innerHTML;
+    }
+
+    // タブ切り替え時にUndo/Redoスタックを最終DOM基準でリセット
+    undoStack = [];
+    redoStack = [];
+    currentState = null;
+    saveEditorState();
+
+        renderTabs();
+        updateWordCount();
+        updateStatusBar();
+    } finally {
+        endProgrammaticEditorUpdate();
+    }
 }
 
 /**

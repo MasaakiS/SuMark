@@ -15,6 +15,7 @@
 function onEditorInput() {
     if (isConverting) return;
     if (isComposing) return; // Skip during IME composition
+    if (isProgrammaticEditorUpdate) return;
 
     isConverting = true;
     try {

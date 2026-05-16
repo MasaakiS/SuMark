@@ -124,6 +124,8 @@ let isComposing = false; // IME composition state
 let initRetryCount = 0;
 const INIT_RETRY_MAX = 50;
 const INIT_RETRY_DELAY_MS = 100;
+let programmaticEditorUpdateDepth = 0;
+let isProgrammaticEditorUpdate = false;
 
 
 // Tab management → tabManager.js に移動済み
@@ -215,8 +217,27 @@ function resetGlobalState() {
     
     // 自動変換フラグをリセット
     isConverting = false;
-    
+
     console.log('[resetGlobalState] グローバル状態をリセット完了');
+}
+
+function beginProgrammaticEditorUpdate() {
+    programmaticEditorUpdateDepth += 1;
+    isProgrammaticEditorUpdate = true;
+}
+
+function endProgrammaticEditorUpdate() {
+    if (programmaticEditorUpdateDepth > 0) {
+        programmaticEditorUpdateDepth -= 1;
+    }
+
+    if (programmaticEditorUpdateDepth === 0) {
+        requestAnimationFrame(() => {
+            if (programmaticEditorUpdateDepth === 0) {
+                isProgrammaticEditorUpdate = false;
+            }
+        });
+    }
 }
 
 // ========== Initialization ==========
@@ -500,6 +521,17 @@ function setupEventListeners() {
         }
     }
 
+    function normalizeAnchorToken(text) {
+        if (!text) return '';
+        return text
+            .trim()
+            .toLowerCase()
+            .replace(/[\s\u3000]+/g, '-')
+            .replace(/[^\w\u3000-\u9fff\uf900-\ufaff\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ff-]+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-+|-+$/g, '');
+    }
+
     // Resolve in-page hash links (e.g. #section, ＃section) to an element in editor
     function resolveInPageHashTarget(href) {
         if (!href) return null;
@@ -518,14 +550,35 @@ function setupEventListeners() {
         hash = hash.trim();
         if (!hash) return null;
 
-        // Prefer ID match first
-        const byId = editor.querySelector('#' + CSS.escape(hash));
-        if (byId) return byId;
+        const normalizedHash = normalizeAnchorToken(hash);
+        const candidateIds = [hash];
+        if (normalizedHash && normalizedHash !== hash) {
+            candidateIds.push(normalizedHash);
+        }
+        if (normalizedHash) {
+            candidateIds.push('heading-' + normalizedHash);
+        }
 
-        // Fallback: heading text exact match
+        // Prefer ID match first
+        for (const id of candidateIds) {
+            const byId = editor.querySelector('#' + CSS.escape(id));
+            if (byId) return byId;
+        }
+
+        // Fallback: compare heading text with the same normalization rule
         const headings = editor.querySelectorAll('h1, h2, h3, h4, h5, h6');
         for (const h of headings) {
-            if (h.textContent.trim() === hash) {
+            const headingText = h.textContent.trim();
+            if (!headingText) continue;
+
+            const normalizedHeading = normalizeAnchorToken(headingText);
+            const normalizedHeadingWithPrefix = normalizedHeading ? ('heading-' + normalizedHeading) : '';
+
+            if (
+                headingText === hash ||
+                normalizedHeading === normalizedHash ||
+                normalizedHeadingWithPrefix === hash
+            ) {
                 return h;
             }
         }
@@ -576,6 +629,8 @@ function setupEventListeners() {
             const targetEl = resolveInPageHashTarget(tocLink.getAttribute('href') || '');
             if (targetEl) {
                 scrollToAnchorTarget(targetEl);
+            } else {
+                showWarn('ページ内リンクとして未解決: ' + (tocLink.getAttribute('href') || ''));
             }
             return;
         }
@@ -596,12 +651,19 @@ function setupEventListeners() {
         const link = e.target.closest('a');
         if (link) {
             const href = link.getAttribute('href') || '';
+            const isInPageHash = href.trim().startsWith('#') || href.trim().startsWith('＃');
 
             // Standard in-page markdown links should jump on normal click
             const inPageTarget = resolveInPageHashTarget(href);
             if (inPageTarget) {
                 e.preventDefault();
                 scrollToAnchorTarget(inPageTarget);
+                return;
+            }
+
+            if (isInPageHash) {
+                e.preventDefault();
+                showWarn('ページ内リンクとして未解決: ' + href.trim());
                 return;
             }
 

@@ -62,19 +62,19 @@ SuMark のフロントエンドは 5 つのレイヤーで構成されていま�
 | `pasteUtils.js` | `utils.js` |
 | `codeHighlight.js` | `nodeUtils.js` |
 | `mathRender.js` | なし（KaTeX のみ） |
-| `mermaidManager.js` | `toolbarActions.js`（showModal）, `utils.js` |
+| `mermaidManager.js` | `utils.js` |
 | `tocManager.js` | `utils.js` |
 | `toggleBlock.js` | なし |
 | `editorZoom.js` | `utils.js`（localStorage） |
-| `undoRedo.js` | `nodeUtils.js`, `codeHighlight.js`, `mathRender.js`, `mermaidManager.js` |
-| `tableManager.js` | `toolbarActions.js`（showModal）, `utils.js` |
+| `undoRedo.js` | `nodeUtils.js`, `codeHighlight.js` |
+| `tableManager.js` | `toggleBlock.js` |
 | `imageManager.js` | `utils.js` |
 | `toolbarActions.js` | `utils.js`, `codeHighlight.js`, `mermaidManager.js`, `tocManager.js`, `toggleBlock.js`, `tableManager.js` |
 | `tabManager.js` | `utils.js` |
 | `fileManager.js` | `tabManager.js`, `markdown.js`, `utils.js` |
 | `exportManager.js` | `markdown.js`, `utils.js` |
 | `markdown.js` | `codeHighlight.js`, `mathRender.js`, `mermaidManager.js`, `tocManager.js`, `toggleBlock.js`, `imageManager.js` |
-| `autoConvert.js` | `codeHighlight.js`, `mathRender.js`, `mermaidManager.js`, `tableManager.js`, main.js グローバル変数 |
+| `autoConvert.js` | `codeHighlight.js`, `tableManager.js`, main.js グローバル変数 |
 | `keyboard.js` | `undoRedo.js`, `tabManager.js`, `fileManager.js`, `exportManager.js`, `codeHighlight.js`, `mermaidManager.js`, `toolbarActions.js` |
 | `main.js` | 全モジュール、`pasteUtils.js`（handlePaste 内） |
 

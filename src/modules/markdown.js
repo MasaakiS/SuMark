@@ -483,44 +483,47 @@ function setMarkdown(md) {
         editor = editorEl;
     }
 
-    // リセット: グローバル状態をクリア（複数ページロード時のメモリリーク防止）
-    resetGlobalState();
-    
-    if (typeof marked === 'undefined') {
-        editorEl.textContent = md;
-        return;
-    }
+    beginProgrammaticEditorUpdate();
 
-    // Normalize task list items: GFM requires a space after [x]/[ ]
-    // e.g. "- [x]" (no space) → "- [x] " (with space)
-    md = md.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
-    // Empty task items (only whitespace/NBSP after [x]) need ZWSP for marked to recognize
-    md = md.replace(/^(\s*[-*+]\s+\[[ xX]\])\s*$/gm, '$1 \u200B');
+    try {
+        // リセット: グローバル状態をクリア（複数ページロード時のメモリリーク防止）
+        resetGlobalState();
+        
+        if (typeof marked === 'undefined') {
+            editorEl.textContent = md;
+            return;
+        }
 
-    // Prevent indented lone '-' from being interpreted as Setext H2 heading
-    // (e.g. nested list with empty trailing item: "- 3\n    -" → marked sees "3\n-" as H2)
-    // Only targets indented lines (top-level Setext headings like "Title\n-" are unaffected)
-    md = md.replace(/^(\s+)-(\s*)$/gm, '$1- \u200B');
+        // Normalize task list items: GFM requires a space after [x]/[ ]
+        // e.g. "- [x]" (no space) → "- [x] " (with space)
+        md = md.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
+        // Empty task items (only whitespace/NBSP after [x]) need ZWSP for marked to recognize
+        md = md.replace(/^(\s*[-*+]\s+\[[ xX]\])\s*$/gm, '$1 \u200B');
 
-    // Notion エクスポート形式の複数行テーブルセルを正規化
-    let preprocessed = preprocessNotionMarkdown(md);
+        // Prevent indented lone '-' from being interpreted as Setext H2 heading
+        // (e.g. nested list with empty trailing item: "- 3\n    -" → marked sees "3\n-" as H2)
+        // Only targets indented lines (top-level Setext headings like "Title\n-" are unaffected)
+        md = md.replace(/^(\s+)-(\s*)$/gm, '$1- \u200B');
 
-    // 過去ドキュメントの非標準TOC表記を標準Markdownリンクに寄せる
-    preprocessed = normalizeLegacyJapaneseTocNotation(preprocessed);
+        // Notion エクスポート形式の複数行テーブルセルを正規化
+        let preprocessed = preprocessNotionMarkdown(md);
 
-    // Normalize display math blocks that start with a single "$" on its own line and end with "$$".
-    // This appears in some markdown exports and should be treated as standard display math.
-    preprocessed = preprocessed.replace(/^\$\s*\n([\s\S]+?)\n\$\$\s*$/gm, '$$$$\n$1\n$$$$');
+        // 過去ドキュメントの非標準TOC表記を標準Markdownリンクに寄せる
+        preprocessed = normalizeLegacyJapaneseTocNotation(preprocessed);
 
-    let dirtyHtml = marked.parse(preprocessed);
+        // Normalize display math blocks that start with a single "$" on its own line and end with "$$".
+        // This appears in some markdown exports and should be treated as standard display math.
+        preprocessed = preprocessed.replace(/^\$\s*\n([\s\S]+?)\n\$\$\s*$/gm, '$$$$\n$1\n$$$$');
 
-    // Normalize display math blocks where the markdown parser inserts <br> for newline breaks
-    // inside what should be a single $$...$$ block.
-    dirtyHtml = dirtyHtml.replace(/\$\$<br\s*\/?>\s*([\s\S]*?)<br\s*\/?>\$\$/g, '$$$$\n$1\n$$$$');
-    dirtyHtml = dirtyHtml.replace(/\$<br\s*\/?>\s*([\s\S]*?)<br\s*\/?>\$\$/g, '$$$$\n$1\n$$$$');
+        let dirtyHtml = marked.parse(preprocessed);
 
-    // Sanitize HTML to prevent XSS attacks while preserving custom UI elements
-    const cleanHtml = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(dirtyHtml, {
+        // Normalize display math blocks where the markdown parser inserts <br> for newline breaks
+        // inside what should be a single $$...$$ block.
+        dirtyHtml = dirtyHtml.replace(/\$\$<br\s*\/?>\s*([\s\S]*?)<br\s*\/?>\$\$/g, '$$$$\n$1\n$$$$');
+        dirtyHtml = dirtyHtml.replace(/\$<br\s*\/?>\s*([\s\S]*?)<br\s*\/?>\$\$/g, '$$$$\n$1\n$$$$');
+
+        // Sanitize HTML to prevent XSS attacks while preserving custom UI elements
+        const cleanHtml = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(dirtyHtml, {
         ALLOWED_TAGS: [
             'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
             'ul', 'ol', 'li', 'dl', 'dt', 'dd',
@@ -540,66 +543,67 @@ function setMarkdown(md) {
         ],
         ALLOW_DATA_ATTR: true,
         ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP,
-    }) : dirtyHtml;
-    
-    try {
-        editorEl.innerHTML = cleanHtml;
-        console.log('[setMarkdown] editor.innerHTML length:', editorEl.innerHTML.length);
-    } catch (e) {
-        console.error('[setMarkdown] Exception:', e);
-    }
-
-    // Make checkboxes interactive
-    editorEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-        cb.removeAttribute('disabled');
-    });
-
-    // Highlight code blocks
-    editorEl.querySelectorAll('pre code').forEach(block => {
-        if (typeof hljs !== 'undefined') {
-            hljs.highlightElement(block);
+        }) : dirtyHtml;
+        
+        try {
+            editorEl.innerHTML = cleanHtml;
+            console.log('[setMarkdown] editor.innerHTML length:', editorEl.innerHTML.length);
+        } catch (e) {
+            console.error('[setMarkdown] Exception:', e);
         }
-    });
 
-    // Render Mermaid diagrams
-    renderMermaidBlocks();
+        // Make checkboxes interactive
+        editorEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+            cb.removeAttribute('disabled');
+        });
 
-    // Render KaTeX math expressions
-    renderMathBlocks();
-
-    // Reconstruct TOC containers from parsed markdown, then restore heading IDs and add delete buttons
-    reconstructTocContainers();
-    restoreTocHeadingIds();
-    ensureHeadingIdsForInPageLinks();
-    setupTocDeleteButtons();
-
-    // Add line numbers to code blocks
-    updateAllLineNumbers();
-
-    // Ensure code block copy/wrap UI is initialized (race-safe path)
-    if (typeof addCopyButtonsToCodeBlocks === 'function') {
-        addCopyButtonsToCodeBlocks();
-        editorEl.querySelectorAll('pre').forEach(pre => {
-            if (typeof setupCodeWrapButton === 'function') {
-                setupCodeWrapButton(pre);
+        // Highlight code blocks
+        editorEl.querySelectorAll('pre code').forEach(block => {
+            if (typeof hljs !== 'undefined') {
+                hljs.highlightElement(block);
             }
         });
-    }
-    
-    // Restore code wrap states
-    restoreCodeWrapStates();
 
-    // Setup toggle blocks
-    setupToggleBlocks();
-    
-    // Setup image error handling to display alt text
-    // Use setTimeout to ensure DOM is fully updated after innerHTML assignment
-    setTimeout(() => {
+        // Render Mermaid diagrams
+        renderMermaidBlocks();
+
+        // Render KaTeX math expressions
+        renderMathBlocks();
+
+        // Reconstruct TOC containers from parsed markdown, then restore heading IDs and add delete buttons
+        reconstructTocContainers();
+        restoreTocHeadingIds();
+        ensureHeadingIdsForInPageLinks();
+        setupTocDeleteButtons();
+
+        // Add line numbers to code blocks
+        updateAllLineNumbers();
+
+        // Ensure code block copy/wrap UI is initialized (race-safe path)
+        if (typeof addCopyButtonsToCodeBlocks === 'function') {
+            addCopyButtonsToCodeBlocks();
+            editorEl.querySelectorAll('pre').forEach(pre => {
+                if (typeof setupCodeWrapButton === 'function') {
+                    setupCodeWrapButton(pre);
+                }
+            });
+        }
+        
+        // Restore code wrap states
+        restoreCodeWrapStates();
+
+        // Setup toggle blocks
+        setupToggleBlocks();
+        
+        // Setup image error handling to display alt text
+        // Call synchronously - the handler checks img.complete to detect load failures immediately
         setupImageErrorHandling();
-    }, 100);
-    
-    // Log notice if DOMPurify is not available
-    if (typeof DOMPurify === 'undefined') {
-        console.warn('[WARN] DOMPurify not loaded - XSS protection unavailable');
+        
+        // Log notice if DOMPurify is not available
+        if (typeof DOMPurify === 'undefined') {
+            console.warn('[WARN] DOMPurify not loaded - XSS protection unavailable');
+        }
+    } finally {
+        endProgrammaticEditorUpdate();
     }
 }
