@@ -18,7 +18,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+function getMermaidSource(container) {
+    if (!container) return '';
+
+    let source = container.getAttribute('data-mermaid-source') || '';
+    if (!source) {
+        const codeBlock = container.querySelector('code.language-mermaid');
+        source = codeBlock ? codeBlock.textContent.trim() : '';
+        if (source) {
+            container.setAttribute('data-mermaid-source', source);
+        }
+    }
+
+    return source;
+}
+
 function showMermaidInsertDialog() {
+    // ダイアログを開く前にカーソル位置を保存する
+    let savedRange = null;
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+        savedRange = sel.getRangeAt(0).cloneRange();
+    }
+
     // シンプルなテンプレートを初期値に
     const template = [
         'graph TD',
@@ -53,7 +75,7 @@ function showMermaidInsertDialog() {
         const source = textarea.value.trim();
         overlay.remove();
         if (!source) return;
-        insertMermaidBlock(source, 'code-and-diagram');
+        insertMermaidBlock(source, 'code-and-diagram', savedRange);
     });
 
     overlay.querySelector('#mermaidCancel').addEventListener('click', () => {
@@ -70,7 +92,7 @@ function showMermaidInsertDialog() {
     document.addEventListener('keydown', escHandler);
 }
 
-function insertMermaidBlock(source, mode = 'code-and-diagram') {
+function insertMermaidBlock(source, mode = 'code-and-diagram', savedRange = null) {
     // コンテナを直接作成してエディタに挿入する
     // （setMarkdown経由だとrenderMermaidBlocksとのレースコンディションが発生するため）
     let container;
@@ -89,8 +111,28 @@ function insertMermaidBlock(source, mode = 'code-and-diagram') {
         container.querySelector('code').textContent = source;
     }
 
-    // エディタの末尾に挿入
-    editor.appendChild(container);
+    // カーソル位置に挿入（ダイアログ表示前に保存したRangeを優先）
+    let insertAfter = null;
+    const range = savedRange || (window.getSelection() && window.getSelection().rangeCount > 0 ? window.getSelection().getRangeAt(0) : null);
+    if (range) {
+        const node = range.startContainer;
+        // カーソルのある親ブロック要素を探す
+        let block = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+        while (block && block.parentElement !== editor) {
+            block = block.parentElement;
+        }
+        if (block && block.parentElement === editor) {
+            insertAfter = block;
+        }
+    }
+
+    if (insertAfter) {
+        // カーソルのあるブロックの直後に挿入
+        insertAfter.parentNode.insertBefore(container, insertAfter.nextSibling);
+    } else {
+        // カーソル位置が特定できない場合は末尾に挿入
+        editor.appendChild(container);
+    }
 
     // コンテナの前に空の段落を確保（前方にカーソルを置けるようにする）
     if (!container.previousElementSibling) {
@@ -128,7 +170,7 @@ async function renderMermaidBlocks() {
     }
     renderMermaidBlocks.retryCount = 0;
 
-    // Ensure mermaid is initialized
+    // Mermaid が初期化されていることを確認
     try {
         mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
     } catch (e) { /* already initialized */ }
@@ -157,7 +199,7 @@ async function renderMermaidBlocks() {
             // モード変更ボタンを追加
             addMermaidModeButton(container, source);
 
-            // Double-click to edit
+            // ダブルクリックで編集
             container.addEventListener('dblclick', () => {
                 editMermaidBlock(container);
             });
@@ -168,13 +210,43 @@ async function renderMermaidBlocks() {
         }
     }
 
+    // 1.5 既存の code-only Mermaid コンテナを復旧
+    // タブ復元時の sanitize 等で SVG が落ちた場合、data-mermaid-source から再描画する
+    const codeOnlyContainers = editor.querySelectorAll('.mermaid-container:not(.mermaid-diagram-only):not(.mermaid-code-and-diagram)');
+    for (let i = 0; i < codeOnlyContainers.length; i++) {
+        const container = codeOnlyContainers[i];
+        const hasSvg = !!container.querySelector('svg');
+        if (hasSvg) continue;
+
+        const source = getMermaidSource(container);
+        if (!source) continue;
+
+        try {
+            const id = 'mermaid-recover-' + Date.now() + '-' + i;
+            const { svg } = await mermaid.render(id, source);
+
+            container.setAttribute('data-mermaid-mode', 'code-only');
+            container.setAttribute('contenteditable', 'false');
+            container.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+
+            addMermaidModeButton(container, source);
+            container.ondblclick = () => {
+                editMermaidBlock(container);
+            };
+        } catch (err) {
+            console.error('Mermaid recover error:', err);
+        }
+    }
+
     // 2. 図形のみ表示モード
     const diagramOnlyContainers = editor.querySelectorAll('.mermaid-diagram-only');
     for (let i = 0; i < diagramOnlyContainers.length; i++) {
         const container = diagramOnlyContainers[i];
-        if (container.getAttribute('data-mermaid-rendered') === 'true') continue; // 既にレンダリング済み
+        const rendered = container.getAttribute('data-mermaid-rendered') === 'true';
+        const hasSvg = !!container.querySelector('svg');
+        if (rendered && hasSvg) continue; // 実体がある場合のみスキップ
 
-        const source = container.getAttribute('data-mermaid-source') || '';
+        const source = getMermaidSource(container);
         if (!source) continue;
 
         try {
@@ -188,7 +260,7 @@ async function renderMermaidBlocks() {
             // モード変更ボタンを追加
             addMermaidModeButton(container, source);
 
-            // Double-click to edit
+            // ダブルクリックで編集
             container.addEventListener('dblclick', () => {
                 editMermaidDiagramOnly(container);
             });
@@ -201,9 +273,12 @@ async function renderMermaidBlocks() {
     const codeAndDiagramContainers = editor.querySelectorAll('.mermaid-code-and-diagram');
     for (let i = 0; i < codeAndDiagramContainers.length; i++) {
         const container = codeAndDiagramContainers[i];
-        if (container.getAttribute('data-mermaid-rendered') === 'true') continue; // 既にレンダリング済み
+        const rendered = container.getAttribute('data-mermaid-rendered') === 'true';
+        const displayDiv = container.querySelector('.mermaid-display');
+        const hasSvg = !!(displayDiv && displayDiv.querySelector('svg'));
+        if (rendered && hasSvg) continue; // 実体がある場合のみスキップ
 
-        const source = container.getAttribute('data-mermaid-source') || '';
+        const source = getMermaidSource(container);
         if (!source) continue;
 
         try {
@@ -211,7 +286,6 @@ async function renderMermaidBlocks() {
             const { svg } = await mermaid.render(id, source);
 
             container.setAttribute('data-mermaid-rendered', 'true');
-            const displayDiv = container.querySelector('.mermaid-display');
             if (displayDiv) {
                 displayDiv.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
                 displayDiv.classList.add('mermaid-svg-wrapper');
@@ -220,7 +294,7 @@ async function renderMermaidBlocks() {
             // モード変更ボタンを追加
             addMermaidModeButton(container, source);
 
-            // Double-click to edit
+            // ダブルクリックで編集
             container.addEventListener('dblclick', () => {
                 editMermaidCodeAndDiagram(container);
             });
@@ -420,7 +494,7 @@ async function changeMermaidMode(container, source, newMode) {
 
 
 function editMermaidBlock(container) {
-    const source = container.getAttribute('data-mermaid-source') || '';
+    const source = getMermaidSource(container);
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -466,7 +540,7 @@ function editMermaidBlock(container) {
         editor.focus();
     });
 
-    // Enter in textarea should be allowed (new line), Escape closes
+    // テキストエリア内でEnterキーは改行を許可、Escapeは閉じる
     textarea.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             e.preventDefault();
@@ -478,7 +552,7 @@ function editMermaidBlock(container) {
 
 // 図形のみ表示モード用の編集関数
 async function editMermaidDiagramOnly(container) {
-    const source = container.getAttribute('data-mermaid-source') || '';
+    const source = getMermaidSource(container);
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -535,7 +609,7 @@ async function editMermaidDiagramOnly(container) {
 
 // コード＋図形表示モード用の編集関数
 async function editMermaidCodeAndDiagram(container) {
-    const source = container.getAttribute('data-mermaid-source') || '';
+    const source = getMermaidSource(container);
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';

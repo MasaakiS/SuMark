@@ -8,48 +8,48 @@
  */
 
 // ========== Undo/Redo 状態 ==========
-let undoStack = [];        // Array of { html, selection }
-let redoStack = [];        // Array of { html, selection }
-let currentState = null;   // Current editor state
-const MAX_UNDO_STACK = 100; // Maximum undo history size
-let isUndoRedoOperation = false; // Guard to prevent recording during undo/redo
-let saveStateTimer = null; // Debounce timer for saving editor state
+let undoStack = [];        // { html, selection } の配列
+let redoStack = [];        // { html, selection } の配列
+let currentState = null;   // 現在のエディタ状態
+const MAX_UNDO_STACK = 100; // Undo履歴の最大数
+let isUndoRedoOperation = false; // Undo/Redo中の記録を防ぐガード
+let saveStateTimer = null; // 状態保存用デバウンスタイマー
 
 /**
  * 現在のエディタ状態を保存
  */
 function saveEditorState() {
-    if (isUndoRedoOperation) return; // Don't record during undo/redo
-    if (isConverting) return; // Don't record during auto-conversion
+    if (isUndoRedoOperation) return; // Undo/Redo中は記録しない
+    if (isConverting) return; // 自動変換中は記録しない
     
     const html = editor.innerHTML;
     const selection = saveSelection();
     
-    // Check if state actually changed
+    // 状態が実際に変わったか確認
     if (currentState && currentState.html === html) {
-        return; // No change, don't save
+        return; // 変化なしなら保存しない
     }
     
-    // Save current state to undo stack
+    // 現在状態をUndoスタックへ保存
     if (currentState) {
         undoStack.push(currentState);
-        // Limit stack size
+        // スタック上限を維持
         if (undoStack.length > MAX_UNDO_STACK) {
             undoStack.shift();
         }
     }
     
-    // Update current state
+    // 現在状態を更新
     currentState = { html, selection };
     
-    // Clear redo stack when new change is made
+    // 新規変更時はRedoスタックをクリア
     redoStack = [];
     
     console.log('[Undo] State saved. Stack size:', undoStack.length);
 }
 
 /**
- * Debounced version of saveEditorState (waits 500ms after last input)
+ * saveEditorState のデバウンス版（最終入力から500ms待機）
  */
 function debouncedSaveEditorState() {
     if (saveStateTimer) clearTimeout(saveStateTimer);
@@ -69,12 +69,12 @@ function performUndo() {
     
     isUndoRedoOperation = true;
     
-    // Push current state to redo stack
+    // 現在状態をRedoスタックへ積む
     if (currentState) {
         redoStack.push(currentState);
     }
     
-    // Pop from undo stack
+    // Undoスタックから取り出す
     const previousState = undoStack.pop();
     currentState = previousState;
     
@@ -90,19 +90,19 @@ function performUndo() {
         console.error('[Undo] Exception:', e);
     }
     
-    // Ensure editor starts with an editable element
+    // エディタ先頭が編集可能要素になるよう補正
     ensureEditableStart();
     
-    // Restore selection
+    // 選択範囲を復元
     restoreSelection(previousState.selection);
     
-    // Re-highlight code blocks
+    // コードブロックを再ハイライト
     highlightAllCodeBlocks();
     
-    // Update word count
+    // 文字数表示を更新
     updateWordCount();
     
-    // Mark as modified
+    // 変更済みフラグを更新
     markModified();
     
     isUndoRedoOperation = false;
@@ -121,7 +121,7 @@ function performRedo() {
     
     isUndoRedoOperation = true;
     
-    // Push current state to undo stack
+    // 現在状態をUndoスタックへ積む
     if (currentState) {
         undoStack.push(currentState);
         if (undoStack.length > MAX_UNDO_STACK) {
@@ -129,7 +129,7 @@ function performRedo() {
         }
     }
     
-    // Pop from redo stack
+    // Redoスタックから取り出す
     const nextState = redoStack.pop();
     currentState = nextState;
     
@@ -145,19 +145,19 @@ function performRedo() {
         console.error('[Redo] Exception:', e);
     }
     
-    // Ensure editor starts with an editable element
+    // エディタ先頭が編集可能要素になるよう補正
     ensureEditableStart();
     
-    // Restore selection
+    // 選択範囲を復元
     restoreSelection(nextState.selection);
     
-    // Re-highlight code blocks
+    // コードブロックを再ハイライト
     highlightAllCodeBlocks();
     
-    // Update word count
+    // 文字数表示を更新
     updateWordCount();
     
-    // Mark as modified
+    // 変更済みフラグを更新
     markModified();
     
     isUndoRedoOperation = false;

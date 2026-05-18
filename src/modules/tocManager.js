@@ -1,4 +1,4 @@
-// ========== TOC (Table of Contents) Manager ==========
+// ========== TOC（目次）管理 ==========
 // main.js から分離した目次関連の関数群
 // 依存: editor (グローバル), escapeHtml() (utils.js), markModified(), saveEditorState() (main.js)
 
@@ -7,11 +7,11 @@
  */
 function setupTocDeleteButtons() {
     editor.querySelectorAll('.toc-container').forEach(toc => {
-        // Make sure it's contenteditable=false
+        // contenteditable=false を保証
         if (toc.getAttribute('contenteditable') !== 'false') {
             toc.setAttribute('contenteditable', 'false');
         }
-        // Add delete button if not already present
+        // 削除ボタンが無ければ追加する
         if (!toc.querySelector('.toc-delete-btn')) {
             const btn = document.createElement('button');
             btn.className = 'toc-delete-btn';
@@ -31,17 +31,17 @@ function insertTOC() {
         return;
     }
 
-    // Assign unique IDs to all headings
+    // すべての見出しに一意なIDを付与する
     const idCounts = {};
     headings.forEach(h => {
         const text = h.textContent.trim();
         if (!text) return;
-        // Generate a slug from the heading text
+        // 見出しテキストからスラッグを生成する
         let slug = 'heading-' + text
             .toLowerCase()
             .replace(/[^\w\u3000-\u9fff\uf900-\ufaff\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ff]+/g, '-')
             .replace(/^-+|-+$/g, '');
-        // Handle duplicates
+        // 重複スラッグを解消する
         if (idCounts[slug] !== undefined) {
             idCounts[slug]++;
             slug = slug + '-' + idCounts[slug];
@@ -66,7 +66,7 @@ function insertTOC() {
 
     document.execCommand('insertHTML', false, html);
     markModified();
-    saveEditorState(); // Save state after inserting TOC
+    saveEditorState(); // TOC挿入後の状態を保存
 }
 
 /**
@@ -75,6 +75,10 @@ function insertTOC() {
  * これを検出して .toc-container で囲み直し、リンクに .toc-link クラスを付与する。
  */
 function reconstructTocContainers() {
+    // 「テキスト一致で復元」を採用する理由は、
+    // 保存済みMarkdownからDOMを再構築する段階ではクラス情報が失われるため、
+    // 「見出しテキスト + 隣接UL」の構造シグナルで復元するのが最も破壊が少ない。
+
     // 既に .toc-container がある場合は何もしない
     if (editor.querySelector('.toc-container')) {
         return;
@@ -94,7 +98,9 @@ function reconstructTocContainers() {
         let nextEl = titleP.nextElementSibling;
         if (!nextEl || nextEl.tagName !== 'UL') continue;
 
-        // UL 内のリンクが #heading- or # で始まるか確認（目次リンクかどうか）
+        // 壊れる条件:
+        // リンクが1件もないULは通常の本文リストの可能性が高く、
+        // TOC扱いすると本文構造を誤って巻き取るため除外
         const links = nextEl.querySelectorAll('a[href^="#"]');
         if (links.length === 0) continue;
 
@@ -123,6 +129,11 @@ function reconstructTocContainers() {
  * （marked.jsでheaderIds: falseのため、保存→再読み込み時にIDが失われる問題を修正）
  */
 function restoreTocHeadingIds() {
+    // アルゴリズム意図:
+    // TOCリンクを「正」として見出しIDを逆算
+    // marked.js 側で見出しIDを自動生成しない設定
+    // 再読み込み後もリンク先を維持するにはこの復元手順が必要。
+
     // .toc-container 内のリンクから見出しIDを復元
     const tocLinks = editor.querySelectorAll('.toc-container a.toc-link[href^="#"]');
     if (tocLinks.length === 0) {
@@ -186,19 +197,19 @@ function ensureHeadingIdsForInPageLinks() {
         try {
             targetId = decodeURIComponent(targetId);
         } catch (_) {
-            // Keep raw hash when decode fails
+            // デコード失敗時は元のハッシュ文字列を使う
         }
         targetId = targetId.trim();
         if (!targetId) {
             return;
         }
 
-        // Already exists in document
+        // 既に同じIDが存在する場合はスキップ
         if (editorEl.querySelector('#' + CSS.escape(targetId))) {
             return;
         }
 
-        // Assign ID to the first heading whose visible text equals the hash label
+        // ハッシュラベルと一致する最初の見出しにIDを付与
         const targetHeading = headings.find(h => !h.id && h.textContent.trim() === targetId);
         if (!targetHeading) {
             return;

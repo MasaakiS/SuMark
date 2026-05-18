@@ -16,15 +16,15 @@ function isOnEmptyTrailingLine(targetEl, range) {
     const node = range.startContainer;
     const offset = range.startOffset;
 
-    // Case 1: Cursor is in a text node
+    // ケース1: カーソルがテキストノード内にある
     if (node.nodeType === 3) {
         const text = node.textContent;
-        // Check if character before cursor is \n (meaning we're on a new empty line)
+        // カーソル直前が \n か確認（新しい空行上にいることを意味する）
         if (offset > 0 && text[offset - 1] === '\n') {
-            // Check nothing meaningful after cursor in this node
+            // このノード内でカーソル後方に実質的な文字がないことを確認
             const after = text.substring(offset);
             if (after !== '' && after.replace(/\n/g, '') !== '') return false;
-            // Check no more meaningful siblings after this node
+            // このノード以降の兄弟に実質的な内容がないことを確認
             let sibling = node.nextSibling;
             while (sibling) {
                 if (sibling.nodeType === 3 && sibling.textContent.replace(/\n/g, '') !== '') return false;
@@ -36,22 +36,22 @@ function isOnEmptyTrailingLine(targetEl, range) {
         return false;
     }
 
-    // Case 2: Cursor is in an element node (between child nodes)
+    // ケース2: カーソルが要素ノード内（子ノード間）にある
     if (node.nodeType === 1) {
         if (offset === 0) {
-            // At the very start - exit only if completely empty
+            // 先頭位置では完全に空の場合のみtrue
             return targetEl.textContent.trim() === '' &&
                    targetEl.innerHTML.replace(/<br\s*\/?>/gi, '').trim() === '';
         }
         const prevChild = node.childNodes[offset - 1];
         if (!prevChild) return false;
 
-        // Previous child should be a <br> or a text node ending with \n
+        // 直前の子ノードは <br> か、\n で終わるテキストノードである必要がある
         const isPrevBr = prevChild.nodeName === 'BR';
         const isPrevNewline = prevChild.nodeType === 3 && prevChild.textContent.endsWith('\n');
 
         if (isPrevBr || isPrevNewline) {
-            // Check no meaningful content after cursor position
+            // カーソル位置以降に実質的な内容がないことを確認
             for (let i = offset; i < node.childNodes.length; i++) {
                 const child = node.childNodes[i];
                 if (child.nodeType === 3 && child.textContent.replace(/\n/g, '') !== '') return false;
@@ -69,12 +69,12 @@ function isOnEmptyTrailingLine(targetEl, range) {
  * @param {HTMLElement} el - 対象要素
  */
 function removeTrailingEmptyLines(el) {
-    // Remove trailing <br> elements and empty text nodes
+    // 末尾の <br> 要素と空テキストノードを除去
     while (el.lastChild) {
         if (el.lastChild.nodeType === 3 && el.lastChild.textContent.match(/^\n*$/)) {
             el.removeChild(el.lastChild);
         } else if (el.lastChild.nodeType === 3) {
-            // Trim trailing newlines from the last text node
+            // 最後のテキストノード末尾にある改行を削る
             el.lastChild.textContent = el.lastChild.textContent.replace(/\n+$/, '');
             if (el.lastChild.textContent === '') {
                 el.removeChild(el.lastChild);
@@ -85,7 +85,7 @@ function removeTrailingEmptyLines(el) {
             break;
         }
     }
-    // If completely empty, add a non-breaking space to prevent collapse
+    // 完全に空なら表示崩れを防ぐために空白を入れる
     if (!el.textContent.trim()) {
         el.textContent = ' ';
     }

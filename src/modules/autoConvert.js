@@ -1,5 +1,5 @@
 // =====================================================
-// SuMark - Auto-Conversion Module
+// SuMark - 自動変換モジュール
 // =====================================================
 // エディタ入力時のMarkdown自動変換ロジック
 // - ブロックレベル変換: # → 見出し, - → リスト, > → 引用 等
@@ -11,10 +11,10 @@
 //       isInsideTableCell, getCaretCharacterOffsetWithin, setCaretCharacterOffset (modules)
 //       debouncedHighlightCodeAtCursor, updateLineNumbers (modules)
 
-// ========== Editor Input Handler ==========
+// ========== エディタ入力ハンドラ ==========
 function onEditorInput() {
     if (isConverting) return;
-    if (isComposing) return; // Skip during IME composition
+    if (isComposing) return; // IME変換中はスキップ
     if (isProgrammaticEditorUpdate) return;
 
     isConverting = true;
@@ -28,7 +28,7 @@ function onEditorInput() {
     updateWordCount();
     markModified();
     
-    // Undo履歴粒度: 3文字ごと or Enter押下時
+    // Undo履歴の粒度: 3文字ごと、または Enter 押下時
     // IME変換中はカウントしない
     if (!isComposing) {
         // 入力文字数をカウント
@@ -47,10 +47,10 @@ function onEditorInput() {
     // 3文字未満のときは従来通りデバウンスで積む（保険）
     debouncedSaveEditorState();
 
-    // Re-highlight code block if cursor is inside one
+    // カーソル位置がコードブロック内なら再ハイライト
     debouncedHighlightCodeAtCursor();
 
-    // Update line numbers for code block at cursor
+    // カーソル位置のコードブロック行番号を更新
     const sel2 = window.getSelection();
     if (sel2.rangeCount) {
         let n = sel2.anchorNode;
@@ -67,26 +67,30 @@ function onEditorInput() {
 }
 
 /**
- * Normalize only line-start markdown marker characters.
- * This prevents in-word conversions such as "マーク" -> "マ-ク".
+ * 行頭のMarkdown記号だけを正規化する。
+ * これにより、語中の「マーク」→「マ-ク」のような誤変換を防ぐ。
  */
 function normalizeMarkdownPrefix(text) {
     if (typeof text !== 'string' || text.length === 0) return text;
 
-    // Normalize non-breaking/full-width spaces only in the markdown prefix area
-    // (first ~10 chars) to avoid destroying browser's &nbsp; at content positions.
-    // In contenteditable, browsers insert &nbsp; to prevent HTML whitespace collapse;
-    // globally replacing them causes trailing spaces to vanish.
+    // アルゴリズム意図:
+    // 1) 行頭だけを正規化して変換トリガーを安定化
+    // 2) 本文側の空白は維持して contenteditable の見た目崩れを防止
+    // 3) 記号の全角/半角ゆれのみを吸収して誤変換を減らす
+    // 非改行空白/全角空白は行頭のMarkdown接頭辞領域だけを正規化する。
+    // （先頭約10文字）本文側の &nbsp; を壊すと見た目が崩れるため。
+    // contenteditable ではブラウザが空白維持のため &nbsp; を挿入することがあり
+    // 全体置換すると末尾空白が消える副作用がある。
     const prefixLen = Math.min(10, text.length);
     let normalized = text.substring(0, prefixLen).replace(/\u00A0/g, ' ').replace(/　/g, ' ')
         + text.substring(prefixLen);
 
-    // Normalize ordered-list digits only at the line start.
+    // 順序付きリストの数字は行頭のみ正規化する。
     normalized = normalized.replace(/^[０-９]+/, m =>
         m.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
     );
 
-    // Normalize markdown marker characters only at the line start.
+    // Markdown記号は行頭のみ正規化
     normalized = normalized.replace(/^([0-9]+)．/, '$1.');
     normalized = normalized.replace(/^[ー－―−]{1,3}/, m => '-'.repeat(m.length));
     normalized = normalized.replace(/^＃{1,6}/, m => '#'.repeat(m.length));
@@ -98,17 +102,18 @@ function normalizeMarkdownPrefix(text) {
     return normalized;
 }
 
-// ========== Block-Level Auto-Conversion ==========
-// Converts markdown syntax typed at the start of a block.
-// Two modes:
-//   1. Prefix-only (trigger on Space after prefix):
-//      "# " → H1 (empty), "- " → UL, "1. " → OL, "> " → blockquote
-//   2. Prefix + content:
-//      "# ああああ" → H1 with text "ああああ"
-//      "- テキスト" → UL with item, "1. テキスト" → OL with item
-//      "> テキスト" → blockquote with text
-//      "- [ ] テキスト" → task list with text
-//   3. Exact match: "---" → HR
+// ========== ブロックレベル自動変換 ==========
+// ブロック先頭で入力されたMarkdown構文を変換する。
+// 動作モード:
+//   1. 接頭辞のみ（接頭辞の直後にスペース入力で発火）
+//      "# " → 空のH1、"- " → 箇条書き、"1. " → 番号付きリスト、"> " → 引用
+//   2. 接頭辞 + 本文
+//      "# ああああ" → 本文付きH1
+//      "- テキスト" → 本文付き箇条書き、"1. テキスト" → 本文付き番号付きリスト
+//      "> テキスト" → 本文付き引用
+//      "- [ ] テキスト" → 本文付きタスクリスト
+//   3. 完全一致
+//      "---" → 水平線
 function handleBlockAutoConversion() {
     const sel = window.getSelection();
     if (!sel.rangeCount || !sel.isCollapsed) {
@@ -123,20 +128,22 @@ function handleBlockAutoConversion() {
         return;
     }
 
-    // Only convert in P or DIV blocks (not already formatted)
+    // 変換対象は未整形の P / DIV ブロックのみ
     const tag = block.tagName;
     if (tag !== 'P' && tag !== 'DIV') {
         console.log('[DEBUG] handleBlockAutoConversion: not P or DIV, tag=', tag);
         return;
     }
     
-    // Prevent list auto-conversion inside table cells
+    // セル内だけ変換を制限する理由:
+    // リスト等のブロック要素を許可すると「表の中に表/リスト」が発生し、
+    // 保存→再読み込み時にDOM構造が壊れやすいため。
     if (isInsideTableCell(range.startContainer)) {
         console.log('[DEBUG] handleBlockAutoConversion: inside table cell, skipping list conversions');
-        // Allow only non-list conversions (headings, blockquotes, HR) - skip list patterns
+        // セル内ではリスト変換を除外し、見出し/引用/水平線のみ許可
         const text = normalizeMarkdownPrefix(block.textContent);
 
-        // Only allow heading conversion in table cells
+        // テーブルセル内では見出し変換のみ許可
         const headingMatch = text.match(/^(#{1,6}) (.+)$/);
         if (headingMatch) {
             const level = headingMatch[1].length;
@@ -152,16 +159,17 @@ function handleBlockAutoConversion() {
     let text = block.textContent;
     console.log('[DEBUG] handleBlockAutoConversion: text="' + text + '"');
 
-    // Normalize only line-start markdown markers for matching.
+    // マッチ判定前に行頭Markdown記号のみ正規化
     const originalText = text;
     text = normalizeMarkdownPrefix(text);
 
-    // If normalization only changed whitespace variants (space/NBSP/full-width),
-    // do not rewrite DOM text because contenteditable may lose trailing spaces.
+    // 壊れる条件:
+    // 空白種別の差だけでDOMを書き戻すと、ブラウザが末尾空白を削除しやすい。
+    // そのため「記号正規化が実際に発生したときだけ」DOMを書き換える。
     const normalizedForCompare = text.replace(/[\u00A0　]/g, ' ');
     const originalForCompare = originalText.replace(/[\u00A0　]/g, ' ');
 
-    // If the line-start marker itself was normalized, reflect it in the editor.
+    // 行頭記号が実際に正規化された場合のみエディタへ反映
     if (text !== originalText && normalizedForCompare !== originalForCompare) {
         console.log('[DEBUG] Text normalized from "' + originalText + '" to "' + text + '"');
         const caretOffset = getCaretCharacterOffsetWithin(block);
@@ -169,7 +177,7 @@ function handleBlockAutoConversion() {
         setCaretCharacterOffset(block, caretOffset);
     }
 
-    // Heading: "# text" or "## text" etc.
+    // 見出し: "# text" や "## text" など
     const headingMatch = text.match(/^(#{1,6}) (.+)$/);
     if (headingMatch) {
         console.log('[DEBUG] Heading match found:', headingMatch);
@@ -181,7 +189,7 @@ function handleBlockAutoConversion() {
         setCursorToEnd(heading);
         return;
     }
-    // Heading prefix only: "# "
+    // 見出し接頭辞のみ: "# "
     const headingPrefixMatch = text.match(/^(#{1,6}) $/);
     if (headingPrefixMatch) {
         console.log('[DEBUG] Heading prefix match found:', headingPrefixMatch);
@@ -193,7 +201,7 @@ function handleBlockAutoConversion() {
         return;
     }
 
-    // Task list (short form): "[] text" or "[x] text"
+    // タスクリスト（短縮記法）: "[] text" / "[x] text"
     const taskShortMatch = text.match(/^\[([ x]?)\] (.+)$/);
     if (taskShortMatch) {
         const checked = taskShortMatch[1] === 'x';
@@ -213,7 +221,7 @@ function handleBlockAutoConversion() {
         { const r = document.createRange(); r.setStart(textNode, textNode.length); r.collapse(true); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
         return;
     }
-    // Task list prefix only (short form): "[] " or "[x] "
+    // タスクリスト接頭辞のみ（短縮記法）: "[] " / "[x] "
     if (text === '[] ' || text === '[ ] ' || text === '[x] ') {
         const checked = text.startsWith('[x]');
         const ul = document.createElement('ul');
@@ -232,11 +240,11 @@ function handleBlockAutoConversion() {
         return;
     }
 
-    // Unordered list with content: "- text" or "* text"
+    // 箇条書き（本文あり）: "- text" / "* text"
     const ulContentMatch = text.match(/^[-*] (.+)$/);
     if (ulContentMatch && !text.startsWith('- [')) {
         const content = ulContentMatch[1];
-        // Check if inside toggle-content — use DOM manipulation instead of execCommand
+        // toggle-content 内は execCommand を避けて DOM 操作で変換
         const toggleContent = block.closest('.toggle-content');
         if (toggleContent) {
             const ul = document.createElement('ul');
@@ -249,7 +257,7 @@ function handleBlockAutoConversion() {
         }
         block.textContent = content;
         document.execCommand('formatBlock', false, 'p');
-        // Select all text in the block, then apply list
+        // ブロック全体を選択してからリスト化
         const newSel = window.getSelection();
         const newRange = document.createRange();
         newRange.selectNodeContents(block);
@@ -259,7 +267,7 @@ function handleBlockAutoConversion() {
         document.execCommand('insertUnorderedList');
         return;
     }
-    // Unordered list prefix only: "- " or "* "
+    // 箇条書き接頭辞のみ: "- " / "* "
     if (text === '- ' || text === '* ') {
         const toggleContent = block.closest('.toggle-content');
         if (toggleContent) {
@@ -278,7 +286,7 @@ function handleBlockAutoConversion() {
         return;
     }
 
-    // Ordered list with content: "1. text"
+    // 番号付きリスト（本文あり）: "1. text"
     const olContentMatch = text.match(/^\d+\. (.+)$/);
     if (olContentMatch) {
         const content = olContentMatch[1];
@@ -303,7 +311,7 @@ function handleBlockAutoConversion() {
         document.execCommand('insertOrderedList');
         return;
     }
-    // Ordered list prefix only: "1. "
+    // 番号付きリスト接頭辞のみ: "1. "
     if (/^\d+\. $/.test(text)) {
         const toggleContent = block.closest('.toggle-content');
         if (toggleContent) {
@@ -322,7 +330,7 @@ function handleBlockAutoConversion() {
         return;
     }
 
-    // Toggle with content: ">>> text"
+    // トグル（本文あり）: ">>> text"
     const toggleContentMatch = text.match(/^>>> (.+)$/);
     if (toggleContentMatch) {
         const content = toggleContentMatch[1];
@@ -345,7 +353,7 @@ function handleBlockAutoConversion() {
         setCursorTo(p);
         return;
     }
-    // Toggle prefix only: ">>> "
+    // トグル接頭辞のみ: ">>> "
     if (text === '>>> ') {
         const details = document.createElement('details');
         details.setAttribute('open', '');
@@ -363,7 +371,7 @@ function handleBlockAutoConversion() {
         const afterP = document.createElement('p');
         afterP.innerHTML = '<br>';
         details.parentNode.insertBefore(afterP, details.nextSibling);
-        // Select summary text for editing
+        // summary テキストを編集しやすいよう選択
         const r = document.createRange();
         r.selectNodeContents(summary);
         window.getSelection().removeAllRanges();
@@ -371,7 +379,7 @@ function handleBlockAutoConversion() {
         return;
     }
 
-    // Blockquote with content: "> text"
+    // 引用（本文あり）: "> text"
     const bqContentMatch = text.match(/^> (.+)$/);
     if (bqContentMatch) {
         const content = bqContentMatch[1];
@@ -383,7 +391,7 @@ function handleBlockAutoConversion() {
         setCursorToEnd(p);
         return;
     }
-    // Blockquote prefix only: "> "
+    // 引用接頭辞のみ: "> "
     if (text === '> ') {
         const bq = document.createElement('blockquote');
         const p = document.createElement('p');
@@ -394,7 +402,7 @@ function handleBlockAutoConversion() {
         return;
     }
 
-    // Horizontal rule: ---
+    // 水平線: ---
     if (text === '---' || text === '***' || text === '___') {
         const hr = document.createElement('hr');
         const p = document.createElement('p');
@@ -406,10 +414,10 @@ function handleBlockAutoConversion() {
     }
 }
 
-// ========== Inline Auto-Conversion ==========
-// Converts inline markdown patterns:
-//   **text** → bold,  *text* → italic
-//   `code`   → code,  ~~text~~ → strikethrough
+// ========== インライン自動変換 ==========
+// インラインMarkdownパターンを変換:
+//   **text** → 太字、*text* → 斜体
+//   `code`   → コード、~~text~~ → 打ち消し線
 function handleInlineAutoConversion() {
     const sel = window.getSelection();
     if (!sel.rangeCount || !sel.isCollapsed) return;
@@ -418,7 +426,7 @@ function handleInlineAutoConversion() {
     const textNode = range.startContainer;
     if (textNode.nodeType !== Node.TEXT_NODE) return;
 
-    // Skip conversion inside code blocks (<pre><code>)
+    // コードブロック内（<pre><code>）では変換しない
     let ancestor = textNode.parentNode;
     while (ancestor && ancestor !== editor) {
         if (ancestor.tagName === 'PRE' || (ancestor.tagName === 'CODE' && ancestor.parentNode && ancestor.parentNode.tagName === 'PRE')) {
@@ -431,46 +439,46 @@ function handleInlineAutoConversion() {
     const pos = range.startOffset;
     const before = text.substring(0, pos);
 
-    // Bold: **text**
+    // 太字: **text**
     const boldMatch = before.match(/\*\*(.+?)\*\*$/);
     if (boldMatch) {
         applyInlineAutoConvert(textNode, boldMatch, 'strong', pos);
         return;
     }
 
-    // Strikethrough: ~~text~~
+    // 打ち消し線: ~~text~~
     const strikeMatch = before.match(/~~(.+?)~~$/);
     if (strikeMatch) {
         applyInlineAutoConvert(textNode, strikeMatch, 'del', pos);
         return;
     }
 
-    // Inline code: `text`
-    // Skip if this looks like a fenced code block (``` at start of line)
+    // インラインコード: `text`
+    // 行頭の ``` フェンス開始と見なせる場合はスキップ
     const codeMatch = before.match(/`([^`]+)`$/);
     if (codeMatch) {
         const matchStart = before.length - codeMatch[0].length;
         const textBeforeMatch = before.substring(0, matchStart);
-        // If preceded by ` (e.g. ```bash), this is a fenced code block marker, not inline code
+        // 直前が `（例: ```bash）ならフェンス開始記号として扱う
         if (!textBeforeMatch.endsWith('`')) {
             applyInlineAutoConvert(textNode, codeMatch, 'code', pos);
             return;
         }
     }
 
-    // Italic: *text* (not preceded by *)
+    // 斜体: *text*（直前が * でない場合）
     const italicMatch = before.match(/(?<!\*)\*([^*]+?)\*$/);
     if (italicMatch && !before.endsWith('**')) {
         applyInlineAutoConvert(textNode, italicMatch, 'em', pos);
         return;
     }
 
-    // URL auto-detection: http(s)://... followed by whitespace
+    // URL自動リンク化: http(s)://... の後に空白が続く場合
     const urlMatch = before.match(/(https?:\/\/[^\s<>\"]+)\s$/);
     if (urlMatch) {
         const url = urlMatch[1];
         const urlStart = before.lastIndexOf(url);
-        // Don't convert if already inside an <a> tag
+        // 既に <a> 内にある場合は変換しない
         let isInLink = false;
         let n = textNode.parentNode;
         while (n && n !== editor) {
@@ -502,7 +510,7 @@ function handleInlineAutoConversion() {
         }
     }
 
-    // Emoji: :emoji_name:
+    // 絵文字: :emoji_name:
     const emojiMatch = before.match(/:([a-z0-9_+-]+):$/);
     if (emojiMatch) {
         const name = emojiMatch[1];
@@ -531,15 +539,15 @@ function handleInlineAutoConversion() {
         }
     }
 
-    // Display math: $$...$$ (must match before inline math to avoid conflict)
-    // Use negative lookahead/lookbehind to avoid matching inline math
+    // ディスプレイ数式: $$...$$（競合回避のためインライン数式より先に判定）
+    // インライン数式との誤マッチを避けるため厳しめに判定する
     const displayMathMatch = before.match(/\$\$([\s\S]+?)\$\$$/);
     if (displayMathMatch && window.katex) {
         const math = displayMathMatch[1];
         const fullMatch = displayMathMatch[0];
         const startIdx = pos - fullMatch.length;
         
-        // Safety check: make sure we actually matched $$...$$, not $...$
+        // 安全確認: $...$ ではなく $$...$$ を確実に検出できた場合のみ処理
         if (fullMatch.startsWith('$$') && fullMatch.endsWith('$$')) {
             const beforeText = textNode.textContent.substring(0, startIdx);
             const afterText = textNode.textContent.substring(pos);
@@ -571,16 +579,16 @@ function handleInlineAutoConversion() {
         }
     }
 
-    // Inline math: $...$ (but not preceded by $ to avoid conflict with $$)
+    // インライン数式: $...$（$$ との競合を避けるため直前 $ を除外）
     const inlineMathMatch = before.match(/\$([^$\n]+?)\$$/);
     if (inlineMathMatch && window.katex) {
         const math = inlineMathMatch[1];
         const fullMatch = inlineMathMatch[0];
         const startIdx = pos - fullMatch.length;
         
-        // Check if there's a $ just before this match (would be part of $$)
+        // 直前が $ の場合は $$...$$ の一部とみなしてスキップ
         if (startIdx > 0 && textNode.textContent[startIdx - 1] === '$') {
-            return; // Skip - likely part of $$...$$
+            return; // $$...$$ の一部の可能性が高いためスキップ
         }
         
         const beforeText = textNode.textContent.substring(0, startIdx);
@@ -622,7 +630,7 @@ function applyInlineAutoConvert(textNode, match, tag, cursorPos) {
     const afterText = textNode.textContent.substring(cursorPos);
     const parent = textNode.parentNode;
 
-    // Build new nodes
+    // 置換後ノードを構築
     const frag = document.createDocumentFragment();
     if (beforeText) {
         frag.appendChild(document.createTextNode(beforeText));
@@ -632,16 +640,16 @@ function applyInlineAutoConvert(textNode, match, tag, cursorPos) {
     elem.textContent = innerText;
     frag.appendChild(elem);
 
-    // Zero-width space + remaining text for cursor positioning
+    // カーソル位置維持のためゼロ幅スペースを先頭に付ける
     const cursorText = document.createTextNode('\u200B' + afterText);
     frag.appendChild(cursorText);
 
     parent.replaceChild(frag, textNode);
 
-    // Position cursor after the formatted element
+    // 変換要素の直後にカーソルを移動
     const newSel = window.getSelection();
     const newRange = document.createRange();
-    newRange.setStart(cursorText, 1); // After zero-width space
+    newRange.setStart(cursorText, 1); // ゼロ幅スペースの直後
     newRange.collapse(true);
     newSel.removeAllRanges();
     newSel.addRange(newRange);

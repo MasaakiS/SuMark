@@ -1,5 +1,5 @@
 // =====================================================
-// SuMark - Markdown Conversion Module
+// SuMark - Markdown変換モジュール
 // =====================================================
 // Markdown ↔ HTML 双方向変換ロジック
 // - configureTurndown(): HTML→Markdown 変換設定 (Turndown + GFM + カスタムルール)
@@ -15,13 +15,13 @@
 //       updateAllLineNumbers (codeHighlight.js), restoreCodeWrapStates (toolbarActions.js)
 //       setupToggleBlocks (toggleBlock.js), setupImageErrorHandling (imageManager.js)
 
-// Turndown instance
+// Turndownインスタンス
 let turndownService;
 
-// DOMPurify config: allow Tauri's asset:// protocol for local file display
+// DOMPurify設定: ローカル表示用にTauriの asset:// プロトコルを許可
 const DOMPURIFY_URI_REGEXP = /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|asset):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i;
 
-// ========== Turndown Configuration ==========
+// ========== Turndown設定 ==========
 function configureTurndown() {
     if (typeof TurndownService === 'undefined') {
         console.error('[ERROR] Turndown not loaded - TurndownService is undefined');
@@ -36,12 +36,12 @@ function configureTurndown() {
         fence: '```',
         emDelimiter: '*',
         strongDelimiter: '**',
-        // Use backslash line break instead of trailing spaces (  )
-        // Trailing spaces are fragile and can be stripped during file save/reload
+        // 末尾スペース（  ）ではなくバックスラッシュ改行を使う
+        // 末尾スペースは保存/再読込で消えやすく不安定
         br: '',
     });
 
-    // Load GFM plugin (tables, strikethrough, task lists) FIRST
+    // GFMプラグイン（表、打消し線、タスクリスト）を先に読み込む
     const gfmPlugin = (typeof TurndownPluginGfm !== 'undefined') ? TurndownPluginGfm :
                        (typeof turndownPluginGfm !== 'undefined') ? turndownPluginGfm : null;
     if (gfmPlugin && gfmPlugin.gfm) {
@@ -49,7 +49,7 @@ function configureTurndown() {
         console.log('Turndown GFM plugin loaded');
     }
 
-    // Custom rule: task list items with checkboxes (must be AFTER GFM plugin to override)
+    // カスタムルール: チェックボックス付きタスクリスト項目（GFMルールを上書きするため後で登録）
     turndownService.addRule('taskListCheckbox', {
         filter: function(node) {
             return node.nodeName === 'LI' &&
@@ -57,16 +57,17 @@ function configureTurndown() {
         },
         replacement: function(content, node) {
             const cb = node.querySelector(':scope > input[type="checkbox"]');
-            // Check both property and attribute - property for runtime state, attribute for serialized HTML
+            // property と attribute の両方を確認
+            // property は実行時状態、attribute はシリアライズ後HTMLの状態
             const checked = cb && (cb.checked || cb.hasAttribute('checked'));
 
-            // Remove the checkbox marker from content (GFM plugin adds [ ]/[x] as text)
+            // 内容先頭のチェックボックス記号を除去（GFMが [ ]/[x] を文字として付与するため）
             let text = content.replace(/^\s*\[([ x])\]\s*/, '').trim();
-            // GFM requires a space after [x]/[ ] for task list recognition
-            // Use zero-width space for empty items (marked ignores trailing whitespace/NBSP)
+            // GFMでは [x]/[ ] の直後に空白が必要
+            // 空項目はゼロ幅スペースを使用（markedは末尾空白/NBSPを無視するため）
             if (!text) text = '\u200B';
 
-            // Calculate nesting depth (count ancestor <ul>/<ol> elements inside editor)
+            // ネスト深さを計算（editor内の祖先 <ul>/<ol> 数を数える）
             let depth = 0;
             let parent = node.parentElement;
             while (parent && parent.id !== 'editor') {
@@ -75,14 +76,14 @@ function configureTurndown() {
                 }
                 parent = parent.parentElement;
             }
-            // depth 1 = top-level list, no indent; depth 2 = one level nested, 4-space indent; etc.
+            // depth 1 = 最上位（インデントなし）、depth 2 = 1段ネスト（4スペース）
             const indent = '    '.repeat(Math.max(0, depth - 1));
 
             return indent + (checked ? '- [x] ' : '- [ ] ') + text + '\n';
         }
     });
 
-    // Custom rule: always convert <pre><code>...</code></pre> to fenced code blocks
+    // カスタムルール: <pre><code>...</code></pre> を常にフェンスコードへ変換
     turndownService.addRule('fencedCodeBlock', {
         filter: function(node) {
             return node.nodeName === 'PRE';
@@ -100,7 +101,7 @@ function configureTurndown() {
         }
     });
 
-    // Keep <br> in code blocks
+    // コードブロック内の <br> を保持
     turndownService.addRule('codeBlockBr', {
         filter: function(node) {
             return node.nodeName === 'BR' &&
@@ -112,18 +113,18 @@ function configureTurndown() {
         }
     });
 
-    // Keep <br> in table cells as HTML (Markdown tables don't support native line breaks)
+    // テーブルセル内の <br> はHTMLとして保持（Markdown表は改行をネイティブサポートしない）
     turndownService.addRule('tableCellBr', {
         filter: function(node) {
             if (node.nodeName !== 'BR') return false;
-            // Check if inside a table cell
+            // テーブルセル内か確認
             let parent = node.parentNode;
             while (parent) {
                 if (parent.nodeName === 'TD' || parent.nodeName === 'TH') {
                     return true;
                 }
                 if (parent.nodeName === 'TABLE') {
-                    return false; // Reached table but not inside a cell
+                    return false; // tableに到達したがセル内ではない
                 }
                 parent = parent.parentNode;
             }
@@ -134,7 +135,7 @@ function configureTurndown() {
         }
     });
 
-    // Remove copy buttons from Turndown output
+    // Turndown出力からコピーボタン類を除去
     turndownService.addRule('codeCopyBtn', {
         filter: function(node) {
             return node.classList && (
@@ -151,7 +152,7 @@ function configureTurndown() {
         }
     });
 
-    // Remove line numbers gutter from Turndown output
+    // Turndown出力から行番号ガターを除去
     turndownService.addRule('lineNumbersGutter', {
         filter: function(node) {
             return node.classList && node.classList.contains('line-numbers-gutter');
@@ -161,19 +162,19 @@ function configureTurndown() {
         }
     });
 
-    // KaTeX inline math
+    // KaTeX インライン数式
     turndownService.addRule('mathInline', {
         filter: function(node) {
             return node.classList && node.classList.contains('math-inline');
         },
         replacement: function(content, node) {
-            // Extract original math from data attribute or text content
+            // data属性またはテキスト内容から元の数式を抽出
             const mathText = node.getAttribute('data-math') || node.textContent.trim();
             return '$' + mathText + '$';
         }
     });
 
-    // KaTeX display math
+    // KaTeX ブロック数式
     turndownService.addRule('mathDisplay', {
         filter: function(node) {
             return node.classList && node.classList.contains('math-display');
@@ -184,13 +185,14 @@ function configureTurndown() {
         }
     });
 
-    // Mermaid blocks: convert rendered SVG back to fenced code block
+    // Mermaidブロック: 描画済みSVGをフェンスコードへ戻す
     turndownService.addRule('mermaidBlock', {
         filter: function(node) {
             return node.classList && node.classList.contains('mermaid-container');
         },
         replacement: function(content, node) {
-            const source = node.getAttribute('data-mermaid-source') || '';
+            const codeEl = node.querySelector('code.language-mermaid');
+            const source = node.getAttribute('data-mermaid-source') || (codeEl ? codeEl.textContent.trim() : '');
             return '\n```mermaid\n' + source + '\n```\n';
         }
     });
@@ -201,7 +203,8 @@ function configureTurndown() {
             return node.classList && node.classList.contains('mermaid-diagram-only');
         },
         replacement: function(content, node) {
-            const source = node.getAttribute('data-mermaid-source') || '';
+            const codeEl = node.querySelector('code.language-mermaid');
+            const source = node.getAttribute('data-mermaid-source') || (codeEl ? codeEl.textContent.trim() : '');
             // 標準的なMarkdown形式で保存
             return '\n```mermaid\n' + source + '\n```\n';
         }
@@ -213,13 +216,14 @@ function configureTurndown() {
             return node.classList && node.classList.contains('mermaid-code-and-diagram');
         },
         replacement: function(content, node) {
-            const source = node.getAttribute('data-mermaid-source') || '';
+            const codeEl = node.querySelector('code.language-mermaid');
+            const source = node.getAttribute('data-mermaid-source') || (codeEl ? codeEl.textContent.trim() : '');
             // 標準的なMarkdown形式で保存
             return '\n```mermaid\n' + source + '\n```\n';
         }
     });
 
-    // Images with custom size: preserve width in HTML output
+    // サイズ指定画像: HTML出力時に width を保持
     turndownService.addRule('imageWithSize', {
         filter: function(node) {
             return node.tagName === 'IMG' && node.style.width;
@@ -232,7 +236,7 @@ function configureTurndown() {
         }
     });
 
-    // Image error containers: convert back to markdown image syntax
+    // 画像エラー表示コンテナ: Markdown画像記法へ戻す
     turndownService.addRule('imageErrorContainer', {
         filter: function(node) {
             return node.classList && node.classList.contains('img-error-container');
@@ -250,14 +254,14 @@ function configureTurndown() {
         }
     });
 
-    // Toggle (details/summary) blocks: preserve as HTML
+    // トグル（details/summary）ブロック: HTMLとして保持
     turndownService.addRule('detailsBlock', {
         filter: function(node) {
             return node.nodeName === 'DETAILS';
         },
         replacement: function(content, node) {
             const summary = node.querySelector(':scope > summary');
-            // Get summary text excluding delete button
+            // 削除ボタンを除外したsummaryテキストを取得
             let summaryText = 'トグル';
             if (summary) {
                 const clone = summary.cloneNode(true);
@@ -265,13 +269,13 @@ function configureTurndown() {
                 if (deleteBtn) deleteBtn.remove();
                 summaryText = clone.textContent.trim() || 'トグル';
             }
-            // Get toggle-content div or all content after summary
+            // toggle-content div もしくは summary 以降の内容を取得
             const contentDiv = node.querySelector(':scope > .toggle-content');
             let innerMd = '';
             if (contentDiv) {
                 innerMd = turndownService.turndown(contentDiv.innerHTML).trim();
             } else {
-                // Fallback: collect all child nodes except summary
+                // フォールバック: summary 以外の子ノードを収集
                 const tempDiv = document.createElement('div');
                 Array.from(node.childNodes).forEach(child => {
                     if (child !== summary) tempDiv.appendChild(child.cloneNode(true));
@@ -283,7 +287,7 @@ function configureTurndown() {
         }
     });
 
-    // Remove toggle-content wrapper from turndown (handled by detailsBlock rule)
+    // turndown時は toggle-content ラッパーを除去（detailsBlockルールで処理済み）
     turndownService.addRule('toggleContentDiv', {
         filter: function(node) {
             return node.classList && node.classList.contains('toggle-content');
@@ -293,7 +297,7 @@ function configureTurndown() {
         }
     });
 
-    // TOC container: convert to markdown TOC
+    // TOCコンテナ: Markdownの目次へ変換
     turndownService.addRule('tocContainer', {
         filter: function(node) {
             return node.classList && node.classList.contains('toc-container');
@@ -320,7 +324,7 @@ function configureTurndown() {
     console.log('Turndown configured');
 }
 
-// ========== Markdown Conversion ==========
+// ========== Markdown変換 ==========
 function getMarkdown() {
     const editorEl = editor || document.getElementById('editor');
     if (!editorEl) {
@@ -336,11 +340,11 @@ function getMarkdown() {
         return editorEl.textContent || '';
     }
 
-    // Clone the editor content for conversion
+    // 変換用にエディタ内容をクローン
     const clone = editorEl.cloneNode(true);
 
-    // Sync checkbox checked property to checked attribute
-    // When innerHTML is serialized, only attributes are preserved, not properties
+    // チェックボックスの checked プロパティを checked 属性へ同期
+    // innerHTML シリアライズ時は属性のみ保持され、プロパティは保持されない
     const originalCheckboxes = editorEl.querySelectorAll('input[type="checkbox"]');
     const clonedCheckboxes = clone.querySelectorAll('input[type="checkbox"]');
     originalCheckboxes.forEach((original, i) => {
@@ -354,9 +358,9 @@ function getMarkdown() {
         }
     });
 
-    // Clean up contenteditable empty paragraph placeholders.
-    // Browsers insert <br> as caret placeholder in empty blocks;
-    // these should not serialize as backslash line breaks (\).
+    // contenteditable の空段落プレースホルダを除去
+    // ブラウザは空ブロックにキャレット用 <br> を入れるため、
+    // これがバックスラッシュ改行（\）としてシリアライズされないようにする。
     clone.querySelectorAll('p').forEach(p => {
         if (p.childNodes.length === 1 && p.firstChild.nodeName === 'BR') {
             p.removeChild(p.firstChild);
@@ -368,7 +372,7 @@ function getMarkdown() {
     return md;
 }
 
-// ========== Notion Markdown Preprocessor ==========
+// ========== Notion Markdown 前処理 ==========
 /**
  * Notion エクスポート形式の Markdown を正規化する。
  *
@@ -494,15 +498,15 @@ function setMarkdown(md) {
             return;
         }
 
-        // Normalize task list items: GFM requires a space after [x]/[ ]
-        // e.g. "- [x]" (no space) → "- [x] " (with space)
+        // タスクリスト項目を正規化（GFMでは [x]/[ ] の直後に空白が必要）
+        // 例: "- [x]"（空白なし）→ "- [x] "（空白あり）
         md = md.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
-        // Empty task items (only whitespace/NBSP after [x]) need ZWSP for marked to recognize
+        // 空タスク項目（[x]後ろが空白/NBSPのみ）は marked 認識のため ZWSP が必要
         md = md.replace(/^(\s*[-*+]\s+\[[ xX]\])\s*$/gm, '$1 \u200B');
 
-        // Prevent indented lone '-' from being interpreted as Setext H2 heading
-        // (e.g. nested list with empty trailing item: "- 3\n    -" → marked sees "3\n-" as H2)
-        // Only targets indented lines (top-level Setext headings like "Title\n-" are unaffected)
+        // インデントされた単独 '-' が Setext H2 見出しと誤解釈されるのを防ぐ
+        // （例: ネストリスト末尾空項目 "- 3\n    -" で marked が "3\n-" を H2 と解釈）
+        // 対象はインデント行のみ（"Title\n-" のようなトップレベルSetextには影響しない）
         md = md.replace(/^(\s+)-(\s*)$/gm, '$1- \u200B');
 
         // Notion エクスポート形式の複数行テーブルセルを正規化
@@ -511,18 +515,18 @@ function setMarkdown(md) {
         // 過去ドキュメントの非標準TOC表記を標準Markdownリンクに寄せる
         preprocessed = normalizeLegacyJapaneseTocNotation(preprocessed);
 
-        // Normalize display math blocks that start with a single "$" on its own line and end with "$$".
-        // This appears in some markdown exports and should be treated as standard display math.
+        // 単独行 "$" で始まり "$$" で終わるブロック数式を正規化
+        // 一部エクスポートで現れる形式を標準の表示数式として扱う
         preprocessed = preprocessed.replace(/^\$\s*\n([\s\S]+?)\n\$\$\s*$/gm, '$$$$\n$1\n$$$$');
 
         let dirtyHtml = marked.parse(preprocessed);
 
-        // Normalize display math blocks where the markdown parser inserts <br> for newline breaks
-        // inside what should be a single $$...$$ block.
+        // Markdownパーサが改行を <br> として挿入した表示数式ブロックを正規化
+        // 本来1つの $$...$$ ブロックであるべき内容を整える
         dirtyHtml = dirtyHtml.replace(/\$\$<br\s*\/?>\s*([\s\S]*?)<br\s*\/?>\$\$/g, '$$$$\n$1\n$$$$');
         dirtyHtml = dirtyHtml.replace(/\$<br\s*\/?>\s*([\s\S]*?)<br\s*\/?>\$\$/g, '$$$$\n$1\n$$$$');
 
-        // Sanitize HTML to prevent XSS attacks while preserving custom UI elements
+        // カスタムUI要素を維持しつつ、XSS対策としてHTMLをサニタイズ
         const cleanHtml = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(dirtyHtml, {
         ALLOWED_TAGS: [
             'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -552,34 +556,34 @@ function setMarkdown(md) {
             console.error('[setMarkdown] Exception:', e);
         }
 
-        // Make checkboxes interactive
+        // チェックボックスを操作可能にする
         editorEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
             cb.removeAttribute('disabled');
         });
 
-        // Highlight code blocks
+        // コードブロックをハイライト
         editorEl.querySelectorAll('pre code').forEach(block => {
             if (typeof hljs !== 'undefined') {
                 hljs.highlightElement(block);
             }
         });
 
-        // Render Mermaid diagrams
+        // Mermaid図を描画
         renderMermaidBlocks();
 
-        // Render KaTeX math expressions
+        // KaTeX数式を描画
         renderMathBlocks();
 
-        // Reconstruct TOC containers from parsed markdown, then restore heading IDs and add delete buttons
+        // 解析済みMarkdownからTOCコンテナを再構築し、見出しID復元と削除ボタン付与を行う
         reconstructTocContainers();
         restoreTocHeadingIds();
         ensureHeadingIdsForInPageLinks();
         setupTocDeleteButtons();
 
-        // Add line numbers to code blocks
+        // コードブロックへ行番号を追加
         updateAllLineNumbers();
 
-        // Ensure code block copy/wrap UI is initialized (race-safe path)
+        // コードブロックのコピー/折り返しUI初期化を保証（レース対策経路）
         if (typeof addCopyButtonsToCodeBlocks === 'function') {
             addCopyButtonsToCodeBlocks();
             editorEl.querySelectorAll('pre').forEach(pre => {
@@ -589,17 +593,17 @@ function setMarkdown(md) {
             });
         }
         
-        // Restore code wrap states
+        // コード折り返し状態を復元
         restoreCodeWrapStates();
 
-        // Setup toggle blocks
+        // トグルブロックをセットアップ
         setupToggleBlocks();
         
-        // Setup image error handling to display alt text
-        // Call synchronously - the handler checks img.complete to detect load failures immediately
+        // altテキスト表示用の画像エラーハンドリングをセットアップ
+        // ハンドラは img.complete を見るため同期呼び出しで即時失敗検知できる
         setupImageErrorHandling();
         
-        // Log notice if DOMPurify is not available
+        // DOMPurify未読込時は警告ログを出す
         if (typeof DOMPurify === 'undefined') {
             console.warn('[WARN] DOMPurify not loaded - XSS protection unavailable');
         }

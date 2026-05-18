@@ -1,5 +1,5 @@
 // =====================================================
-// SuMark - Export Manager Module
+// SuMark - エクスポート管理モジュール
 // =====================================================
 // exportPDF
 
@@ -8,23 +8,23 @@ async function exportPDF() {
         const tab = getActiveTab();
         const fileName = tab ? tab.title.replace(/\.md$/i, '') : '無題';
 
-        // Ask user where to save the HTML file (they'll print to PDF from browser)
+        // 保存先HTMLをユーザーに選択してもらう（ブラウザ側でPDF印刷）
         const savePath = await tauriSave({
             defaultPath: fileName + '.html',
             filters: [{ name: 'HTML', extensions: ['html'] }]
         });
         if (!savePath) return;
 
-        // Collect editor content (clean clone)
+        // エディタ内容をクリーンなクローンとして取得
         const clone = editor.cloneNode(true);
 
-        // Remove UI elements from clone
+        // クローンからUI要素を除去
         clone.querySelectorAll('.code-copy-container, .code-copy-btn, .toc-delete-btn, .image-resize-handle, .image-copy-btn, .line-numbers-gutter, .code-wrap-btn, .code-block-toolbar').forEach(el => el.remove());
 
-        // Convert asset:// / https://asset.localhost/ URLs to Base64 for PDF export
-        // On macOS, Tauri uses asset://localhost/ENCODED_PATH
-        // On Windows, Tauri uses https://asset.localhost/PATH
-        // Both forms need to be handled
+        // PDF出力向けに asset:// / https://asset.localhost/ を Base64 へ変換
+        // macOS では asset://localhost/ENCODED_PATH
+        // Windows では https://asset.localhost/PATH
+        // どちらの形式も処理する
         const allImages = clone.querySelectorAll('img');
         for (const img of allImages) {
             try {
@@ -32,19 +32,19 @@ async function exportPDF() {
                 let imgFilePath = null;
 
                 if (srcAttr.startsWith('asset://localhost/')) {
-                    // macOS format: asset://localhost/%2Fpath%2Fto%2Ffile
+                    // macOS形式: asset://localhost/%2Fpath%2Fto%2Ffile
                     imgFilePath = decodeURIComponent(srcAttr.substring('asset://localhost/'.length));
                 } else if (srcAttr.startsWith('https://asset.localhost/')) {
-                    // Windows format: https://asset.localhost/path/to/file
+                    // Windows形式: https://asset.localhost/path/to/file
                     imgFilePath = decodeURIComponent(srcAttr.substring('https://asset.localhost/'.length));
                 }
 
-                if (!imgFilePath) continue; // Skip non-asset images (data:, http:, etc.)
+                if (!imgFilePath) continue; // asset形式以外の画像（data:, http: など）はスキップ
 
-                // Read the image file
+                // 画像ファイルを読み込む
                 const binaryData = await readBinaryFile(imgFilePath);
 
-                // Detect MIME type from file extension
+                // 拡張子からMIMEタイプを判定
                 const lowerPath = imgFilePath.toLowerCase();
                 let mimeType = 'image/png';
                 if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) {
@@ -59,7 +59,7 @@ async function exportPDF() {
                     mimeType = 'image/bmp';
                 }
 
-                // Convert to Base64 (handle large files by chunking)
+                // Base64へ変換（大きいファイルはチャンク処理）
                 const bytes = new Uint8Array(binaryData);
                 let binary = '';
                 const chunkSize = 8192;
@@ -70,13 +70,13 @@ async function exportPDF() {
                 img.setAttribute('src', `data:${mimeType};base64,${base64}`);
             } catch (err) {
                 console.error('Failed to convert image to Base64:', img.getAttribute('src'), err);
-                // Keep original URL (will be broken but better than removing)
+                // 元URLを維持（壊れる可能性はあるが削除より優先）
             }
         }
 
         const editorHTML = clone.innerHTML;
 
-        // Read current stylesheet
+        // 現在のスタイルシートを取得
         let cssText = '';
         try {
             const stylesheets = document.styleSheets;
@@ -87,21 +87,21 @@ async function exportPDF() {
                         cssText += rules[j].cssText + '\n';
                     }
                 } catch (e) {
-                    // Cross-origin stylesheet, skip
+                    // クロスオリジンのスタイルシートはスキップ
                 }
             }
         } catch (e) {
             console.error('Failed to read stylesheets:', e);
         }
 
-        // Also collect hljs inline styles by grabbing the hljs theme link
+        // hljsテーマのCSSも取得して埋め込む
         let hljsCSS = '';
         try {
             const resp = await fetch('https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-light.min.css');
             if (resp.ok) hljsCSS = await resp.text();
         } catch (e) { /* ignore */ }
 
-        // Build complete HTML document
+        // 完全なHTMLドキュメントを構築
         const fullHTML = `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -109,7 +109,7 @@ async function exportPDF() {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${escapeHtml(fileName)}</title>
 <style>
-/* Base styles */
+/* 基本スタイル */
 body {
     font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-weight: 400;
@@ -121,19 +121,19 @@ body {
     background: white;
 }
 
-/* Headings */
+/* 見出し */
 h1, h2, h3, h4, h5, h6 { font-weight: 700; margin-top: 1.5em; margin-bottom: 0.5em; color: #1a1a1a; }
 h1 { font-size: 2em; border-bottom: 2px solid #eaecef; padding-bottom: 0.3em; }
 h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 0.3em; }
 h3 { font-size: 1.25em; }
 
-/* Paragraphs */
+/* 段落 */
 p { margin-bottom: 16px; }
 
-/* Links */
+/* リンク */
 a { color: #0366d6; text-decoration: none; }
 
-/* Inline code */
+/* インラインコード */
 code {
     padding: 0.2em 0.4em;
     font-size: 85%;
@@ -143,7 +143,7 @@ code {
     font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
 }
 
-/* Code blocks */
+/* コードブロック */
 pre {
     position: relative;
     margin-bottom: 16px;
@@ -172,12 +172,12 @@ pre code {
     min-width: 0;
 }
 
-/* Tables */
+/* テーブル */
 table { border-collapse: collapse; margin-bottom: 16px; width: 100%; }
 th, td { padding: 6px 13px; border: 1px solid #ddd; }
 th { background-color: #f6f8fa; font-weight: 700; }
 
-/* Blockquote */
+/* 引用 */
 blockquote {
     margin: 0 0 16px;
     padding: 0 1em;
@@ -185,21 +185,21 @@ blockquote {
     border-left: 4px solid #dfe2e5;
 }
 
-/* Lists */
+/* リスト */
 ul, ol { margin-bottom: 16px; padding-left: 2em; }
 li { margin-bottom: 4px; }
 
-/* Task list */
+/* タスクリスト */
 .task-list-item { list-style: none; margin-left: -1.5em; }
 input[type="checkbox"] { margin-right: 0.5em; }
 
-/* HR */
+/* 水平線 */
 hr { border: none; border-top: 2px solid #eaecef; margin: 24px 0; }
 
-/* Images */
+/* 画像 */
 img { max-width: 100%; }
 
-/* TOC */
+/* 目次 */
 .toc-container {
     margin: 16px 0;
     padding: 16px 20px;
@@ -215,10 +215,10 @@ img { max-width: 100%; }
 /* Mermaid */
 .mermaid-container { margin: 16px 0; text-align: center; }
 
-/* Highlight.js theme */
+/* Highlight.js テーマ */
 ${hljsCSS}
 
-/* Print optimization */
+/* 印刷最適化 */
 @media print {
     body { margin: 0; padding: 0; max-width: 100%; }
     pre { page-break-inside: avoid; }
@@ -235,7 +235,7 @@ ${hljsCSS}
 <body>
 ${editorHTML}
 <script>
-// Auto-trigger print dialog, then close the tab
+// 読み込み後に印刷ダイアログを自動表示
 window.onload = function() {
     window.print();
 };
@@ -245,7 +245,7 @@ window.onload = function() {
 
         await writeTextFile(savePath, fullHTML);
 
-        // Open in default browser for printing
+        // 既定ブラウザで開いて印刷する
         await invoke('open_in_browser', { path: savePath });
     } catch (err) {
         console.error('PDF export error:', err);

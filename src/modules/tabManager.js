@@ -103,8 +103,12 @@ function switchTab(id) {
     } catch (e) {
         console.error('[TabSwitch] Exception:', e);
     }
-    // Rebuild code block toolbar after sanitize; select/button can be stripped in restored HTML.
+    // サニタイズ後にコードブロックツールバーを再構築（restoredHTMLでは要素削除される）
     editor.querySelectorAll('.code-block-toolbar').forEach(el => el.remove());
+    // タブ復元ではSVGがsanitizeで落ちる場合があるため、描画済みフラグを一度クリアする
+    editor.querySelectorAll('.mermaid-diagram-only[data-mermaid-rendered], .mermaid-code-and-diagram[data-mermaid-rendered]').forEach(el => {
+        el.removeAttribute('data-mermaid-rendered');
+    });
     editor.parentElement.scrollTop = tab.scrollTop;
     
     // エディタが編集可能要素で始まることを確認
@@ -117,6 +121,7 @@ function switchTab(id) {
 
     // コードブロックをハイライト
     editor.querySelectorAll('pre code').forEach(block => {
+        if (block.classList.contains('language-mermaid')) return;
         if (typeof hljs !== 'undefined' && !block.dataset.highlighted) {
             hljs.highlightElement(block);
         }
@@ -139,7 +144,7 @@ function switchTab(id) {
     // コードブロックに行番号を追加
     updateAllLineNumbers();
 
-    // Ensure copy/wrap buttons are available after tab switch
+    // タブ切替後、コピー/ラップボタンが利用可能であることを確認
     if (typeof addCopyButtonsToCodeBlocks === 'function') {
         addCopyButtonsToCodeBlocks();
         editor.querySelectorAll('pre').forEach(pre => {

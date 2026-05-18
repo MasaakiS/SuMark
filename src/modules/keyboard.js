@@ -1,5 +1,5 @@
 // =====================================================
-// SuMark - Keyboard Event Handler Module
+// SuMark - キーボードイベント処理モジュール
 // =====================================================
 // キーボードイベント処理（ショートカット、Enter、Tab）
 // - handleKeyDown(): メインキーボードショートカットディスパッチャー
@@ -17,7 +17,7 @@
 //       insertDate, insertTime, applyInlineCode, insertLink (toolbarActions.js)
 //       newFile, openFile, saveFile, saveAsFile (fileManager.js)
 
-// ========== Main Keyboard Handler ==========
+// ========== メインキーボードハンドラ ==========
 function handleKeyDown(e) {
         // エンター押下時は即座に履歴を積む
         if (e.key === 'Enter' && !isComposing) {
@@ -27,28 +27,28 @@ function handleKeyDown(e) {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const mod = isMac ? e.metaKey : e.ctrlKey;
     
-    // Cmd/Ctrl+Z: Undo
+    // Cmd/Ctrl+Z: 元に戻す
     if (mod && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         performUndo();
         return;
     }
     
-    // Cmd/Ctrl+Shift+Z: Redo
+    // Cmd/Ctrl+Shift+Z: やり直し
     if (mod && e.key === 'z' && e.shiftKey) {
         e.preventDefault();
         performRedo();
         return;
     }
     
-    // Cmd/Ctrl+Y: Redo (alternative shortcut)
+    // Cmd/Ctrl+Y: やり直し（代替ショートカット）
     if (mod && e.key === 'y') {
         e.preventDefault();
         performRedo();
         return;
     }
 
-    // Cmd/Ctrl+P: PDF export
+    // Cmd/Ctrl+P: PDFエクスポート
     if (mod && e.key === 'p') {
         e.preventDefault();
         exportPDF();
@@ -73,13 +73,13 @@ function handleKeyDown(e) {
         return;
     }
 
-    // Backspace/Delete: handle non-editable elements (TOC, Mermaid, etc.)
+    // Backspace/Delete: 非編集要素（TOC, Mermaid など）を処理
     if (e.key === 'Backspace' || e.key === 'Delete') {
         const sel = window.getSelection();
         if (sel.rangeCount) {
             const range = sel.getRangeAt(0);
 
-            // Case 1: Selection spans across a non-editable element
+            // ケース1: 選択範囲が非編集要素をまたぐ
             if (!range.collapsed) {
                 const selected = range.commonAncestorContainer;
                 const nonEditable = selected.nodeType === 1
@@ -93,21 +93,21 @@ function handleKeyDown(e) {
                 }
             }
 
-            // Case 2: Cursor is at the boundary of a non-editable element
+            // ケース2: カーソルが非編集要素の境界にある
             if (range.collapsed) {
                 const node = range.startContainer;
                 const offset = range.startOffset;
                 let target = null;
 
                 if (e.key === 'Backspace') {
-                    // Check previous sibling or previous node
+                    // 前兄弟または直前ノードを確認
                     if (node.nodeType === 1 && offset > 0) {
                         const prev = node.childNodes[offset - 1];
                         if (prev && prev.nodeType === 1 && prev.getAttribute('contenteditable') === 'false') {
                             target = prev;
                         }
                     } else if (node.nodeType === 3 && offset === 0) {
-                        // At start of text node, check previous sibling of parent block
+                        // テキストノード先頭では親ブロックの前兄弟を確認
                         const block = getParentBlock(node);
                         if (block && block.previousElementSibling &&
                             block.previousElementSibling.getAttribute('contenteditable') === 'false') {
@@ -138,17 +138,17 @@ function handleKeyDown(e) {
             }
         }
 
-        // Backspace within an empty list item at end should exit list into an empty paragraph
+        // リスト末尾の空項目でBackspaceした場合はリストを抜けて空段落へ移る
         if (e.key === 'Backspace' && sel.rangeCount) {
             const range = sel.getRangeAt(0);
             if (range.collapsed) {
                 const block = getParentBlock(range.startContainer);
                 if (block && block.tagName === 'LI') {
-                    // Only treat as "empty" if no visible text (ignore <br>)
+                    // 可視テキストがない場合のみ「空」と判定（<br>は無視）
                     const text = block.textContent.replace(/\u200B/g, '').trim();
                     const isEmpty = text === '';
 
-                    // Ensure cursor is at start of the LI
+                    // カーソルがLI先頭にあることを確認
                     const testRange = document.createRange();
                     testRange.selectNodeContents(block);
                     testRange.setEnd(range.startContainer, range.startOffset);
@@ -157,22 +157,22 @@ function handleKeyDown(e) {
                     if (isEmpty && isAtStart) {
                         const list = block.parentNode;
                         if (list && (list.tagName === 'UL' || list.tagName === 'OL')) {
-                            // Only trigger when this is the last list item
+                            // 最後のリスト項目のときのみ発火
                             if (!block.nextElementSibling) {
                                 e.preventDefault();
 
                                 const listParent = list.parentNode;
                                 const nextSibling = list.nextSibling;
 
-                                // Remove the empty list item
+                                // 空のリスト項目を削除
                                 block.remove();
 
-                                // If list is now empty, remove it
+                                // リストが空になったらリスト自体を削除
                                 if (list.children.length === 0) {
                                     list.remove();
                                 }
 
-                                // Insert an empty paragraph after the list (or where the list was)
+                                // リスト直後（または元の位置）に空段落を挿入
                                 const p = document.createElement('p');
                                 p.innerHTML = '<br>';
                                 if (listParent) {
@@ -196,20 +196,20 @@ function handleKeyDown(e) {
         }
     }
 
-    // Enter key: special handling
+    // Enterキー: 特殊処理
     if (e.key === 'Enter') {
         handleEnterKey(e);
         return;
     }
 
-    // Tab key
+    // Tabキー処理
     if (e.key === 'Tab') {
         handleTabKey(e);
         return;
     }
 
-    // Arrow keys in table cells: move between cells when at boundaries
-    // (Up/Down always move if possible; Left/Right only if cursor is at edge)
+    // テーブルセル内の矢印キー: 境界条件でセル移動
+    // （Up/Downは可能なら常に移動、Left/Rightは端にいる場合のみ移動）
     if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         const arrowKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
         if (arrowKeys.includes(e.key)) {
@@ -254,7 +254,7 @@ function handleKeyDown(e) {
                         let moved = false;
 
                         if (e.key === 'ArrowUp') {
-                            // Move to cell above (same column index)
+                            // 上のセルへ移動（同一列）
                             const rows = Array.from(table.querySelectorAll('tr'));
                             const rowIndex = rows.indexOf(row);
                             if (rowIndex > 0) {
@@ -264,7 +264,7 @@ function handleKeyDown(e) {
                                 moved = moveToCell(target);
                             }
                         } else if (e.key === 'ArrowDown') {
-                            // Move to cell below (same column index)
+                            // 下のセルへ移動（同一列）
                             const rows = Array.from(table.querySelectorAll('tr'));
                             const rowIndex = rows.indexOf(row);
                             if (rowIndex < rows.length - 1) {
@@ -274,7 +274,7 @@ function handleKeyDown(e) {
                                 moved = moveToCell(target);
                             }
                         } else if (e.key === 'ArrowLeft' && atStart) {
-                            // Move to previous cell (or previous row end)
+                            // 前セルへ移動（なければ前行末尾）
                             if (idx > 0) {
                                 moved = moveToCell(cells[idx - 1]);
                             } else {
@@ -287,7 +287,7 @@ function handleKeyDown(e) {
                                 }
                             }
                         } else if (e.key === 'ArrowRight' && atEnd) {
-                            // Move to next cell (or next row start)
+                            // 次セルへ移動（なければ次行先頭）
                             if (idx < cells.length - 1) {
                                 moved = moveToCell(cells[idx + 1]);
                             } else {
@@ -311,7 +311,7 @@ function handleKeyDown(e) {
         }
     }
 
-    // Ctrl/Cmd+; → 日付, Ctrl/Cmd+Shift+; (Ctrl/Cmd+:) → 時刻
+    // Ctrl/Cmd+; → 日付、Ctrl/Cmd+Shift+; (Ctrl/Cmd+:) → 時刻
     if ((e.ctrlKey || e.metaKey) && e.key === ';') {
         e.preventDefault();
         insertDate();
@@ -323,7 +323,7 @@ function handleKeyDown(e) {
         return;
     }
 
-    // Cmd/Ctrl+W → close tab
+    // Cmd/Ctrl+W → タブを閉じる
     if (mod && e.key.toLowerCase() === 'w') {
         e.preventDefault();
         closeTab(activeTabId);
@@ -339,7 +339,7 @@ function handleKeyDown(e) {
         return;
     }
 
-    // Cmd/Ctrl+Tab: 次のタブへ移動 / Cmd/Ctrl+Shift+Tab: 前のタブへ移動
+    // Cmd/Ctrl+Tab: 次のタブへ / Cmd/Ctrl+Shift+Tab: 前のタブへ
     if (mod && e.key === 'Tab') {
         e.preventDefault();
         if (tabs.length > 1) {
@@ -355,7 +355,7 @@ function handleKeyDown(e) {
         return;
     }
 
-    // Modifier shortcuts (Cmd on Mac, Ctrl on Windows)
+    // 修飾キーショートカット（MacはCmd、WindowsはCtrl）
     if (mod) {
         switch (e.key.toLowerCase()) {
             case 'n':
@@ -396,20 +396,20 @@ function handleKeyDown(e) {
                     document.execCommand('strikethrough');
                 }
                 break;
-            // Cmd+Z / Cmd+Shift+Z (undo/redo) are handled natively
+            // Cmd+Z / Cmd+Shift+Z（undo/redo）は上で処理済み
         }
     }
 }
 
 // ========== Enter Key Handling ==========
 function handleEnterKey(e) {
-    // Skip Enter handling during IME composition (Japanese input, etc.)
-    // The Enter key during composition is for confirming the conversion, not for creating new lines
+    // IME変換中（日本語入力など）はEnter処理をスキップ
+        // IME変換中（日本語入力など）はEnter処理をスキップ
     if (isComposing) {
-        return; // Let the default IME behavior handle it
+        return; // IME既定動作に任せる
     }
     
-    // Shift+Enter: Insert soft line break (space space + newline for Markdown)
+    // Shift+Enter: ソフト改行を挿入（Markdown向けに半角スペース2つ + 改行）
     if (e.shiftKey) {
         e.preventDefault();
         const sel = window.getSelection();
@@ -417,18 +417,18 @@ function handleEnterKey(e) {
         
         const range = sel.getRangeAt(0);
         
-        // Insert two spaces followed by a line break
-        // This creates a <br> in Markdown when rendered
+        // 半角スペース2つを挿入
+        // Markdownレンダリング時に <br> へ変換
         const textNode = document.createTextNode('  ');
         range.insertNode(textNode);
         
-        // Move cursor after the spaces
+        // カーソルをスペースの後ろへ移動
         range.setStartAfter(textNode);
         range.setEndAfter(textNode);
         sel.removeAllRanges();
         sel.addRange(range);
         
-        // Insert line break
+        // 改行を挿入
         document.execCommand('insertLineBreak');
         
         markModified();
@@ -451,7 +451,7 @@ function handleEnterKey(e) {
         const detailsEl = detailsAncestor;
         const summaryEl = detailsEl.querySelector(':scope > summary');
 
-        // Case 1: Cursor is in summary → move to toggle content
+        // ケース1: カーソルがsummary内 → toggle-contentへ移動
         if (summaryEl && summaryEl.contains(range.startContainer)) {
             e.preventDefault();
             let contentDiv = detailsEl.querySelector(':scope > .toggle-content');
@@ -475,17 +475,17 @@ function handleEnterKey(e) {
             return;
         }
 
-        // Case 2: Cursor is in toggle content
+        // ケース2: カーソルがtoggle-content内
         const toggleContent = detailsEl.querySelector(':scope > .toggle-content');
         if (toggleContent && toggleContent.contains(range.startContainer)) {
             const currentBlock = getParentBlock(range.startContainer);
 
-            // If inside a list within toggle, check if at very start of first item
-            // to allow inserting elements before the list
+            // toggle内リストでは、先頭項目の先頭位置かを確認
+            // リスト前への要素挿入を可能にする
             if (currentBlock && (currentBlock.tagName === 'LI')) {
                 const parentList = currentBlock.closest('ul, ol');
                 if (parentList && toggleContent.firstElementChild === parentList) {
-                    // Check if this is the first LI and cursor is at the very start
+                    // 先頭LIかつカーソルが最先頭かを確認
                     const firstLi = parentList.querySelector('li');
                     if (firstLi === currentBlock) {
                         const testRange = document.createRange();
@@ -502,11 +502,11 @@ function handleEnterKey(e) {
                         }
                     }
                 }
-                // fall through to normal list Enter handling
+                // 通常のリストEnter処理へフォールスルー
             } else if (currentBlock && (currentBlock.tagName === 'TD' || currentBlock.tagName === 'TH')) {
-                // fall through to normal table Enter handling
+                // 通常のテーブルEnter処理へフォールスルー
             } else {
-                // Check if cursor is at the very start of the first element
+                // 先頭要素の先頭位置にカーソルがあるか確認
                 if (currentBlock && toggleContent.firstElementChild === currentBlock) {
                     const testRange = document.createRange();
                     testRange.selectNodeContents(currentBlock);
@@ -522,7 +522,7 @@ function handleEnterKey(e) {
                     }
                 }
 
-                // Empty line at end: exit toggle
+                // 末尾の空行ならトグルを抜ける
                 if (currentBlock && currentBlock.textContent.trim() === '') {
                     const children = Array.from(toggleContent.children);
                     const idx = children.indexOf(currentBlock);
@@ -541,7 +541,7 @@ function handleEnterKey(e) {
                     }
                 }
 
-                // Normal Enter in toggle content: split text and create new paragraph
+                // toggle-content内の通常Enter: 位置で分割して新段落を作成
                 if (currentBlock) {
                     e.preventDefault();
                     const afterRange = document.createRange();
@@ -556,12 +556,12 @@ function handleEnterKey(e) {
                         newP.innerHTML = '<br>';
                     }
 
-                    // Clean up current block if empty
+                    // 現在ブロックが空なら整形
                     if (!currentBlock.textContent.trim() && !currentBlock.querySelector('br')) {
                         currentBlock.innerHTML = '<br>';
                     }
 
-                    // Insert new paragraph after current block within toggle-content
+                    // toggle-content内で現在ブロック直後に新段落を挿入
                     if (currentBlock.nextSibling) {
                         toggleContent.insertBefore(newP, currentBlock.nextSibling);
                     } else {
@@ -570,7 +570,7 @@ function handleEnterKey(e) {
                     setCursorTo(newP);
                     return;
                 } else {
-                    // No block found (text directly in toggle-content)
+                    // ブロックが見つからない（toggle-content直下テキスト）
                     e.preventDefault();
                     const newP = document.createElement('p');
                     newP.innerHTML = '<br>';
@@ -587,14 +587,14 @@ function handleEnterKey(e) {
 
     const tag = block.tagName;
 
-    // In heading: create paragraph, not another heading
+    // 見出し内では次の見出しを作らず段落を作る
     if (/^H[1-6]$/.test(tag)) {
         e.preventDefault();
 
-        // Check if the heading is empty (convert to paragraph)
+        // 見出しが空なら段落へ変換
         const headingText = block.textContent.trim();
         if (headingText === '') {
-            // Convert empty heading to paragraph
+            // 空見出しを段落へ変換
             const p = document.createElement('p');
             p.innerHTML = '<br>';
             block.parentNode.insertBefore(p, block);
@@ -603,7 +603,7 @@ function handleEnterKey(e) {
             return;
         }
 
-        // Check if cursor is at the very beginning of the heading
+        // カーソルが見出し先頭にあるか確認
         const isAtStart = (function() {
             if (!range.collapsed) return false;
             const testRange = document.createRange();
@@ -616,44 +616,44 @@ function handleEnterKey(e) {
         p.innerHTML = '<br>';
 
         if (isAtStart) {
-            // Insert empty paragraph BEFORE heading (to push heading down)
+            // 見出しの前に空段落を挿入（見出しを下へ押し下げる）
             block.parentNode.insertBefore(p, block);
-            // Keep cursor in the heading
+            // カーソルは見出し内に維持
             setCursorTo(block);
         } else {
-            // Insert paragraph after heading
+            // 見出しの後ろに段落を挿入
             block.parentNode.insertBefore(p, block.nextSibling);
             setCursorTo(p);
         }
         return;
     }
 
-    // In code block (<pre> or <code> inside <pre>): insert line break
-    // If cursor is on an empty line at the end, exit the code block
+    // コードブロック（<pre> または <pre> 内 <code>）では改行を挿入
+    // 末尾の空行にいる場合はコードブロックを抜ける
     if (tag === 'PRE' || (tag === 'CODE' && block.parentNode && block.parentNode.tagName === 'PRE')) {
         const codeEl = tag === 'CODE' ? block : block.querySelector('code');
         const preEl = tag === 'PRE' ? block : block.parentNode;
         const targetEl = codeEl || preEl;
 
-        // Check if cursor is on an empty trailing line
+        // カーソルが末尾空行にあるか確認
         if (isOnEmptyTrailingLine(targetEl, range)) {
             e.preventDefault();
-            // Remove trailing empty content (<br> elements and trailing \n)
+            // 末尾の空要素（<br> と末尾 \n）を除去
             removeTrailingEmptyLines(targetEl);
-            // Preserve language class if it was cleared
+            // 言語クラスが消えていた場合に備えて保持
             if (codeEl && codeEl !== targetEl) {
-                // codeEl is the <code> element, class should be preserved
+                // codeEl は <code> 要素なのでクラス維持のみ
             }
-            // Create paragraph after code block
+            // コードブロック直後に段落を作成
             const p = document.createElement('p');
             p.innerHTML = '<br>';
             preEl.parentNode.insertBefore(p, preEl.nextSibling);
             setCursorTo(p);
-            // Re-highlight the code block
+            // コードブロックを再ハイライト
             if (codeEl && typeof hljs !== 'undefined' && !codeEl.classList.contains('language-mermaid')) {
                 highlightCodeBlock(codeEl);
             }
-            // Render Mermaid blocks if this was a mermaid code block
+            // Mermaidコードブロックなら再描画
             if (codeEl && codeEl.classList.contains('language-mermaid')) {
                 renderMermaidBlocks();
             }
@@ -661,12 +661,12 @@ function handleEnterKey(e) {
         }
         e.preventDefault();
         document.execCommand('insertLineBreak');
-        // Update line numbers after new line
+        // 改行後に行番号を更新
         if (preEl) updateLineNumbers(preEl);
         return;
     }
 
-    // In list item: if empty, outdent one level per Enter, finally exit list
+    // リスト項目内: 空項目ならEnterごとに1段アウトデントし、最後はリスト外へ
     if (tag === 'LI') {
         const text = block.textContent.trim();
         const hasCheckbox = block.querySelector('input[type="checkbox"]');
@@ -693,22 +693,22 @@ function handleEnterKey(e) {
             }
         }
 
-        // Task list: create a new task list item with checkbox on Enter
+        // タスクリスト: Enterでチェックボックス付き新規項目を作成
         if (hasCheckbox) {
             e.preventDefault();
 
-            // Split text at cursor position
+            // カーソル位置でテキストを分割
             const sel2 = window.getSelection();
             const r = sel2.getRangeAt(0);
 
-            // Get the text content after the cursor
+            // カーソル以降の内容を取得
             const afterRange = document.createRange();
             afterRange.setStart(r.startContainer, r.startOffset);
             afterRange.setEndAfter(block.lastChild);
             const afterFrag = afterRange.extractContents();
 
-            // Keep extracted DOM structure as-is (e.g. code block toolbar + pre).
-            // Flattening with textContent causes UI labels to leak into plain text.
+            // 抽出したDOM構造（例: コードツールバー + pre）はそのまま保持する。
+            // textContent平坦化するとUIラベルが本文へ混入する
             const hasAfterContent = Array.from(afterFrag.childNodes).some(node => {
                 if (node.nodeType === Node.TEXT_NODE) {
                     return node.textContent.trim() !== '';
@@ -716,7 +716,7 @@ function handleEnterKey(e) {
                 return true;
             });
 
-            // Create new LI with checkbox
+            // チェックボックス付き新規LIを作成
             const newLi = document.createElement('li');
             newLi.className = 'task-list-item';
             const newCb = document.createElement('input');
@@ -724,7 +724,7 @@ function handleEnterKey(e) {
             newCb.checked = false;
             newLi.appendChild(newCb);
 
-            // Preserve a space after checkbox for caret placement consistency.
+            // キャレット配置を安定させるため、チェックボックス後の空白を保持
             const spacer = document.createTextNode(' ');
             newLi.appendChild(spacer);
 
@@ -736,7 +736,7 @@ function handleEnterKey(e) {
                 newLi.appendChild(afterFrag);
             }
 
-            // Insert after current LI
+            // 現在LIの直後へ挿入
             const parentList = block.parentNode;
             if (block.nextSibling) {
                 parentList.insertBefore(newLi, block.nextSibling);
@@ -744,7 +744,7 @@ function handleEnterKey(e) {
                 parentList.appendChild(newLi);
             }
 
-            // Set cursor after the checkbox space in new item
+            // 新規項目のチェックボックス後ろへカーソル移動
             const textNode = spacer;
             if (textNode && textNode.nodeType === Node.TEXT_NODE) {
                 const newRange = document.createRange();
@@ -752,25 +752,25 @@ function handleEnterKey(e) {
                 newRange.collapse(true);
                 sel2.removeAllRanges();
                 sel2.addRange(newRange);
-                // Ensure editor focus
+                // エディタフォーカスを保証
                 editor.focus();
             } else {
-                // Fallback: use setCursorTo if text node not found
+                // フォールバック: テキストノードが無ければ setCursorTo を使う
                 setCursorTo(newLi);
             }
             
             return;
         }
 
-        // Otherwise, let default list behavior handle it
-        // But inside toggle-content, browser default doesn't work properly
+        // それ以外は既定のリスト挙動に任せる
+        // ただし toggle-content 内ではブラウザ既定動作が不安定なため独自処理
         const listInToggle = block.closest('.toggle-content');
         if (listInToggle) {
             e.preventDefault();
             const sel3 = window.getSelection();
             const r3 = sel3.getRangeAt(0);
 
-            // Extract content after cursor
+            // カーソル以降の内容を抽出
             const afterRange = document.createRange();
             afterRange.setStart(r3.startContainer, r3.startOffset);
             afterRange.setEndAfter(block.lastChild || block);
@@ -784,7 +784,7 @@ function handleEnterKey(e) {
                 newLi.innerHTML = '<br>';
             }
 
-            // Clean up current LI if empty
+            // 現在LIが空なら整形
             if (!block.textContent.trim() && !block.querySelector('br')) {
                 block.innerHTML = '<br>';
             }
@@ -801,12 +801,12 @@ function handleEnterKey(e) {
         return;
     }
 
-    // In blockquote: Enter exits blockquote, Shift+Enter inserts newline inside
+    // 引用内: Enterで引用を抜ける（Shift+Enterは上で処理）
     if (tag === 'BLOCKQUOTE' || (block.parentNode && block.parentNode.tagName === 'BLOCKQUOTE')) {
         e.preventDefault();
         const bqBlock = tag === 'BLOCKQUOTE' ? block : block.parentNode;
 
-        // Exit blockquote: insert a new <p> after the blockquote
+        // 引用を抜けるため、blockquote直後に新しい <p> を挿入
         const p = document.createElement('p');
         p.innerHTML = '<br>';
         bqBlock.parentNode.insertBefore(p, bqBlock.nextSibling);
@@ -814,7 +814,7 @@ function handleEnterKey(e) {
         return;
     }
 
-    // Check for code block trigger: ``` followed by Enter
+    // コードブロック開始トリガー: ``` の直後にEnter
     if (block.textContent.startsWith('```')) {
         const blockTag = block.tagName;
         if (blockTag === 'P' || blockTag === 'DIV') {
@@ -830,11 +830,11 @@ function handleEnterKey(e) {
             block.parentNode.replaceChild(pre, block);
             pre.parentNode.insertBefore(p, pre.nextSibling);
             setCursorTo(code);
-            // Apply initial highlighting if language specified
+            // 言語指定があれば初期ハイライトを適用
             if (lang && typeof hljs !== 'undefined') {
                 highlightCodeBlock(code);
             }
-            // Add line numbers
+            // 行番号を追加
             updateLineNumbers(pre);
             return;
         }
@@ -850,24 +850,24 @@ function handleTabKey(e) {
 
     const block = getParentBlock(sel.getRangeAt(0).startContainer);
 
-    // In code blocks: insert actual tab (4 spaces)
+    // コードブロック内では実タブ相当（半角4スペース）を挿入
     if (block && (block.tagName === 'PRE' || block.tagName === 'CODE' ||
         (block.parentNode && block.parentNode.tagName === 'PRE'))) {
         document.execCommand('insertText', false, '    ');
         return;
     }
 
-    // In lists: indent/outdent via proper DOM manipulation
+    // リスト内はDOM操作でインデント/アウトデント
     // (execCommand('indent') creates malformed HTML: <ul> directly inside <ul> without <li> wrapper)
     if (block && block.tagName === 'LI') {
         if (e.shiftKey) {
-            // Outdent: move this LI from sub-list to parent list
+            // アウトデント: 現在LIをサブリストから親リストへ移動
             const list = block.parentNode;
             const parentLi = list ? list.closest('li') : null;
             const parentList = parentLi ? parentLi.parentNode : null;
 
             if (parentList && (parentList.tagName === 'UL' || parentList.tagName === 'OL')) {
-                // Move any remaining siblings in the sub-list into a new sub-list under this LI
+                // サブリストに残る兄弟要素を、このLI配下の新サブリストへ移す
                 const remainingSiblings = [];
                 let sib = block.nextElementSibling;
                 while (sib) {
@@ -876,7 +876,7 @@ function handleTabKey(e) {
                 }
                 if (remainingSiblings.length > 0) {
                     const newSubList = document.createElement(list.tagName);
-                    // Copy task-list classes if applicable
+                    // 必要に応じてタスクリスト用クラスを引き継ぐ
                     if (list.classList.contains('contains-task-list')) {
                         newSubList.classList.add('contains-task-list');
                     }
@@ -884,27 +884,27 @@ function handleTabKey(e) {
                     block.appendChild(newSubList);
                 }
 
-                // Insert this LI after parentLi in the parent list
+                // 親リストで parentLi の直後にこのLIを挿入
                 parentList.insertBefore(block, parentLi.nextSibling);
 
-                // Remove empty sub-list
+                // 空になったサブリストを削除
                 if (list.children.length === 0) {
                     list.remove();
                 }
                 setCursorTo(block);
             }
         } else {
-            // Indent: move this LI into the previous sibling's sub-list
+            // インデント: このLIを直前兄弟のサブリストへ移動
             const prevLi = block.previousElementSibling;
             if (!prevLi || prevLi.tagName !== 'LI') {
-                // Can't indent the first item in a list
+                // 先頭項目はインデント不可
                 return;
             }
 
             const parentList = block.parentNode; // UL or OL
             const listTag = parentList.tagName;   // 'UL' or 'OL'
 
-            // Check if prevLi already has a child sub-list of the same type
+            // prevLi が同種の子サブリストを持つか確認
             let subList = null;
             for (let i = prevLi.children.length - 1; i >= 0; i--) {
                 if (prevLi.children[i].tagName === listTag) {
@@ -915,7 +915,7 @@ function handleTabKey(e) {
 
             if (!subList) {
                 subList = document.createElement(listTag);
-                // Copy task-list classes if applicable
+                // 必要に応じてタスクリスト用クラスを引き継ぐ
                 if (parentList.classList.contains('contains-task-list')) {
                     subList.classList.add('contains-task-list');
                 }
@@ -928,7 +928,7 @@ function handleTabKey(e) {
         return;
     }
 
-    // In table cells: move to the next cell on Tab, or previous cell on Shift+Tab
+    // テーブルセル内: Tabで次セル、Shift+Tabで前セルへ移動
     if (block && (block.tagName === 'TD' || block.tagName === 'TH' || (block.closest && block.closest('td, th')))) {
         const cell = (block.tagName === 'TD' || block.tagName === 'TH') ? block : block.closest('td, th');
         if (cell) {
@@ -942,7 +942,7 @@ function handleTabKey(e) {
                     let createdRow = false;
 
                     if (e.shiftKey) {
-                        // Move to previous cell; if at start, go to previous row end
+                        // 前セルへ移動。先頭セルなら前行末尾へ移動
                         if (idx > 0) {
                             targetCell = cells[idx - 1];
                         } else {
@@ -957,7 +957,7 @@ function handleTabKey(e) {
                             }
                         }
                     } else {
-                        // Move to next cell; if at end, go to next row first cell
+                        // 次セルへ移動。末尾セルなら次行先頭へ移動
                         if (idx < cells.length - 1) {
                             targetCell = cells[idx + 1];
                         } else {
@@ -1055,6 +1055,6 @@ function handleTabKey(e) {
         }
     }
 
-    // Default: insert 4 spaces
+    // 既定動作: 半角4スペースを挿入
     document.execCommand('insertText', false, '    ');
 }
