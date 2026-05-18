@@ -9,28 +9,31 @@
  *       undoRedo.js (saveEditorState) ※ pasteImageFile内で使用
  */
 
-// ========== Image Error Handling ==========
+// ========== 画像エラーハンドリング ==========
 let imageMutationObserver = null;
+// DOM変更による不要な変更判定を避けるため、処理済み画像をWeakSetで追跡
+let processedImages = new WeakSet();
+let failedImages = new WeakSet();
 
 /**
  * 画像のMutationObserverをセットアップ（新規画像の自動エラーハンドリング）
  */
 function setupImageMutationObserver() {
-    // Create a MutationObserver to watch for new images added to the editor
+    // エディタに追加される新規画像を監視するMutationObserverを作成
     if (imageMutationObserver) {
         imageMutationObserver.disconnect();
     }
     
     imageMutationObserver = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
-            // Check for added nodes
+            // 追加ノードを確認
             mutation.addedNodes.forEach((node) => {
                 if (node.nodeType === Node.ELEMENT_NODE) {
-                    // Check if the node itself is an image
+                    // ノード自体が画像か確認
                     if (node.tagName === 'IMG') {
                         handleSingleImage(node);
                     }
-                    // Check for images within the added node
+                    // 追加ノード配下の画像を確認
                     else if (node.querySelectorAll) {
                         const images = node.querySelectorAll('img');
                         if (images.length > 0) {
@@ -42,7 +45,7 @@ function setupImageMutationObserver() {
         });
     });
     
-    // Start observing the editor
+    // エディタの監視を開始
     imageMutationObserver.observe(editor, {
         childList: true,
         subtree: true
@@ -54,28 +57,27 @@ function setupImageMutationObserver() {
  * @param {HTMLImageElement} img - 対象画像要素
  */
 function handleSingleImage(img) {
-    // Skip if already processed
-    if (img.dataset.errorHandled) {
+    // 既に処理済みならスキップ
+    if (processedImages.has(img)) {
         return;
     }
-    img.dataset.errorHandled = 'true';
+    processedImages.add(img);
     
-    // Function to handle error and display alt text
+    // 読み込み失敗時に代替表示へ置換する関数
     const handleImageError = function() {
-        // Skip if already showing alt text or if image loaded successfully
-        if (this.classList.contains('img-error-processed')) {
+        // 既に代替表示済み、または読み込み成功済みならスキップ
+        if (failedImages.has(this)) {
             return;
         }
         if (this.complete && this.naturalWidth > 0) {
-            return; // Image loaded successfully
+            return; // 画像読み込み成功
         }
-        
-        this.classList.add('img-error-processed');
+        failedImages.add(this);
         
         const alt = this.getAttribute('alt') || '画像を読み込めません';
         const src = this.getAttribute('src') || '';
         
-        // Create a container to display alt text
+        // 代替テキスト表示用コンテナを作成
         const container = document.createElement('div');
         container.className = 'img-error-container';
         container.setAttribute('contenteditable', 'false');
@@ -91,26 +93,27 @@ function handleSingleImage(img) {
         container.appendChild(altText);
         container.appendChild(srcText);
         
-        // Replace image with error container
+        // 画像をエラー表示コンテナへ置換
         if (this.parentNode) {
             this.parentNode.replaceChild(container, this);
-            markModified();
+
+            // 画像読み込み失敗は表示時の実行時問題で、ユーザー編集ではない。
+            // 不要なdirty判定を避けるため、未変更タブの内容を描画後HTMLへ揃える。
+            const activeTab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+            if (activeTab && !activeTab.isModified) {
+                activeTab.content = editor.innerHTML;
+            }
         }
     };
     
-    // Add error event listener
+    // errorイベントリスナーを追加
     img.addEventListener('error', handleImageError);
     
-    // Also add load event to mark successful loads
-    img.addEventListener('load', function() {
-        this.classList.add('img-loaded-successfully');
-    });
-    
-    // Check current state
+    // 現在状態を確認
     if (img.complete) {
-        // Image has finished loading (or failed)
+        // 読み込み完了済み（成功または失敗）
         if (img.naturalWidth === 0 && img.naturalHeight === 0) {
-            // Failed to load
+            // 読み込み失敗
             handleImageError.call(img);
         }
     }
@@ -120,7 +123,7 @@ function handleSingleImage(img) {
  * 既存画像のエラーハンドリングを初期化
  */
 function setupImageErrorHandling() {
-    // Handle image load errors and display alt text
+    // 画像読み込み失敗時に代替テキスト表示へ切り替える
     const images = editor.querySelectorAll('img');
     
     images.forEach((img) => {
@@ -156,7 +159,7 @@ function setupImageResize() {
         try {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            // Use natural dimensions for best quality
+            // 最高品質のため自然な寸法を使用
             canvas.width = activeImage.naturalWidth || activeImage.width;
             canvas.height = activeImage.naturalHeight || activeImage.height;
             ctx.drawImage(activeImage, 0, 0, canvas.width, canvas.height);
@@ -166,7 +169,7 @@ function setupImageResize() {
                 // 1. Try Tauri native clipboard API if available
                 if (window.__TAURI__ && window.__TAURI__.tauri && window.__TAURI__.tauri.invoke) {
                     try {
-                        // Convert blob to base64
+                        // blob を base64 へ変換
                         const base64 = await new Promise((resolve, reject) => {
                             const reader = new FileReader();
                             reader.onloadend = () => resolve(reader.result.split(',')[1]);
@@ -198,7 +201,7 @@ function setupImageResize() {
                 } else {
                     showCopyError('クリップボード API がサポートされていません');
                 }
-                // --- Hybrid clipboard logic end ---
+                // --- ハイブリッドクリップボード処理終了 ---
             }
         } catch (err) {
             console.error('Image copy failed:', err);
@@ -233,7 +236,7 @@ function setupImageResize() {
         }
     });
 
-    // Add double-click handler to expand image
+    // ダブルクリックで画像ビューアを開く
     editor.addEventListener('dblclick', (e) => {
         if (e.target.tagName === 'IMG') {
             e.preventDefault();
@@ -264,7 +267,7 @@ function setupImageResize() {
         const rect = activeImage.getBoundingClientRect();
         resizeHandle.style.left = (rect.right - 12) + 'px';
         resizeHandle.style.top = (rect.bottom - 12) + 'px';
-        // Position copy button at top-right of image
+        // コピーボタンを画像の右上へ配置
         copyBtn.style.left = (rect.right - copyBtn.offsetWidth - 4) + 'px';
         copyBtn.style.top = (rect.top + 4) + 'px';
     }
@@ -305,14 +308,14 @@ function setupImageResize() {
     });
 }
 
-// ========== Image Viewer ==========
+// ========== 画像ビューア ==========
 let imageViewerModal = null;
 
 /**
  * 画像ビューア（モーダル）をセットアップ
  */
 function setupImageViewer() {
-    // Create modal element
+    // モーダル要素を作成
     imageViewerModal = document.createElement('div');
     imageViewerModal.className = 'image-viewer-modal';
     imageViewerModal.innerHTML = `
@@ -324,18 +327,18 @@ function setupImageViewer() {
     `;
     document.body.appendChild(imageViewerModal);
 
-    // Close button
+    // 閉じるボタン
     const closeBtn = imageViewerModal.querySelector('.image-viewer-close');
     closeBtn.addEventListener('click', closeImageViewer);
 
-    // Modal background click to close
+    // 背景クリックで閉じる
     imageViewerModal.addEventListener('click', (e) => {
         if (e.target === imageViewerModal) {
             closeImageViewer();
         }
     });
 
-    // Escape key to close
+    // Escapeキーで閉じる
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && imageViewerModal && imageViewerModal.classList.contains('active')) {
             closeImageViewer();
@@ -356,7 +359,7 @@ function openImageViewer(img) {
     viewerImg.src = img.src;
     viewerImg.alt = img.alt || '画像';
     
-    // Display image info (alt text or path)
+    // 画像情報（altテキストまたはパス）を表示
     if (img.alt) {
         infoDiv.textContent = 'Alt: ' + img.alt;
     } else if (img.src) {
@@ -367,7 +370,7 @@ function openImageViewer(img) {
     }
 
     imageViewerModal.classList.add('active');
-    document.body.style.overflow = 'hidden';  // Prevent scrolling
+    document.body.style.overflow = 'hidden';  // スクロールを抑止
 }
 
 /**
@@ -376,22 +379,22 @@ function openImageViewer(img) {
 function closeImageViewer() {
     if (!imageViewerModal) return;
     imageViewerModal.classList.remove('active');
-    document.body.style.overflow = '';  // Restore scrolling
+    document.body.style.overflow = '';  // スクロールを復元
 }
 
-// ========== Image Paste ==========
-
+// ========== 画像ペースト ==========
+// ========== 画像リサイズ ==========
 /**
- * 画像ファイルをペーストしてエディタに挿入
+    // 画像コピーボタン
  * @param {File} file - ペーストされた画像ファイル
- */
+        // 品質優先で自然寸法を使用
 function pasteImageFile(file) {
-    const reader = new FileReader();
+            // blob を base64 へ変換
     reader.onload = function(event) {
-        const base64 = event.target.result;
-        // Insert image as markdown to ensure clean conversion to relative paths during save
-        const markdownImage = '![貼り付け画像](' + base64 + ')';
-        const html = '<img src="' + base64 + '" alt="貼り付け画像">';
+        // --- ハイブリッドクリップボード処理開始 ---
+        // 1. 利用可能ならTauriネイティブクリップボードAPIを試す
+        // 2. Web Clipboard APIを試す
+        // 3. フォールバック: 画像ファイル名をテキストとしてコピー
         editor.focus();
         document.execCommand('insertHTML', false, html);
         markModified();
@@ -399,7 +402,7 @@ function pasteImageFile(file) {
     reader.readAsDataURL(file);
 }
 
-// ========== Image File Utilities ==========
+// ========== 画像ファイルユーティリティ ==========
 
 /**
  * MIMEタイプから拡張子に変換
@@ -426,13 +429,13 @@ function mimeToExt(mime) {
  * @returns {string} 生成されたファイル名
  */
 function generateImageFileName(alt, counter, ext) {
-    // Use alt text as filename if it looks like a filename with extension
+    // altテキストが拡張子付きファイル名ならそれをベースに使う
     if (alt && /^[\w.-]+$/.test(alt) && alt.includes('.')) {
         const name = alt.replace(/\.[^.]+$/, '');
         const origExt = alt.split('.').pop();
         return name + '_' + String(counter).padStart(3, '0') + '.' + origExt;
     }
-    // Use alt text (sanitized) + counter for uniqueness
+    // altテキスト（サニタイズ済み）+連番で一意化
     if (alt && alt.trim()) {
         const sanitized = alt.trim()
             .replace(/[^\w\u3000-\u9FFF\u4E00-\u9FFF\uF900-\uFAFF-]/g, '_')
@@ -456,29 +459,29 @@ function generateImageFileName(alt, counter, ext) {
 async function saveImageFile(fileDir, imageDir, fileName, base64Data) {
     const dirPath = fileDir + '/' + imageDir;
 
-    // Create directory if it doesn't exist
+    // ディレクトリがなければ作成
     try {
         const dirExists = await exists(dirPath);
         if (!dirExists) {
             await createDir(dirPath, { recursive: true });
         }
     } catch (e) {
-        // Try to create anyway
+        // 念のため作成を試みる
         try {
             await createDir(dirPath, { recursive: true });
         } catch (e2) {
-            // Directory might already exist, continue
+            // 既に存在する可能性があるため継続
         }
     }
 
-    // Decode Base64 to binary
+    // Base64をバイナリへデコード
     const binaryStr = atob(base64Data);
     const bytes = new Uint8Array(binaryStr.length);
     for (let i = 0; i < binaryStr.length; i++) {
         bytes[i] = binaryStr.charCodeAt(i);
     }
 
-    // Write file
+    // ファイル書き込み
     const filePath = dirPath + '/' + fileName;
     await writeBinaryFile(filePath, bytes);
 }

@@ -2,6 +2,49 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v1.0.4] - 2026-05-18
+### 改善
+- 複数モジュール（18 ファイル）の英語コメントを日本語に統一し、コメント品質を向上
+  - `exportManager.js`、`markdown.js`、`undoRedo.js`、`tableManager.js`、`nodeUtils.js`、`imageManager.js`、`toolbarActions.js`、`keyboard.js`、`toggleBlock.js`、`mermaidManager.js`、`mathRender.js`、`tabManager.js`、`codeHighlight.js`、`pasteUtils.js`、`editorZoom.js`、`autoConvert.js`、`tocManager.js`、`main.js`
+  - 各モジュールの実装内容・制約・依存関係に関する説明をすべて日本語化
+- コメント品質ガイドライン（`docs/COMMENT_POLICY.md`）を新規作成し、今後のコメント統一ルールを定義
+- ドキュメント（`docs/README.md`）を更新し、最新の実装状況を反映
+
+## [v1.0.3] - 2026-05-17
+### 修正
+- 複数ファイル D&D 時に未編集タブへ誤って「更新あり」マーク（●）が付く問題を修正
+  - `setMarkdown()` / `switchTab()` のプログラム的 editor 更新中は `onEditorInput()` が dirty 判定を行わないよう制御フラグ（`isProgrammaticEditorUpdate`）を導入
+  - タブ復元後の後処理（コードブロックハイライト、TOC 再構築など）が完了した最終 DOM を未変更タブの基準 `content` に同期するよう修正
+  - 画像の読み込み失敗時に `markModified()` を呼んでいた箇所を除去し、表示置換後の最終 DOM を未変更タブの `content` に同期するよう変更（`imageManager.js`）
+- Mermaid 挿入ダイアログで、カーソル位置ではなく文末に挿入される問題を修正
+- 画像挿入ダイアログで、選択した画像がエディタへ挿入されない問題を修正
+- タブ切り替え後に Mermaid 図の表示が消えたり、保存後の再オープンで Mermaid の中身が失われる問題を修正
+  - タブ復元後に Mermaid の描画済みフラグを再評価し、SVG 実体が無い場合は再描画するよう改善
+  - `data-mermaid-source` が欠けた場合でも、`code.language-mermaid` の内容から Mermaid ソースを復元して表示・保存できるよう修正
+  - タブ復元時の通常コードハイライトから Mermaid コードブロックを除外し、Mermaid 図が優先して再表示されるよう修正
+- タブ系 Playwright テストに再発防止テストを 2 件追加
+  - 「タブ復元後の後処理だけでは更新マークが付かない」
+  - 「画像読み込み失敗は更新マークを付けない」
+- 複数モジュールの英語コメントを日本語化し、コメント品質を統一
+
+## [v1.0.3] - 2026-05-16
+### 修正
+- Markdown の内部リンク（[text](#見出し)）をクリックして見出しへジャンプできるよう対応
+- 全角混在の目次記法（例：1．［項目］（#見出し））を標準的なMarkdown形式へ正規化して処理
+- 見出しIDの自動補完により、一般的なリンク記法をサポート
+- 内部リンク（# / ＃）が未解決の場合、ローカルファイル解決に進まず「ページ内リンクとして未解決」で停止するよう修正
+- 内部リンクと見出しの対応付けを、同一の正規化ルール（大小文字・空白・記号の吸収）で判定するよう改善
+
+## [v1.0.2] - 2026-05-16
+### 修正
+- 複数ファイル D&D 時にコードブロックヘッダーが崩れる問題を修正
+- DOMPurify のサニタイズ設定で `<select>`, `<option>`, `<button>` タグと属性を許可するよう修正
+- タブ復元時に code block toolbar が削除されてしまう問題を解決
+
+### テスト
+- GitHub Actions でマルチプラットフォーム（macOS・Windows・Linux）ビルドを実行
+- Windows 環境での複数ファイル D&D シナリオを検証予定
+
 ## [v1.0.1] - 2026-05-15
 ### 修正
 - コードブロックのヘッダーがタスクリスト内で崩れる問題を修正

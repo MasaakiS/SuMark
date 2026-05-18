@@ -1,5 +1,3 @@
-// showMermaidInsertDialog(), insertMermaidBlock() は src/mermaidManager.js に移動済み
-
 // insertTextAtCursor: カーソル位置にテキストを挿入するユーティリティ
 function insertTextAtCursor(text) {
     const sel = window.getSelection();
@@ -26,29 +24,27 @@ function insertTextAtCursor(text) {
     editor.focus();
 }
 // =====================================================
-// SuMark - Main Application Logic
+// SuMark - メインアプリケーションロジック
 // =====================================================
 
-// Global error banner management
+// グローバルエラーバナー管理
 let errorBanner = null;
 let errorBannerTimeout = null;
-// editorZoom, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP, applyEditorZoom, changeEditorZoom, resetEditorZoom
-// → modules/editorZoom.js に移動済み
 let lastErrorTime = 0;
-const ERROR_THROTTLE_MS = 500;  // Prevent rapid-fire error spam
+const ERROR_THROTTLE_MS = 500;  // エラー連打時のスパム表示を抑制
 
-// Global error handler for debugging
+// デバッグ用のグローバルエラーハンドラ
 window.onerror = function(msg, url, line, col, error) {
     console.error('Global error:', msg, 'at', url, ':', line, ':', col);
     
-    // Throttle: ignore errors within ERROR_THROTTLE_MS ms of the last error
+    // 直前エラーからERROR_THROTTLE_MS以内なら抑制
     const now = Date.now();
     if (now - lastErrorTime < ERROR_THROTTLE_MS) {
-        return;  // Ignore this error
+        return;  // このエラーは無視
     }
     lastErrorTime = now;
     
-    // Create or reuse error banner
+    // エラーバナーを生成または再利用
     if (!errorBanner) {
         errorBanner = document.createElement('div');
         errorBanner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc3545;color:white;padding:12px;z-index:99999;font-size:14px;display:flex;justify-content:space-between;align-items:center';
@@ -56,11 +52,11 @@ window.onerror = function(msg, url, line, col, error) {
         document.body.appendChild(errorBanner);
     }
     
-    // Update error message
+    // エラーメッセージを更新
     const errorMsg = 'JS Error: ' + msg + ' (line ' + line + ')';
     errorBanner.textContent = errorMsg;
     
-    // Clear existing timeout and set new one
+    // 既存タイマーをクリアして再設定
     if (errorBannerTimeout) {
         clearTimeout(errorBannerTimeout);
     }
@@ -70,17 +66,17 @@ window.onerror = function(msg, url, line, col, error) {
             errorBanner = null;
         }
         errorBannerTimeout = null;
-    }, 5000);  // Auto-dismiss after 5 seconds
+    }, 5000);  // 5秒後に自動で閉じる
 };
 
 window.addEventListener('unhandledrejection', function(event) {
     console.error('Unhandled promise rejection:', event.reason);
-    // Trigger error handler for unhandled rejections
+    // 未処理Promise拒否をエラーハンドラへ流す
     window.onerror('Unhandled Promise Rejection: ' + String(event.reason), window.location.href, 0, 0, event.reason);
 });
 
-// ========== Toast Banner ==========
-// type: 'warn' (yellow, 3s) | 'error' (red, 5s)
+// ========== トーストバナー ==========
+// 種別: 'warn'（黄, 3秒）| 'error'（赤, 5秒）
 function showBanner(message, type) {
     const isWarn = type !== 'error';
     const bg = isWarn ? '#ffc107' : '#dc3545';
@@ -118,21 +114,16 @@ function showWarn(message) { showBanner(message, 'warn'); }
 function showError(message) { showBanner(message, 'error'); }
 
 // ========== State ==========
-let isConverting = false; // Guard for auto-conversion recursion
-// codeHighlightTimer → codeHighlight.js に移動済み
-let isComposing = false; // IME composition state
+let isConverting = false; // 自動変換の再帰を防ぐガード
+let isComposing = false; // IME変換中フラグ
 let initRetryCount = 0;
 const INIT_RETRY_MAX = 50;
 const INIT_RETRY_DELAY_MS = 100;
+let programmaticEditorUpdateDepth = 0;
+let isProgrammaticEditorUpdate = false;
 
-
-// Tab management → tabManager.js に移動済み
-// let tabs, activeTabId, tabIdCounter は tabManager.js で定義
-
-// undoStack, redoStack, currentState, MAX_UNDO_STACK, isUndoRedoOperation, saveStateTimer
-// → modules/undoRedo.js に移動済み
 let inputCharCount = 0; // 連続入力カウンタ
-let isProcessingDrop = false; // Guard to prevent duplicate drop processing
+let isProcessingDrop = false; // ドロップ処理の重複防止ガード
 
 // ========== Emoji Map ==========
 const EMOJI_MAP = {
@@ -181,19 +172,16 @@ const EMOJI_MAP = {
     'arrow_up': '⬆️', 'arrow_down': '⬇️', 'arrow_left': '⬅️', 'arrow_right': '➡️',
 };
 
-// Tauri APIs
+// Tauri API
 let invoke, tauriOpen, tauriSave, readTextFile, writeTextFile, readBinaryFile, writeBinaryFile, createDir, readDir, exists, shellOpen, convertFileSrc;
 
-// DOM
+// DOM要素
 let editor, wordCountSpan;
-// tabList, currentFileSpan → tabManager.js に移動済み
 
-// turndownService, DOMPURIFY_URI_REGEXP → modules/markdown.js に移動済み
-
-// ========== Debug Helper ==========
+// ========== デバッグ補助 ==========
 function testConvertFileSrc(path) {
-    // Use the native Tauri convertFileSrc function which generates asset:// URLs
-    // This is more secure and recommended by Tauri
+    // asset:// URLを生成するTauriネイティブのconvertFileSrcを使用
+    // Tauri推奨の安全な経路を使う
     const assetUrl = convertFileSrc(path);
     console.log('[TEST convertFileSrc] input path:', path);
     console.log('[TEST convertFileSrc] output asset URL:', assetUrl);
@@ -215,23 +203,42 @@ function resetGlobalState() {
     
     // 自動変換フラグをリセット
     isConverting = false;
-    
+
     console.log('[resetGlobalState] グローバル状態をリセット完了');
 }
 
-// ========== Initialization ==========
+function beginProgrammaticEditorUpdate() {
+    programmaticEditorUpdateDepth += 1;
+    isProgrammaticEditorUpdate = true;
+}
+
+function endProgrammaticEditorUpdate() {
+    if (programmaticEditorUpdateDepth > 0) {
+        programmaticEditorUpdateDepth -= 1;
+    }
+
+    if (programmaticEditorUpdateDepth === 0) {
+        requestAnimationFrame(() => {
+            if (programmaticEditorUpdateDepth === 0) {
+                isProgrammaticEditorUpdate = false;
+            }
+        });
+    }
+}
+
+// ========== 初期化 ==========
 function init() {
     console.log('=== WYSIWYG Editor Initialization ===');
 
-    // Tauri APIs
+    // Tauri API
     try {
         if (!window.__TAURI__) {
             const isLikelyTauriRuntime =
                 (typeof window.__TAURI_IPC__ === 'function') ||
                 (typeof navigator !== 'undefined' && /tauri/i.test(navigator.userAgent || ''));
 
-            // On slower Tauri environments (e.g., Linux ARM64), bridge injection
-            // can lag behind DOMContentLoaded. Retry only when Tauri is likely.
+            // 低速環境（例: Linux ARM64）ではブリッジ注入が遅れることがあるため
+            // Tauri環境の可能性が高い場合のみリトライする
             if (isLikelyTauriRuntime && initRetryCount < INIT_RETRY_MAX) {
                 initRetryCount += 1;
                 if (initRetryCount === 1 || initRetryCount % 10 === 0) {
@@ -242,7 +249,7 @@ function init() {
             }
 
             console.warn('[WARN] Tauri API not available - running in browser mode with limited functionality');
-            // Mock Tauri APIs for browser testing
+            // ブラウザ検証向けにTauri APIをモック
             invoke = () => Promise.resolve();
             tauriOpen = () => Promise.resolve(null);
             tauriSave = () => Promise.resolve(null);
@@ -255,7 +262,7 @@ function init() {
             exists = () => Promise.resolve(false);
             convertFileSrc = (path) => path;
             shellOpen = () => Promise.resolve();
-            // Don't return - continue initialization
+            // ここではreturnせず初期化を継続する
         } else {
             initRetryCount = 0;
             invoke = window.__TAURI__.tauri.invoke;
@@ -291,11 +298,11 @@ function init() {
         return;
     }
 
-    // DOM elements
+    // DOM要素
     editor = document.getElementById('editor');
     wordCountSpan = document.getElementById('wordCount');
 
-    // Initialize tab manager (currentFileSpan, tabList を初期化)
+    // タブマネージャを初期化（currentFileSpan, tabList）
     initTabManager();
 
     if (!editor) {
@@ -303,7 +310,7 @@ function init() {
         return;
     }
 
-    // Configure Marked (Markdown → HTML)
+    // Markedを設定（Markdown → HTML）
     if (typeof marked !== 'undefined') {
         marked.setOptions({
             breaks: true,
@@ -314,27 +321,27 @@ function init() {
         console.log('Marked configured');
     }
 
-    // Configure Turndown (HTML → Markdown)
+    // Turndownを設定（HTML → Markdown）
     configureTurndown();
 
-    // Set default paragraph separator to <p>
+    // 既定の段落区切りを <p> に設定
     document.execCommand('defaultParagraphSeparator', false, 'p');
 
-    // Initialize editor with empty paragraph
+    // エディタを空段落で初期化
     editor.innerHTML = '<p><br></p>';
 
-    // Setup event listeners
+    // イベントリスナーを設定
     setupEventListeners();
     setupTableContextMenu();
     setupImageResize();
     setupImageViewer();
     setupCodeCopyButtons();
     setupImageErrorHandling();
-    setupImageMutationObserver(); // Watch for new images added to editor
+    setupImageMutationObserver(); // エディタに追加された新規画像を監視
     // setupTabKeyboardShortcuts() は呼ばない（N/W は main.js handleKeyDown で処理済み）
     setupZoomKeyboardShortcuts();
 
-    // Initialize Mermaid (may load asynchronously via defer)
+    // Mermaidを初期化（defer読込で遅延する可能性あり）
     try {
         if (typeof mermaid !== 'undefined') {
             mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
@@ -346,17 +353,17 @@ function init() {
         console.error('Mermaid init error:', err);
     }
 
-    // Create initial tab
+    // 初期タブを作成
     createTab(null, '無題', '<p><br></p>');
 
-    // Open files passed via command-line args (drag onto app icon, "Open with")
+    // 起動引数で渡されたファイルを開く（アプリアイコンへのドロップ/「このアプリで開く」）
     if (window.__TAURI__) {
         (async () => {
             try {
                 const initialFiles = await invoke('get_initial_files');
                 if (initialFiles && initialFiles.length > 0) {
                     for (const filePath of initialFiles) {
-                        // Extract extension from the filename component only (handles dots in dir names)
+                        // ファイル名部分だけから拡張子を抽出（ディレクトリ名のドットを誤検知しない）
                         const filename = filePath.split('/').pop().split('\\').pop();
                         const ext = filename.split('.').pop().toLowerCase();
                         if (['md', 'markdown', 'txt'].includes(ext)) {
@@ -370,7 +377,7 @@ function init() {
         })();
     }
 
-    // Initial state
+    // 初期状態を反映
     updateWordCount();
     editor.focus();
 }
@@ -379,18 +386,18 @@ function init() {
 
 // getCaretCharacterOffsetWithin(), setCaretCharacterOffset(), highlightCodeBlock(), highlightAllCodeBlocks() は src/codeHighlight.js に移動済み
 
-// Ensure editor starts with an editable element
+// エディタ先頭が編集可能要素になるよう補正
 function ensureEditableStart() {
     if (!editor || editor.children.length === 0) {
         return;
     }
     
     const firstChild = editor.firstElementChild;
-    // Check if first element is a block element that's hard to edit before
+    // 先頭が編集しづらいブロック要素かどうか確認
     const blockElements = ['PRE', 'TABLE', 'UL', 'OL', 'BLOCKQUOTE', 'HR', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
     
     if (firstChild && blockElements.includes(firstChild.tagName)) {
-        // Insert an empty paragraph at the beginning
+        // 先頭に空段落を挿入
         const p = document.createElement('p');
         p.innerHTML = '<br>';
         editor.insertBefore(p, firstChild);
@@ -401,14 +408,14 @@ function ensureEditableStart() {
 
 // isOnEmptyTrailingLine(), removeTrailingEmptyLines() は src/nodeUtils.js に移動済み
 
-// ========== Event Listeners ==========
+// ========== イベントリスナー ==========
 function setupEventListeners() {
-    // Prevent ALL toolbar buttons from stealing focus
+    // すべてのツールバーボタンでフォーカス奪取を防止
     document.querySelectorAll('.toolbar-btn').forEach(btn => {
         btn.addEventListener('mousedown', e => e.preventDefault());
     });
 
-    // Editor events
+    // エディタ関連イベント
     editor.addEventListener('input', onEditorInput);
     editor.addEventListener('keydown', handleKeyDown);
     editor.addEventListener('paste', handlePaste);
@@ -419,18 +426,18 @@ function setupEventListeners() {
     editor.addEventListener('compositionend', () => {
         console.log('[DEBUG] IME composition ended');
         isComposing = false;
-        // Trigger conversion after IME commit
+        // IME確定後に自動変換を実行
         onEditorInput();
     });
 
-    // Checkbox delegation
+    // チェックボックス変更を委譲処理
     editor.addEventListener('change', e => {
         if (e.target.type === 'checkbox') {
             markModified();
         }
     });
 
-    // Helper function to check if URL is a web URL
+    // URLがWeb URLか判定
     function isWebUrl(url) {
         if (!url) return false;
         return /^https?:\/\//.test(url) || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) || url.startsWith('mailto:');
@@ -460,14 +467,14 @@ function setupEventListeners() {
         return ext ? IN_APP_TEXT_EXTENSIONS.has(ext) : false;
     }
 
-    // Helper function to resolve local file paths (handling relative paths)
+    // ローカルファイルパスを解決（相対パス対応）
     async function handleLocalFileLink(filePath) {
         try {
             let resolvedPath = filePath;
             
-            // If path is relative, resolve it from the current file's directory
+            // 相対パスなら現在ファイルのディレクトリ基準で解決
             if (!filePath.startsWith('/') && !filePath.startsWith('~') && !(/^[a-zA-Z]:/.test(filePath))) {
-                // Relative path detected
+                // 相対パスを検出
                 const currentTab = getActiveTab();
                 const currentFile = currentTab?.filePath;
                 if (currentFile) {
@@ -479,14 +486,14 @@ function setupEventListeners() {
                 }
             }
             
-            // Check if file exists
+            // ファイル存在確認
             const fileExists = await exists(resolvedPath);
             if (!fileExists) {
                 showError(`ファイルが見つかりません: ${resolvedPath}`);
                 return;
             }
             
-            // Open text-like files in the editor; others use the OS default app
+            // テキスト系はエディタで開き、それ以外はOS既定アプリで開く
             if (shouldOpenInEditor(resolvedPath)) {
                 await openFileFromPath(resolvedPath);
             } else if (shellOpen) {
@@ -500,9 +507,86 @@ function setupEventListeners() {
         }
     }
 
-    // Link click handling - Cmd/Ctrl+click opens in browser or local file
+    function normalizeAnchorToken(text) {
+        if (!text) return '';
+        return text
+            .trim()
+            .toLowerCase()
+            .replace(/[\s\u3000]+/g, '-')
+            .replace(/[^\w\u3000-\u9fff\uf900-\ufaff\u4e00-\u9faf\u3040-\u309f\u30a0-\u30ff-]+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-+|-+$/g, '');
+    }
+
+    // ページ内ハッシュリンク（例: #section, ＃section）をエディタ内要素へ解決
+    function resolveInPageHashTarget(href) {
+        if (!href) return null;
+
+        const trimmed = href.trim();
+        if (!(trimmed.startsWith('#') || trimmed.startsWith('＃'))) {
+            return null;
+        }
+
+        let hash = trimmed.substring(1);
+        try {
+            hash = decodeURIComponent(hash);
+        } catch (_) {
+            // デコード失敗時は生のハッシュ文字列を維持
+        }
+        hash = hash.trim();
+        if (!hash) return null;
+
+        const normalizedHash = normalizeAnchorToken(hash);
+        const candidateIds = [hash];
+        if (normalizedHash && normalizedHash !== hash) {
+            candidateIds.push(normalizedHash);
+        }
+        if (normalizedHash) {
+            candidateIds.push('heading-' + normalizedHash);
+        }
+
+        // まずID一致を優先
+        for (const id of candidateIds) {
+            const byId = editor.querySelector('#' + CSS.escape(id));
+            if (byId) return byId;
+        }
+
+        // フォールバック: 同じ正規化規則で見出し文字列を比較
+        const headings = editor.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        for (const h of headings) {
+            const headingText = h.textContent.trim();
+            if (!headingText) continue;
+
+            const normalizedHeading = normalizeAnchorToken(headingText);
+            const normalizedHeadingWithPrefix = normalizedHeading ? ('heading-' + normalizedHeading) : '';
+
+            if (
+                headingText === hash ||
+                normalizedHeading === normalizedHash ||
+                normalizedHeadingWithPrefix === hash
+            ) {
+                return h;
+            }
+        }
+
+        return null;
+    }
+
+    function scrollToAnchorTarget(targetEl) {
+        if (!targetEl) return;
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // 一時的にハイライト表示
+        targetEl.style.transition = 'background-color 0.3s';
+        targetEl.style.backgroundColor = '#fff3cd';
+        setTimeout(() => {
+            targetEl.style.backgroundColor = '';
+            setTimeout(() => { targetEl.style.transition = ''; }, 300);
+        }, 1500);
+    }
+
+    // リンククリック処理 - Cmd/Ctrl+クリックでブラウザまたはローカルファイルを開く
     editor.addEventListener('click', e => {
-        // Toggle delete button
+        // トグル削除ボタン
         if (e.target.closest('.toggle-delete-btn')) {
             e.preventDefault();
             e.stopPropagation();
@@ -512,7 +596,7 @@ function setupEventListeners() {
             }
             return;
         }
-        // TOC delete button
+        // TOC削除ボタン
         if (e.target.closest('.toc-delete-btn')) {
             e.preventDefault();
             e.stopPropagation();
@@ -524,31 +608,23 @@ function setupEventListeners() {
             return;
         }
 
-        // TOC link click - scroll to heading
+        // TOCリンククリック時は見出しへスクロール
         const tocLink = e.target.closest('.toc-link');
         if (tocLink) {
             e.preventDefault();
-            const targetId = tocLink.getAttribute('href');
-            if (targetId && targetId.startsWith('#')) {
-                const targetEl = editor.querySelector(targetId);
-                if (targetEl) {
-                    targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    // Brief highlight effect
-                    targetEl.style.transition = 'background-color 0.3s';
-                    targetEl.style.backgroundColor = '#fff3cd';
-                    setTimeout(() => {
-                        targetEl.style.backgroundColor = '';
-                        setTimeout(() => { targetEl.style.transition = ''; }, 300);
-                    }, 1500);
-                }
+            const targetEl = resolveInPageHashTarget(tocLink.getAttribute('href') || '');
+            if (targetEl) {
+                scrollToAnchorTarget(targetEl);
+            } else {
+                showWarn('ページ内リンクとして未解決: ' + (tocLink.getAttribute('href') || ''));
             }
             return;
         }
 
-        // Click on non-editable element (TOC, Mermaid preview): select it so Backspace/Delete can remove it
+        // 非編集要素（TOC, Mermaidプレビュー）クリック時に選択状態にしてBackspace/Deleteで削除可能にする
         const nonEditable = e.target.closest('[contenteditable="false"]');
         if (nonEditable && nonEditable !== editor && editor.contains(nonEditable)) {
-            // Don't interfere with interactive controls inside non-editable elements
+            // 非編集要素内の操作系コントロールには干渉しない
             if (e.target.closest('button, select, input, textarea')) return;
             const sel = window.getSelection();
             const range = document.createRange();
@@ -560,18 +636,35 @@ function setupEventListeners() {
 
         const link = e.target.closest('a');
         if (link) {
+            const href = link.getAttribute('href') || '';
+            const isInPageHash = href.trim().startsWith('#') || href.trim().startsWith('＃');
+
+            // 通常のページ内Markdownリンクは通常クリックでジャンプ
+            const inPageTarget = resolveInPageHashTarget(href);
+            if (inPageTarget) {
+                e.preventDefault();
+                scrollToAnchorTarget(inPageTarget);
+                return;
+            }
+
+            if (isInPageHash) {
+                e.preventDefault();
+                showWarn('ページ内リンクとして未解決: ' + href.trim());
+                return;
+            }
+
             if (e.metaKey || e.ctrlKey) {
                 e.preventDefault();
-                const url = link.getAttribute('href') || link.href;
+                const url = href || link.href;
                 if (url) {
-                    // Check if it's a web URL or local file path
+                    // Web URLかローカルファイルパスかを判定
                     if (isWebUrl(url)) {
-                        // Web URL - open in browser
+                        // Web URLはブラウザで開く
                         if (shellOpen) {
                             shellOpen(url).catch(err => console.error('Failed to open URL:', err));
                         }
                     } else {
-                        // Local file path - open in editor
+                        // ローカルファイルパスはエディタで開く
                         handleLocalFileLink(url);
                     }
                 }
@@ -579,7 +672,7 @@ function setupEventListeners() {
         }
     });
 
-    // Toolbar buttons
+    // ツールバーボタン
     const buttons = [
         { id: 'newBtn',       handler: newFile },
         { id: 'openBtn',      handler: openFile },
@@ -626,11 +719,11 @@ function setupEventListeners() {
 
     console.log('Event listeners attached');
     
-    // File drop event (Tauri v1 drag-and-drop support)
+    // ファイルドロップイベント（Tauri v1 drag-and-drop対応）
     if (window.__TAURI__ && window.__TAURI__.event) {
         console.log('[DEBUG] Setting up Tauri file drop listeners...');
         
-        // Use Tauri v1 event API
+        // Tauri v1 のイベントAPIを使用
         window.__TAURI__.event.listen('tauri://file-drop', async (event) => {
             console.log('[DEBUG] File drop event received:', event);
             console.log('[DEBUG] Event payload:', event.payload);
@@ -642,7 +735,7 @@ function setupEventListeners() {
                 console.log('[DEBUG] Processing', files.length, 'dropped files');
                 for (const filePath of files) {
                     console.log('[DEBUG] Processing file:', filePath);
-                    // Check if file is a Markdown file
+                    // Markdownファイルか確認
                     const ext = filePath.split('.').pop().toLowerCase();
                     if (ext === 'md' || ext === 'markdown' || ext === 'txt') {
                         try {
@@ -661,13 +754,13 @@ function setupEventListeners() {
             }
         });
         
-        // File drop hover event (optional visual feedback)
+        // ファイルドロップのホバーイベント（任意の視覚フィードバック）
         window.__TAURI__.event.listen('tauri://file-drop-hover', (event) => {
             console.log('[DEBUG] File drop hover:', event);
             document.body.style.outline = '3px dashed #007bff';
         });
         
-        // File drop cancelled event
+        // ファイルドロップのキャンセルイベント
         window.__TAURI__.event.listen('tauri://file-drop-cancelled', (event) => {
             console.log('[DEBUG] File drop cancelled:', event);
             document.body.style.outline = '';
@@ -678,20 +771,20 @@ function setupEventListeners() {
         console.log('[DEBUG] Tauri event API not available - file drop disabled');
     }
     
-    // ========== Unified File Drop Handling (non-Tauri fallback) ==========
-    // When running outside Tauri (browser-only), HTML5 Drag & Drop API handles file drops.
-    // In Tauri, fileDropEnabled=true means native tauri://file-drop handles it;
-    // this handler only serves as a fallback for non-Tauri environments.
+    // ========== 統合ファイルドロップ処理（非Tauri時のフォールバック） ==========
+    // Tauri外（ブラウザ単体）ではHTML5 Drag & Dropでファイルドロップを処理する。
+    // Tauriでは fileDropEnabled=true の場合に native tauri://file-drop が処理するため、
+    // このハンドラは非Tauri環境向けフォールバックとしてのみ利用する。
     const setupUnifiedDropHandler = () => {
         console.log('[DEBUG] Setting up unified drop handlers...');
 
-        // Helper: check if drag contains files or file URIs
+        // 補助: ドラッグ対象にファイル/ファイルURIが含まれるか判定
         const isFileDrag = (e) => {
             const types = Array.from(e.dataTransfer?.types || []);
             return types.includes('Files') || types.includes('text/uri-list');
         };
 
-        // Helper: extract file paths from text/uri-list
+        // 補助: text/uri-list からファイルパスを抽出
         const parseUriList = (uriListStr) => {
             return uriListStr
                 .split(/\r?\n/)
@@ -708,7 +801,7 @@ function setupEventListeners() {
                 .filter(Boolean);
         };
 
-        // Window dragover: accept file drags, prevent browser navigation
+        // window dragover: ファイルドラッグを受け入れ、ブラウザ遷移を防止
         window.addEventListener('dragover', (e) => {
             if (isFileDrag(e)) {
                 e.preventDefault();
@@ -723,18 +816,18 @@ function setupEventListeners() {
             }
         });
 
-        // Window drop: handle file drops from any source
+        // window drop: あらゆる入力元のファイルドロップを処理
         window.addEventListener('drop', async (e) => {
             document.body.style.outline = '';
 
-            // Only handle file drops; let text drops through for contenteditable
+            // ファイルドロップのみ処理し、テキストドロップはcontenteditableへ通す
             if (!isFileDrag(e)) return;
 
             e.preventDefault();
             e.stopPropagation();
 
-            // In Tauri with fileDropEnabled=true, native tauri://file-drop handles file drops.
-            // If this HTML5 handler fires anyway, skip to avoid duplicate processing.
+            // Tauri かつ fileDropEnabled=true では native tauri://file-drop が処理する。
+            // このHTML5ハンドラが発火しても重複処理を避けるためスキップする。
             if (window.__TAURI__ && window.__TAURI__.event) {
                 console.log('[DEBUG] Tauri native file-drop is active, skipping HTML5 handler');
                 return;
@@ -753,7 +846,7 @@ function setupEventListeners() {
             try {
                 let handled = false;
 
-                // 1. Try text/uri-list first (VSCode Explorer, possibly Finder on macOS)
+                // 1. まず text/uri-list を試す（VSCode Explorer、macOS Finder など）
                 const uriList = e.dataTransfer.getData('text/uri-list');
                 if (uriList) {
                     console.log('[DEBUG] text/uri-list:', uriList);
@@ -772,7 +865,7 @@ function setupEventListeners() {
 
                 if (handled) return;
 
-                // 2. Try text/plain for file:// URIs (fallback)
+                // 2. text/plain の file:// URI を試す（フォールバック）
                 const plainText = e.dataTransfer.getData('text/plain');
                 if (plainText && plainText.startsWith('file://')) {
                     console.log('[DEBUG] text/plain has file URI:', plainText);
@@ -788,7 +881,7 @@ function setupEventListeners() {
 
                 if (handled) return;
 
-                // 3. Try dataTransfer.files (Finder drops)
+                // 3. dataTransfer.files を試す（Finderドロップ）
                 if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                     console.log('[DEBUG] Processing', e.dataTransfer.files.length, 'files from dataTransfer.files');
                     for (const file of e.dataTransfer.files) {
@@ -798,7 +891,7 @@ function setupEventListeners() {
                     return;
                 }
 
-                // 4. Try dataTransfer.items
+                // 4. dataTransfer.items を試す
                 if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
                     console.log('[DEBUG] Processing items, count:', e.dataTransfer.items.length);
                     for (let i = 0; i < e.dataTransfer.items.length; i++) {
@@ -820,7 +913,7 @@ function setupEventListeners() {
         console.log('[DEBUG] Unified drop handlers registered');
     };
 
-    // Helper: process a dropped File object (non-Tauri fallback only)
+    // 補助: ドロップされた File オブジェクトを処理（非Tauriフォールバックのみ）
     async function processDroppedFile(file) {
         const ext = file.name.split('.').pop().toLowerCase();
         console.log('[DEBUG] processDroppedFile:', file.name, 'ext:', ext);
@@ -831,17 +924,17 @@ function setupEventListeners() {
         }
 
         try {
-            // Try file.path (available in some runtimes like Electron)
+            // file.path を試す（Electron等の一部ランタイムで利用可能）
             if (file.path) {
                 console.log('[DEBUG] Using file.path:', file.path);
                 await openFileFromPath(file.path);
             } else {
-                // Read content directly via File API (no path = no image resolution)
+                // File APIで直接読み込む（パスが取れないため画像相対解決は不可）
                 console.log('[DEBUG] Reading file via text() (no path available)...');
                 const text = await file.text();
                 console.log('[DEBUG] Loaded', text.length, 'chars from', file.name);
                 let processedText = text;
-                // Prevent indented lone '-' from being interpreted as Setext H2
+                // インデントされた単独 '-' が Setext H2 と誤解釈されるのを防ぐ
                 processedText = processedText.replace(/^(\s+)-(\s*)$/gm, '$1- \u200B');
                 const processed = preprocessNotionMarkdown(processedText);
                 const html = (typeof marked !== 'undefined') ? marked.parse(processed) : processed;
@@ -1014,14 +1107,14 @@ function setupEventListeners() {
         window.__TAURI__.event.listen('app-close-requested', requestAppClose);
     }
     
-    // Initialize undo stack with initial state
+    // 初期状態をUndoスタックへ保存
     saveEditorState();
 }
 
-// ========== Advanced Undo/Redo Functions ==========
+// ========== 拡張Undo/Redo関数 ==========
 
 /**
- * Save current editor state to undo stack
+ * 現在のエディタ状態をUndoスタックへ保存する
  */
 // saveEditorState, debouncedSaveEditorState, performUndo, performRedo
 // → modules/undoRedo.js に移動済み
@@ -1032,7 +1125,7 @@ function setupEventListeners() {
 
 // handleKeyDown(), handleEnterKey(), handleTabKey() → modules/keyboard.js に移動済み
 
-// ========== Progress Indicator for Large Operations ==========
+// ========== 大規模処理用の進捗表示 ==========
 function showProgressIndicator(message) {
     let indicator = document.getElementById('paste-progress-indicator');
     if (!indicator) {
@@ -1054,9 +1147,9 @@ function hideProgressIndicator() {
 
 // pasteTextInChunks() は src/pasteUtils.js に移動済み
 
-// ========== Paste Handling ==========
+// ========== ペースト処理 ==========
 async function handlePaste(e) {
-    // 0. If inside a code block, always paste as plain text
+    // 0. コードブロック内では常にプレーンテキストとして貼り付け
     const sel = window.getSelection();
     if (sel.rangeCount) {
         let node = sel.anchorNode;
@@ -1067,16 +1160,16 @@ async function handlePaste(e) {
                 const lines = text.split('\n');
                 const lineCount = lines.length;
                 
-                // Show info for large pastes
+                // 大量貼り付け時の情報ログ
                 if (lineCount > 100) {
                     console.log(`[大量コード貼り付け] ${lineCount}行のコードを貼り付けています...`);
                 }
                 
-                // Use chunked processing for large pastes
+                // 大量貼り付け時はチャンク処理を使用
                 if (lineCount > 100) {
                     await pasteTextInChunks(lines, node);
                 } else {
-                    // Small paste: use direct insertion
+                    // 少量貼り付けは直接挿入
                     for (let i = 0; i < lines.length; i++) {
                         if (i > 0) {
                             document.execCommand('insertLineBreak');
@@ -1106,11 +1199,11 @@ async function handlePaste(e) {
                     console.log(`[大量コード貼り付け] ${lineCount}行のコードを貼り付けています...`);
                 }
                 
-                // Use chunked processing for large pastes
+                // 大量貼り付け時はチャンク処理を使用
                 if (lineCount > 100) {
                     await pasteTextInChunks(lines, node);
                 } else {
-                    // Small paste: use direct insertion
+                    // 少量貼り付けは直接挿入
                     for (let i = 0; i < lines.length; i++) {
                         if (i > 0) {
                             document.execCommand('insertLineBreak');
@@ -1134,7 +1227,7 @@ async function handlePaste(e) {
         }
     }
 
-    // 1. Check for image in clipboard
+    // 1. クリップボード内の画像を確認
     const items = e.clipboardData && e.clipboardData.items;
     if (items) {
         for (let i = 0; i < items.length; i++) {
@@ -1149,7 +1242,7 @@ async function handlePaste(e) {
         }
     }
 
-    // 2. Check for HTML table (Excel copy)
+    // 2. HTMLテーブル（Excelコピー）を確認
     const htmlData = e.clipboardData.getData('text/html');
     if (htmlData && /<table[\s>]/i.test(htmlData)) {
         e.preventDefault();
@@ -1161,11 +1254,11 @@ async function handlePaste(e) {
         }
     }
 
-    // 3. Text paste
+    // 3. テキスト貼り付け
     e.preventDefault();
     const text = e.clipboardData.getData('text/plain');
 
-    // 4. Check for tab-delimited text (TSV) → table
+    // 4. タブ区切りテキスト（TSV）を確認して表へ変換
     if (isTabDelimited(text)) {
         const table = tsvToHtmlTable(text);
         document.execCommand('insertHTML', false, table + '<p><br></p>');
@@ -1173,12 +1266,12 @@ async function handlePaste(e) {
         return;
     }
 
-    // 5. Check if markdown
+    // 5. Markdown判定
     if (looksLikeMarkdown(text)) {
-        // Normalize task list items: GFM requires a space after [x]/[ ]
+        // タスクリスト項目を正規化（GFMでは [x]/[ ] 後に空白が必要）
         let normalizedText = text.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
         normalizedText = normalizedText.replace(/^(\s*[-*+]\s+\[[ xX]\])\s*$/gm, '$1 \u200B');
-        // Prevent indented lone '-' from being interpreted as Setext H2
+        // インデントされた単独 '-' が Setext H2 と誤解釈されるのを防ぐ
         normalizedText = normalizedText.replace(/^(\s+)-(\s*)$/gm, '$1- \u200B');
         const html = marked.parse(preprocessNotionMarkdown(normalizedText));
         document.execCommand('insertHTML', false, html);
@@ -1186,10 +1279,10 @@ async function handlePaste(e) {
             cb.removeAttribute('disabled');
         });
     } else {
-        // Auto-link plain http(s) URLs when pasting plain text
+        // プレーンテキスト貼り付け時に http(s) URL を自動リンク化
         const urlRegex = /(https?:\/\/[^\s<>\"]+)/g;
         if (urlRegex.test(text)) {
-            // Build HTML by escaping non-link parts and wrapping URLs with <a>
+            // 非リンク部分をエスケープし、URLを <a> で包んでHTML生成
             let lastIndex = 0;
             let html = '';
             text.replace(urlRegex, (match, p1, offset) => {
@@ -1199,7 +1292,7 @@ async function handlePaste(e) {
                 lastIndex = offset + match.length;
             });
             html += escapeHtml(text.slice(lastIndex));
-            // Preserve line breaks
+            // 改行を維持
             html = html.replace(/\n/g, '<br>');
             document.execCommand('insertHTML', false, html);
         } else {
@@ -1208,32 +1301,7 @@ async function handlePaste(e) {
     }
 }
 
-// isTabDelimited(), tsvToHtmlTable(), parseHtmlTable() は src/pasteUtils.js に移動済み
-
-// pasteImageFile() は src/modules/imageManager.js に移動済み
-
-// looksLikeMarkdown() は src/pasteUtils.js に移動済み
-
-// applyHeading, insertUnorderedList, insertOrderedList, applyBlockquote, applyInlineCode,
-// showModal, insertLink, insertImage, CODE_LANGUAGES, insertCodeBlock, doInsertCodeBlock,
-// restoreCodeWrapStates, insertTaskList, insertHorizontalRule
-// は src/modules/toolbarActions.js に移動済み
-
-// newFile, openFileFromPath, openFile, resolveRelativeImages, resolveRelativeCsvLinks,
-// saveFile, saveAsFile, resolveImagesForSave
-// は src/modules/fileManager.js に移動済み
-
-// mimeToExt(), generateImageFileName(), saveImageFile() は src/modules/imageManager.js に移動済み
-
-// exportPDF は src/modules/exportManager.js に移動済み
-
-// ========== Tab Management → tabManager.js に移動済み ==========
-// createTab, getActiveTab, switchTab, closeTab, renderTabs, markModified, updateStatusBar
-// は tabManager.js で定義
-
-// insertDate, insertTime, insertDateTime
-// は src/modules/toolbarActions.js に移動済み
-// ========== Utility Functions ==========
+// ========== ユーティリティ関数 ==========
 
 function getParentBlock(node) {
     const blockTags = new Set([
@@ -1250,13 +1318,11 @@ function getParentBlock(node) {
     return null;
 }
 
-// isInsideTableCell() は src/modules/tableManager.js に移動済み
-
 function setCursorTo(element) {
     const sel = window.getSelection();
     const range = document.createRange();
     range.selectNodeContents(element);
-    range.collapse(false); // collapse to end
+    range.collapse(false); // 末尾に折りたたむ
     sel.removeAllRanges();
     sel.addRange(range);
 }
@@ -1270,11 +1336,9 @@ function setCursorToEnd(element) {
     sel.addRange(range);
 }
 
-// escapeHtml() は src/utils.js に移動済み（全モジュール共有ユーティリティ）
-
 function updateWordCount() {
     const text = editor.textContent || '';
-    const chars = text.replace(/\u200B/g, '').length; // Exclude zero-width spaces
+    const chars = text.replace(/\u200B/g, '').length; // ゼロ幅スペースは除外
     const lines = text.split('\n').length;
     if (wordCountSpan) {
         wordCountSpan.textContent = chars + ' 文字 | ' + lines + ' 行';
@@ -1296,22 +1360,22 @@ function updateWordCount() {
 
 // setupTocDeleteButtons(), insertTOC() は src/tocManager.js に移動済み
 
-// ========== Code Block Copy Button ==========
+// ========== コードブロックのコピーボタン ==========
 function setupCodeCopyButtons() {
-    // Add copy buttons to existing code blocks
+    // 既存コードブロックへコピーボタンを追加
     addCopyButtonsToCodeBlocks();
     
-    // Add wrap buttons after copy buttons are created
+    // コピーボタン追加後に折り返しボタンを追加
     editor.querySelectorAll('pre').forEach(pre => {
         if (typeof setupCodeWrapButton === 'function') {
             setupCodeWrapButton(pre);
         }
     });
 
-    // Watch for new code blocks being added and update line numbers
+    // 新規コードブロック追加を監視し行番号を更新
     const observer = new MutationObserver(() => {
         addCopyButtonsToCodeBlocks();
-        // Add wrap buttons to newly added code blocks
+        // 新規追加されたコードブロックへ折り返しボタンを追加
         editor.querySelectorAll('pre').forEach(pre => {
             if (typeof setupCodeWrapButton === 'function') {
                 setupCodeWrapButton(pre);
@@ -1324,11 +1388,11 @@ function setupCodeCopyButtons() {
 
 function addCopyButtonsToCodeBlocks() {
     editor.querySelectorAll('pre').forEach(pre => {
-        // Skip if already has copy buttons
+        // 既にコピーボタンがある場合はスキップ
         if (pre.querySelector('.code-copy-container')) return;
-        // Also skip if toolbar already exists above pre
+        // pre直前にツールバーがある場合もスキップ
         if (pre.previousElementSibling && pre.previousElementSibling.classList.contains('code-block-toolbar')) return;
-        // Skip Mermaid containers
+        // Mermaidコンテナは対象外
         if (pre.closest('.mermaid-container')) return;
 
         const code = pre.querySelector('code');
@@ -1380,12 +1444,12 @@ function addCopyButtonsToCodeBlocks() {
 
         pre.parentNode.insertBefore(toolbar, pre);
 
-        // Helper: get raw code text
+        // 補助: 生のコードテキストを取得
         function getRawText() {
             return code ? code.textContent : pre.textContent;
         }
 
-        // Helper: copy text to clipboard with visual feedback
+        // 補助: 視覚フィードバック付きでクリップボードへコピー
         function copyToClipboard(text, btn, label) {
             navigator.clipboard.writeText(text).then(() => {
                 btn.textContent = 'Copied!';
@@ -1405,7 +1469,7 @@ function addCopyButtonsToCodeBlocks() {
             });
         }
 
-        // Button 1: Copy (without line numbers)
+        // ボタン1: 通常コピー（行番号なし）
         const btnCopy = document.createElement('button');
         btnCopy.className = 'code-copy-btn';
         btnCopy.textContent = 'Copy';
@@ -1417,7 +1481,7 @@ function addCopyButtonsToCodeBlocks() {
             copyToClipboard(getRawText(), btnCopy, 'Copy');
         });
 
-        // Button 2: Copy with line numbers
+        // ボタン2: 行番号付きコピー
         const btnNum = document.createElement('button');
         btnNum.className = 'code-copy-btn';
         btnNum.textContent = 'Copy #';
@@ -1440,7 +1504,7 @@ function addCopyButtonsToCodeBlocks() {
         container.appendChild(btnCopy);
         container.appendChild(btnNum);
 
-        // Ensure wrap toggle button appears as soon as copy buttons are added.
+        // コピーボタン追加直後に折り返しトグルボタンを表示
         if (typeof setupCodeWrapButton === 'function') {
             setupCodeWrapButton(pre);
         }
@@ -1458,7 +1522,7 @@ function addCopyButtonsToCodeBlocks() {
 // setupImageViewer(), openImageViewer(), closeImageViewer()
 // は src/modules/imageManager.js に移動済み
 
-// ========== Bootstrap ==========
+// ========== ブートストラップ ==========
 console.log('Script loaded, readyState:', document.readyState);
 
 if (document.readyState === 'loading') {

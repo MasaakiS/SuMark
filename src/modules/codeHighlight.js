@@ -45,7 +45,7 @@ function setCaretCharacterOffset(element, offset) {
         }
         currentOffset += nodeLen;
     }
-    // If offset is beyond the content, place at end
+    // オフセットが内容末尾を超える場合は末尾に配置
     const sel = window.getSelection();
     const range = document.createRange();
     range.selectNodeContents(element);
@@ -63,23 +63,23 @@ function setCaretCharacterOffset(element, offset) {
 function highlightCodeBlock(codeEl) {
     if (typeof hljs === 'undefined') return;
     if (!codeEl || codeEl.tagName !== 'CODE') return;
-    // Don't highlight mermaid blocks
+    // Mermaidブロックはハイライト対象外
     if (codeEl.classList.contains('language-mermaid')) return;
 
-    // Check line count - skip highlighting for large code blocks (500+ lines)
-    // Use innerText to preserve <br> as newlines (insertLineBreak inserts <br> in contenteditable)
-    // Fallback to textContent if innerText is unavailable (e.g. detached nodes)
+    // 行数を確認し、500行超の大きなコードブロックはハイライトをスキップ
+    // contenteditable では insertLineBreak により <br> が入るため、innerText で改行を保持
+    // innerText が利用できない場合（例: 未接続ノード）は textContent にフォールバック
     const plainText = codeEl.isConnected ? codeEl.innerText : codeEl.textContent;
     const lineCount = plainText.split('\n').length;
     
     if (lineCount > 500) {
         console.log(`[ハイライトスキップ] ${lineCount}行のコードブロックが大きすぎるため、シンタックスハイライトをスキップしました。`);
         
-        // Update line numbers without highlighting
+        // ハイライトせず行番号のみ更新
         const pre = codeEl.closest('pre');
         if (pre) {
             updateLineNumbers(pre);
-            // Add a visual indicator that highlighting is skipped
+            // ハイライトを省略したことを視覚表示
             if (!pre.querySelector('.highlight-skipped-notice')) {
                 const notice = document.createElement('div');
                 notice.className = 'highlight-skipped-notice';
@@ -92,7 +92,7 @@ function highlightCodeBlock(codeEl) {
         return;
     }
 
-    // Save cursor position
+    // カーソル位置を保存
     const sel = window.getSelection();
     const isInsideCode = codeEl.contains(sel.anchorNode);
     let caretOffset = 0;
@@ -100,17 +100,17 @@ function highlightCodeBlock(codeEl) {
         caretOffset = getCaretCharacterOffsetWithin(codeEl);
     }
 
-    // Completely reset hljs cache state
+    // hljs のキャッシュ状態を完全にリセット
     delete codeEl.dataset.highlighted;
     codeEl.removeAttribute('data-highlighted');
-    // Also clear any hljs-specific internal state
+    // hljs固有の内部状態もクリア
     if (codeEl.__hljs_result) {
         delete codeEl.__hljs_result;
     }
     
     codeEl.textContent = plainText;
     
-    // Ensure codeEl is properly inserted in DOM before highlighting
+    // ハイライト前に codeEl がDOMツリー内にあることを保証
     if (!codeEl.parentElement) {
         console.warn('[highlightCodeBlock] Code element not in DOM tree');
         return;
@@ -118,16 +118,16 @@ function highlightCodeBlock(codeEl) {
     
     hljs.highlightElement(codeEl);
 
-    // Restore cursor
+    // カーソル位置を復元
     if (isInsideCode) {
         setCaretCharacterOffset(codeEl, caretOffset);
     }
 
-    // Update line numbers
+    // 行番号を更新
     const pre = codeEl.closest('pre');
     if (pre) {
         updateLineNumbers(pre);
-        // Remove skipped notice if it exists
+        // スキップ通知が残っていれば削除
         const notice = pre.querySelector('.highlight-skipped-notice');
         if (notice) notice.remove();
     }
@@ -146,7 +146,7 @@ function highlightAllCodeBlocks() {
         if (lineCount > 500) {
             console.log(`[ハイライトスキップ] ${lineCount}行のコードブロックをスキップしました。`);
             
-            // Update line numbers and add notice
+            // 行番号を更新し、スキップ通知を追加
             const pre = block.closest('pre');
             if (pre) {
                 updateLineNumbers(pre);
@@ -166,7 +166,7 @@ function highlightAllCodeBlocks() {
         block.removeAttribute('data-highlighted');
         hljs.highlightElement(block);
         
-        // Remove skipped notice if it exists
+        // スキップ通知が残っていれば削除
         const pre = block.closest('pre');
         if (pre) {
             const notice = pre.querySelector('.highlight-skipped-notice');
@@ -181,7 +181,7 @@ function highlightAllCodeBlocks() {
  */
 function updateLineNumbers(pre) {
     if (!pre || pre.tagName !== 'PRE') return;
-    // Skip Mermaid containers
+    // Mermaidコンテナは対象外
     if (pre.closest('.mermaid-container')) return;
 
     const code = pre.querySelector('code');
@@ -189,7 +189,7 @@ function updateLineNumbers(pre) {
 
     const text = code.textContent;
     const lines = text.split('\n');
-    // Remove trailing empty line (common with code blocks ending in \n)
+    // 末尾の空行を除去（コードブロックが \n で終わる場合に発生しやすい）
     if (lines.length > 1 && lines[lines.length - 1] === '') {
         lines.pop();
     }
@@ -204,7 +204,7 @@ function updateLineNumbers(pre) {
         pre.insertBefore(gutter, pre.firstChild);
     }
 
-    // Only update if line count changed
+    // 行数が変わった場合のみ更新
     const currentCount = gutter.children.length;
     if (currentCount !== lineCount) {
         let html = '';
@@ -214,27 +214,27 @@ function updateLineNumbers(pre) {
         gutter.innerHTML = html;
     }
     
-    // Ensure wrap toggle button exists
+    // 折り返しトグルボタンが存在することを保証
     setupCodeWrapButton(pre);
 }
 
 /**
- * Setup code wrap toggle button for a code block
+ * コードブロック用の折り返しトグルボタンを設定する
  */
 function setupCodeWrapButton(pre) {
     if (!pre || pre.tagName !== 'PRE') return;
     
-    // Find container in the toolbar above pre (code-block-toolbar is the previous sibling)
+    // pre の直前のツールバーからコンテナを取得（code-block-toolbar が前兄弟）
     const toolbar = pre.previousElementSibling;
     if (!toolbar || !toolbar.classList.contains('code-block-toolbar')) return;
     
-    // Check if button already exists in toolbar
+    // ツールバー内に既存ボタンがある場合は何もしない
     if (toolbar.querySelector('.code-wrap-btn')) return;
     
     const container = toolbar.querySelector('.code-copy-container');
     if (!container) return;
     
-    // Create wrap toggle button
+    // 折り返しトグルボタンを作成
     const button = document.createElement('button');
     button.className = 'code-wrap-btn';
     button.setAttribute('type', 'button');
@@ -243,16 +243,16 @@ function setupCodeWrapButton(pre) {
     button.textContent = '↵ Wrap';
     button.title = 'Toggle text wrapping (Hold Shift to wrap long lines within window)';
     
-    // Check if wrap is already enabled (from data attribute)
+    // data属性から折り返し有効状態を復元
     const code = pre.querySelector('code');
     if (code && code.classList.contains('wrap-enabled')) {
         button.classList.add('wrap-enabled');
     }
     
-    // Insert wrap button before copy button(s)
+    // コピーボタンより前に折り返しボタンを挿入
     container.insertBefore(button, container.firstChild);
     
-    // Add click handler
+    // クリックハンドラを登録
     button.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -282,16 +282,16 @@ function debouncedHighlightCodeAtCursor() {
         const sel = window.getSelection();
         if (!sel.rangeCount) return;
         let node = sel.anchorNode;
-        // Walk up to find code element inside pre
+        // 親方向にたどり、pre 内の code 要素を探索
         while (node && node !== editor) {
             if (node.tagName === 'CODE' && node.parentElement && node.parentElement.tagName === 'PRE') {
                 const lineCount = node.textContent.split('\n').length;
-                // Adjust delay based on code size
+                // コードサイズに応じて遅延時間を調整
                 const delay = lineCount > 100 ? 500 : 0;
                 
-                // Guard against input event loops: hljs.highlightElement modifies
-                // code.innerHTML inside contenteditable, which may trigger input
-                // events in WebKit. Setting isConverting prevents re-entrant calls.
+                // 入力イベントループ対策: hljs.highlightElement が contenteditable 内の
+                // code.innerHTML 変更時、WebKit で input が再発火することがある
+                // isConverting を立てて再入呼び出しを防ぐ
                 const doHighlight = (codeNode) => {
                     isConverting = true;
                     try {
@@ -314,7 +314,7 @@ function debouncedHighlightCodeAtCursor() {
 }
 
 /**
- * Toggle text wrapping for a code block
+ * コードブロックの折り返し表示を切り替える
  */
 function toggleCodeWrap(pre) {
     if (!pre || pre.tagName !== 'PRE') return;
@@ -322,18 +322,18 @@ function toggleCodeWrap(pre) {
     const code = pre.querySelector('code');
     if (!code) return;
     
-    // Button is in the toolbar above pre
+    // ボタンは pre の直前にあるツールバー内
     const toolbar = pre.previousElementSibling;
     const button = toolbar && toolbar.classList.contains('code-block-toolbar')
         ? toolbar.querySelector('.code-wrap-btn')
         : null;
     if (!button) return;
     
-    // Toggle wrap class
+    // 折り返し用クラスを切り替え
     const isWrapped = code.classList.toggle('wrap-enabled');
     button.classList.toggle('wrap-enabled', isWrapped);
     
-    // Save wrap state in data attribute
+    // 折り返し状態を data 属性へ保存
     code.setAttribute('data-wrap', isWrapped ? 'true' : 'false');
     
     console.log(`[CodeWrap] Toggled for code block: ${isWrapped ? 'enabled' : 'disabled'}`);

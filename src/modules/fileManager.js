@@ -1,45 +1,46 @@
 // =====================================================
-// SuMark - File Operations Module
+// SuMark - ファイル操作モジュール
 // =====================================================
-// newFile, openFileFromPath, openFile, resolveRelativeImages,
-// resolveRelativeCsvLinks, saveFile, saveAsFile, resolveImagesForSave
 
-// Normalize file paths that may be provided as file:// URLs (especially on Windows)
+// file:// URL で渡されたパスを正規化する（特にWindows向け）
 function normalizeFilePath(rawPath) {
     if (!rawPath) return rawPath;
     let p = rawPath.trim();
 
-    // Strip file:// scheme if present
+    // 分岐が多い理由は「同じファイルを同じ文字列表現へ寄せる」ため。
+    // これをしないと、OSや入力経路ごとにパス表現が揺れて重複タブ判定が壊れる。
+
+    // file:// スキームを除去する
     if (p.startsWith('file://')) {
         // file:///C:/... → /C:/... → C:/...
         // file://server/share/... → //server/share/... (UNC path)
         // file:////server/share/... → //server/share/... (UNC path alternate form)
         p = p.replace(/^file:\/\//, '');
-        // Windows file URLs may start with /C:/... so remove leading slash
+        // Windows の file URL は /C:/... 形式になるため先頭スラッシュを除去
         if (/^\/[A-Za-z]:\//.test(p)) {
             p = p.substring(1);
         }
-        // UNC paths via file:// become /server/share (missing one /), restore it
-        // But file:////server/share becomes //server/share which is correct
-        // Also file:///C:/... becomes /C:/... which is handled above
+        // file:// 経由のUNCパスは /server/share になりやすいため補正する
+        // file:////server/share は既に //server/share で正しい
+        // file:///C:/... は上の分岐で処理済み
     }
 
-    // Decode percent-encoded characters (spaces, non-ascii, etc.)
+    // パーセントエンコード文字（空白・非ASCIIなど）を復号
     try {
         p = decodeURIComponent(p);
     } catch (e) {
-        // Ignore invalid percent escapes
+        // 不正なエスケープは無視
     }
 
-    // Detect UNC path (\\server\share or //server/share)
+    // UNCパス（\\server\share / //server/share）を判定
     const isUNC = /^\\\\|^\/\//.test(p);
 
-    // Normalize separators
+    // 区切り文字を正規化
     p = p.replace(/\\/g, '/');
 
-    // Collapse redundant slashes (but not the leading // for UNC paths)
+    // 余分なスラッシュを畳み込む（UNC先頭の // は維持）
     if (isUNC) {
-        // Preserve the leading // for UNC, normalize the rest
+        // UNC先頭の // を保持しつつ残りを正規化
         p = '//' + p.substring(2).replace(/\/+/g, '/');
     } else {
         p = p.replace(/\/+/g, '/');
@@ -53,14 +54,14 @@ async function newFile() {
     editor.focus();
 }
 
-// Open a file from a given path (used by both dialog and drag-and-drop)
+// 指定パスからファイルを開く（ダイアログ/ドラッグ&ドロップ共通）
 async function openFileFromPath(filePath) {
     try {
-        // Normalize file:// URLs to local filesystem paths (Windows may provide file:// paths)
+        // file:// URL をローカルファイルパスへ正規化
         const normalizedFilePath = normalizeFilePath(filePath);
         console.log('[DEBUG openFileFromPath START] filePath:', filePath, 'normalized:', normalizedFilePath);
         
-        // Check if file is already open
+        // 既に開いているファイルか確認
         const existingTab = tabs.find(t => t.filePath === normalizedFilePath);
         if (existingTab) {
             console.log('[DEBUG openFileFromPath] File already open, switching tab');
@@ -72,7 +73,7 @@ async function openFileFromPath(filePath) {
         let contents = await readTextFile(normalizedFilePath);
         console.log('[DEBUG openFileFromPath] File read successfully, contents length:', contents.length);
 
-        // Resolve relative image paths to asset protocol URLs for display
+        // エディタ表示用に相対アセットを解決
         const lastSlash = Math.max(normalizedFilePath.lastIndexOf('/'), normalizedFilePath.lastIndexOf('\\'));
         const fileDir = normalizedFilePath.substring(0, lastSlash);
         console.log('[DEBUG openFileFromPath] fileDir:', fileDir);
@@ -84,16 +85,19 @@ async function openFileFromPath(filePath) {
             console.log('[DEBUG openFileFromPath] CSV links resolved successfully');
         } catch (err) {
             console.warn('[DEBUG openFileFromPath] CSV link resolution failed (non-critical):', err.message);
-            // Continue even if CSV resolution fails
+            // CSV解決失敗は非致命なので処理を継続
         }
 
         // Notion エクスポート形式の複数行テーブルセルを正規化
         console.log('[DEBUG openFileFromPath] Preprocessing Notion markdown...');
         contents = preprocessNotionMarkdown(contents);
 
-        // Normalize task list items: GFM requires a space after [x]/[ ]
+        // GFMタスク項目は [x]/[ ] の後ろに空白が必要
         contents = contents.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
-        // Empty task items need ZWSP for marked to recognize them as task list
+        // ZWSP を挿入する理由:
+        // 空タスク項目はそのままだとパーサが通常リスト扱いし、
+        // roundtrip 時にチェックボックス情報を失うため。
+        // 空タスク項目は ZWSP を入れて marked のタスク判定を維持
         contents = contents.replace(/^(\s*[-*+]\s+\[[ xX]\])\s*$/gm, '$1 \u200B');
 
         console.log('[DEBUG openFileFromPath] Creating tab...');
@@ -120,7 +124,7 @@ async function openFile() {
         });
 
         if (selected) {
-            // Handle both single and multiple file selections
+            // 単一選択/複数選択の両方に対応
             const files = Array.isArray(selected) ? selected : [selected];
             for (const filePath of files) {
                 await openFileFromPath(filePath);
@@ -132,10 +136,12 @@ async function openFile() {
     }
 }
 
-// Resolve relative image paths in Markdown to asset protocol URLs for display
-// This is a synchronous, lightweight string replacement (no file I/O)
+// Markdown内の相対画像パスを asset:// URL へ変換（ファイルI/Oなし）
 function resolveRelativeImages(markdown, fileDir) {
-    // Normalize fileDir to use forward slashes and remove trailing slash
+    // アルゴリズム意図:
+    // まず候補を収集し、最後に一括置換することで
+    // 走査中の文字列変化による取りこぼしを防ぐ。
+    // fileDir をスラッシュ形式へ統一し、末尾スラッシュを除去
     const isUNC = /^\\\\|^\/\//.test(fileDir);
     fileDir = fileDir.replace(/\\/g, '/');
     if (isUNC) {
@@ -144,7 +150,7 @@ function resolveRelativeImages(markdown, fileDir) {
     fileDir = fileDir.replace(/\/$/, '');
     console.log('[DEBUG resolveRelativeImages] fileDir:', fileDir);
 
-    // Handle nested parentheses in URLs (e.g., Notion exports with unencoded parens)
+    // URL内の入れ子括弧に対応（Notion書き出しなど）
     const imgRegex = /!\[([^\]]*)\]\(([^)]*(?:\([^)]*\)[^)]*)*)\)/g;
     let match;
     const replacements = [];
@@ -155,7 +161,7 @@ function resolveRelativeImages(markdown, fileDir) {
         const rawPath = match[2];
         console.log('[DEBUG resolveRelativeImages] matched image:', fullMatch, 'rawPath:', rawPath);
 
-        // Skip data URIs, http(s) URLs, absolute paths, and already-converted asset URLs
+        // data URI / http(s) / 絶対パス / 既変換のasset URLは除外
         if (rawPath.startsWith('data:') || rawPath.startsWith('http://') ||
             rawPath.startsWith('https://') || rawPath.startsWith('/') ||
             rawPath.startsWith('asset://')) {
@@ -163,7 +169,7 @@ function resolveRelativeImages(markdown, fileDir) {
             continue;
         }
 
-        // URL-decode the path (Notion exports use URL-encoded paths)
+        // パスをURLデコード（Notion書き出しはURLエンコードされる）
         let decodedPath;
         try {
             decodedPath = decodeURIComponent(rawPath);
@@ -171,11 +177,11 @@ function resolveRelativeImages(markdown, fileDir) {
             decodedPath = rawPath;
         }
 
-        // Normalize path separators in decoded path
+        // デコード後パスの区切り文字を正規化
         decodedPath = decodedPath.replace(/\\/g, '/');
         console.log('[DEBUG resolveRelativeImages] decodedPath:', decodedPath);
 
-        // Resolve to absolute path and convert to asset protocol URL
+        // 絶対パスへ解決して asset URL に変換
         const absolutePath = fileDir + '/' + decodedPath;
         console.log('[DEBUG resolveRelativeImages] absolutePath:', absolutePath);
         try {
@@ -195,13 +201,13 @@ function resolveRelativeImages(markdown, fileDir) {
         }
     }
 
-    // Additional: Handle HTML <img> tags with relative paths (e.g. width付きイメージ保存時)
+    // 追加対応: 相対パスの HTML <img> タグも変換（width付き画像保存時など）
     const htmlImgRegex = /<img[^>]*src="([^"]+)"[^>]*>/gi;
     while ((match = htmlImgRegex.exec(markdown)) !== null) {
         const fullMatch = match[0];
         const rawPath = match[1];
 
-        // Skip absolute locations / data / asset already
+        // 絶対URL / data / 既存asset は除外
         if (rawPath.startsWith('data:') || rawPath.startsWith('http://') ||
             rawPath.startsWith('https://') || rawPath.startsWith('/') ||
             rawPath.startsWith('asset://')) {
@@ -229,7 +235,7 @@ function resolveRelativeImages(markdown, fileDir) {
         }
     }
 
-    // Apply replacements
+    // 置換を適用
     let result = markdown;
     for (const r of replacements) {
         result = result.replace(r.original, r.replacement);
@@ -238,9 +244,9 @@ function resolveRelativeImages(markdown, fileDir) {
     return result;
 }
 
-// Resolve relative CSV links in Markdown to inline Markdown tables
+// Markdown内の相対CSVリンクをインライン表へ変換
 async function resolveRelativeCsvLinks(markdown, fileDir) {
-    // Match links ending in .csv, handling nested parentheses in URLs
+    // .csvリンクを抽出（URL内の入れ子括弧にも対応）
     const linkRegex = /\[([^\]]*)\]\(([^)]*(?:\([^)]*\)[^)]*)*\.csv)\)/g;
     let match;
     const replacements = [];
@@ -250,12 +256,12 @@ async function resolveRelativeCsvLinks(markdown, fileDir) {
         const linkText = match[1];
         const rawPath = match[2];
 
-        // Skip http(s) URLs and absolute paths
+        // http(s) と絶対パスは対象外
         if (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('/')) {
             continue;
         }
 
-        // URL-decode the path (Notion exports use URL-encoded paths)
+        // パスをURLデコード（Notion書き出し対策）
         let decodedPath;
         try {
             decodedPath = decodeURIComponent(rawPath);
@@ -362,9 +368,9 @@ async function saveAsFile() {
     }
 }
 
-// Convert asset:// URLs back to relative paths, and save Base64 images to files
+// asset:// URL を相対パスへ戻し、Base64画像をファイル保存する
 async function resolveImagesForSave(markdown, mdFilePath) {
-    // Normalize file path to use forward slashes (preserve UNC prefix)
+    // パスをスラッシュ形式へ正規化（UNC接頭辞は保持）
     const isUNC = /^\\\\|^\/\//.test(mdFilePath);
     let normalizedPath = mdFilePath.replace(/\\/g, '/');
     if (isUNC) {
@@ -374,25 +380,25 @@ async function resolveImagesForSave(markdown, mdFilePath) {
     const fileDir = normalizedPath.substring(0, lastSlash);
     const mdFileName = normalizedPath.substring(lastSlash + 1).replace(/\.md$/i, '');
 
-    // --- Step 1: Convert asset URLs back to relative paths ---
+    // --- 手順1: asset URL を相対パスへ戻す ---
     // macOS: asset://localhost/ENCODED_PATH
     // Windows: https://asset.localhost/PATH
-    // Both forms need to be handled
+    // 両方の形式に対応する
     const replacements = [];
 
     function assetUrlToAbsPath(url) {
-        // macOS format: asset://localhost/%2Fpath%2Fto%2Ffile
+        // macOS形式: asset://localhost/%2Fpath%2Fto%2Ffile
         if (url.startsWith('asset://localhost/')) {
             return decodeURIComponent(url.substring('asset://localhost/'.length));
         }
-        // Windows format: https://asset.localhost/PATH
+        // Windows形式: https://asset.localhost/PATH
         if (url.startsWith('https://asset.localhost/')) {
             return decodeURIComponent(url.substring('https://asset.localhost/'.length));
         }
         return null;
     }
 
-    // Pattern: ![alt](asset://localhost/...) or ![alt](https://asset.localhost/...)
+    // パターン: ![alt](asset://localhost/...) または ![alt](https://asset.localhost/...)
     const mdAssetRegex = /!\[([^\]]*)\]\(((?:asset:\/\/localhost\/|https:\/\/asset\.localhost\/)[^)]+)\)/g;
     let match;
     while ((match = mdAssetRegex.exec(markdown)) !== null) {
@@ -406,7 +412,7 @@ async function resolveImagesForSave(markdown, mdFilePath) {
         }
     }
 
-    // Pattern: <img src="asset://localhost/..." or <img src="https://asset.localhost/...">
+    // パターン: <img src="asset://localhost/..."> / <img src="https://asset.localhost/...">
     const htmlAssetRegex = /<img\s+src="((?:asset:\/\/localhost\/|https:\/\/asset\.localhost\/)[^"]*)"\s*alt="([^"]*)"(?:\s*width="(\d+)")?\s*\/?>/g;
     while ((match = htmlAssetRegex.exec(markdown)) !== null) {
         const fullMatch = match[0];
@@ -421,17 +427,17 @@ async function resolveImagesForSave(markdown, mdFilePath) {
         }
     }
 
-    // Apply asset URL replacements first
+    // 先に asset URL 置換を適用
     let result = markdown;
     for (const r of replacements) {
         result = result.replace(r.original, r.replacement);
     }
 
-    // --- Step 2: Save Base64 images (from paste) to files ---
-    // Detect image directory for new images
+    // --- 手順2: Base64画像（貼り付け由来）をファイル保存 ---
+    // 新規画像の保存先ディレクトリを決定
     let imageDir = null;
 
-    // Check companion directory (Notion-style)
+    // 付随ディレクトリ（Notion形式）を確認
     try {
         const exactDir = fileDir + '/' + mdFileName;
         if (await exists(exactDir)) { imageDir = mdFileName; }
@@ -445,7 +451,7 @@ async function resolveImagesForSave(markdown, mdFilePath) {
             } catch (e) { /* ignore */ }
         }
     }
-    // Check from existing relative image paths in the markdown
+    // Markdown内の既存相対画像パスから推定
     if (!imageDir) {
         const existingImgMatch = result.match(/!\[[^\]]*\]\(([^)]+\/)[^/]+\.[a-zA-Z]+\)/);
         if (existingImgMatch) {
@@ -457,13 +463,13 @@ async function resolveImagesForSave(markdown, mdFilePath) {
     }
     if (!imageDir) { imageDir = 'images'; }
 
-    // Match Base64 images (from paste operations)
+    // Base64画像（貼り付け由来）を抽出
     const mdImgRegex = /!\[([^\]]*)\]\(data:(image\/[a-zA-Z+]+);base64,([A-Za-z0-9+/=\s]+)\)/g;
-    // HTML image regex: more flexible pattern that handles attributes in any order
-    // Matches: <img ... src="data:image/...;base64,..." ... alt="..." ...>
+    // HTML画像正規表現: 属性順が異なっても拾える柔軟パターン
+    // 例: <img ... src="data:image/...;base64,..." ... alt="..." ...>
     const htmlImgRegex = /<img[^>]*src="data:(image\/[a-zA-Z+]+);base64,([A-Za-z0-9+/=\s]+)"[^>]*alt="([^"]*)"[^>]*>/g;
 
-    // Scan existing files in image directory to avoid overwriting
+    // 既存ファイルを走査して上書きを回避
     let imgCounter = 0;
     try {
         const dirPath = fileDir + '/' + imageDir;
@@ -478,7 +484,7 @@ async function resolveImagesForSave(markdown, mdFilePath) {
                 }
             }
         }
-    } catch (e) { /* ignore - start from 0 */ }
+    } catch (e) { /* 失敗時は0から開始 */ }
     const base64Replacements = [];
 
     while ((match = mdImgRegex.exec(result)) !== null) {
@@ -501,7 +507,7 @@ async function resolveImagesForSave(markdown, mdFilePath) {
         const mime = match[1];
         const base64Data = match[2].replace(/\s/g, '');
         const alt = match[3];
-        // Extract width from the full match if present (new regex doesn't capture it)
+        // width 属性があれば fullMatch から抽出（正規表現では未捕捉）
         const widthMatch = fullMatch.match(/width="(\d+)"/);
         const width = widthMatch ? widthMatch[1] : null;
         const ext = mimeToExt(mime);

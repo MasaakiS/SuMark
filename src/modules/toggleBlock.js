@@ -26,7 +26,7 @@ function ensureToggleDeleteButton(summary) {
 function insertToggle() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
-    // Prevent toggle insertion inside table cells
+    // テーブルセル内のトグル挿入を禁止
     if (isInsideTableCell(sel.anchorNode)) {
         showWarn('表のセル内ではトグルを作成できません。');
         return;
@@ -69,14 +69,14 @@ function insertToggle() {
     details.appendChild(summary);
     details.appendChild(contentDiv);
 
-    // Check if there is a selection (non-collapsed range)
+    // 選択範囲がある（非折り畳み状態）か確認
     if (!range.collapsed) {
-        // Collect all block-level elements that overlap the selection
+        // 選択範囲と重なるブロック要素を全て収集
         const blocksToMove = [];
         const startBlock = getParentBlock(range.startContainer) || range.startContainer;
         const endBlock = getParentBlock(range.endContainer) || range.endContainer;
 
-        // Walk through direct children of insertion root to find blocks in selection
+        // 挿入ルートの直下を走査して、選択範囲内のブロックを探す
         let collecting = false;
         const rootChildren = Array.from(insertionRoot.childNodes);
         for (const child of rootChildren) {
@@ -92,21 +92,21 @@ function insertToggle() {
         }
 
         if (blocksToMove.length > 0) {
-            // Use first block's text as summary, or default
+            // 最初のブロックテキストをサマリーに、またはデフォルトを使用
             const firstText = blocksToMove[0].textContent.trim();
             summary.textContent = firstText.substring(0, 50) || 'トグル';
             ensureToggleDeleteButton(summary);
 
-            // Insert details before the first collected block
+            // 最初に集めたブロックの前に details を挿入
             const insertBefore = blocksToMove[0];
             insertBefore.parentNode.insertBefore(details, insertBefore);
 
-            // Move all collected blocks into toggle-content
+            // 集めたブロック全てを toggle-content へ移動
             blocksToMove.forEach(b => {
                 contentDiv.appendChild(b);
             });
 
-            // Ensure toggle-content has content
+            // toggle-content に内容があることを確認
             if (contentDiv.children.length === 0) {
                 const p = document.createElement('p');
                 p.innerHTML = '<br>';
@@ -118,12 +118,12 @@ function insertToggle() {
                 ensureToggleContentEditable(insertionRoot);
             }
 
-            // Add a paragraph after details for continuing editing
+            // details の後ろに段落を追加して編集継続できるようにする
             const afterP = document.createElement('p');
             afterP.innerHTML = '<br>';
             details.parentNode.insertBefore(afterP, details.nextSibling);
 
-            // Select summary text for editing
+            // summary テキストを選択して編集可能にする
             const r = document.createRange();
             r.selectNodeContents(summary);
             sel.removeAllRanges();
@@ -133,7 +133,7 @@ function insertToggle() {
         }
     }
 
-    // No selection: insert empty toggle (original behavior)
+    // 選択なし: 空のトグルを挿入（元の動作）
     summary.textContent = 'トグル';
     ensureToggleDeleteButton(summary);
     const p = document.createElement('p');
@@ -142,7 +142,7 @@ function insertToggle() {
 
     const block = getParentBlock(range.startContainer);
 
-    // Insert after current block or replace empty block
+    // 現在のブロック後ろに挿入、または空ブロックを置換
     if (block && block !== editor) {
         if (block.textContent.trim() === '' && block.tagName === 'P') {
             block.parentNode.replaceChild(details, block);
@@ -153,7 +153,7 @@ function insertToggle() {
         insertionRoot.appendChild(details);
     }
 
-    // Add a paragraph after details for continuing editing
+    // details の後ろに段落を追加して編集継続できるようにする
     const afterP = document.createElement('p');
     afterP.innerHTML = '<br>';
     details.parentNode.insertBefore(afterP, details.nextSibling);
@@ -162,7 +162,7 @@ function insertToggle() {
         ensureToggleContentEditable(insertionRoot);
     }
 
-    // Select the summary text for editing
+    // summary テキストを選択して編集可能にする
     const r = document.createRange();
     r.selectNodeContents(summary);
     sel.removeAllRanges();
@@ -237,20 +237,20 @@ function ensureToggleContentEditable(contentDiv) {
  */
 function setupToggleBlocks() {
     editor.querySelectorAll('details').forEach(details => {
-        // Ensure details is open in editor for editing
+        // エディタで編集可能な状態に details をオープン
         details.setAttribute('open', '');
-        // Ensure summary is editable
+        // summary が編集可能であることを確認
         const summary = details.querySelector(':scope > summary');
         if (summary) {
             summary.setAttribute('contenteditable', 'true');
             ensureToggleDeleteButton(summary);
         }
-        // Ensure toggle-content div exists
+        // toggle-content div が存在することを確認
         let contentDiv = details.querySelector(':scope > .toggle-content');
         if (!contentDiv) {
             contentDiv = document.createElement('div');
             contentDiv.className = 'toggle-content';
-            // Move all children after summary into contentDiv
+            // summary の後ろの子要素全てを contentDiv へ移動
             const children = Array.from(details.childNodes);
             let afterSummary = false;
             children.forEach(child => {
@@ -270,7 +270,7 @@ function setupToggleBlocks() {
             details.appendChild(contentDiv);
         }
 
-        // Ensure editable paragraphs at start and end of toggle-content
+        // toggle-content の開始/終了に編集可能な段落を保証
         ensureToggleContentEditable(contentDiv);
     });
 }

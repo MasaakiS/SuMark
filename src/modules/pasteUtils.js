@@ -13,7 +13,7 @@
 function isTabDelimited(text) {
     const lines = text.trim().split('\n');
     if (lines.length < 1) return false;
-    // At least one line must have a tab
+    // 少なくとも1行はタブ文字を含む
     return lines.some(line => line.includes('\t'));
 }
 
@@ -27,7 +27,7 @@ function tsvToHtmlTable(text) {
     const lines = text.trim().split('\n');
     const rows = lines.map(line => line.split('\t'));
 
-    // First row as header
+    // 最初の行をヘッダーに
     let html = '<table><thead><tr>';
     rows[0].forEach(cell => {
         html += '<th>' + escapeHtml(cell.trim()) + '</th>';
@@ -61,7 +61,7 @@ function parseHtmlTable(htmlStr) {
     if (rows.length === 0) return null;
 
     let html = '<table><thead><tr>';
-    // First row as header
+    // 最初の行をヘッダーに
     const headerCells = rows[0].querySelectorAll('th, td');
     headerCells.forEach(cell => {
         html += '<th>' + escapeHtml(cell.textContent.trim()) + '</th>';
@@ -85,7 +85,7 @@ function parseHtmlTable(htmlStr) {
  * @returns {boolean}
  */
 function looksLikeMarkdown(text) {
-    // Simple heuristic: does it contain common markdown patterns?
+    // 簡単なヒューリスティック：Markdown パターンを含むか判定
     return /^#{1,6} |^[-*+] |\*\*.*\*\*|^```|^\|.*\|.*\||^>\s|^\d+\.\s|!\[.*\]\(.*\)|\[.*\]\(.*\)/m.test(text);
 }
 
@@ -106,7 +106,7 @@ async function pasteTextInChunks(lines, codeElement) {
             const endIndex = Math.min(currentIndex + CHUNK_SIZE, totalLines);
             const chunk = lines.slice(currentIndex, endIndex);
             
-            // Insert chunk
+            // チャンクを挿入
             for (let i = 0; i < chunk.length; i++) {
                 if (currentIndex + i > 0) {
                     document.execCommand('insertLineBreak');
@@ -118,13 +118,13 @@ async function pasteTextInChunks(lines, codeElement) {
             
             currentIndex = endIndex;
             
-            // Update progress
+            // 進捗を更新
             if (totalLines > 500) {
                 const progress = Math.round((currentIndex / totalLines) * 100);
                 showProgressIndicator(`貼り付け中... ${progress}% (${currentIndex}/${totalLines}行)`);
             }
             
-            // Continue processing or finish
+            // 処理を続けるまたは終了
             if (currentIndex < totalLines) {
                 requestAnimationFrame(processChunk);
             } else {
@@ -135,7 +135,7 @@ async function pasteTextInChunks(lines, codeElement) {
             }
         }
         
-        // Start processing
+        // 処理を開始
         if (totalLines > 500) {
             showProgressIndicator(`貼り付け中... 0% (0/${totalLines}行)`);
         }

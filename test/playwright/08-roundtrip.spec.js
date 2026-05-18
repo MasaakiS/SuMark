@@ -367,6 +367,19 @@ test.describe('保存・再オープン ラウンドトリップテスト', () =
             const pre = app.page.locator('#editor pre').first();
             await expect(pre).toContainText('console.log');
         });
+
+        test('保存後の再オープンでもコードブロックヘッダーが崩れない', async ({ app }) => {
+            const md = '```javascript\nconsole.log("roundtrip");\n```';
+            await roundtrip(app.page, md);
+
+            await app.helpers.assertStackedCodeBlockLayout('#editor');
+
+            const langSelectCount = await app.page.locator('#editor .code-block-toolbar .code-lang-select').count();
+            const copyBtnCount = await app.page.locator('#editor .code-block-toolbar .code-copy-btn').count();
+
+            expect(langSelectCount).toBeGreaterThan(0);
+            expect(copyBtnCount).toBeGreaterThan(0);
+        });
     });
 
     // ─────────────────────────────────────────────

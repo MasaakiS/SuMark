@@ -41,7 +41,7 @@ function insertTable() {
         : range.startContainer.parentElement;
     const cell = containerEl ? containerEl.closest('td, th') : null;
 
-    // Prevent nested tables - do not insert table inside table cells
+    // テーブルの入れ子を防止（セル内には挿入しない）
     if (cell) {
         return;
     }
@@ -72,10 +72,10 @@ function insertTable() {
     const afterP = document.createElement('p');
     afterP.innerHTML = '<br>';
 
-    // Find insertion point - check if inside toggle-content
+    // 挿入位置を決定（toggle-content 内かどうか確認）
     const toggleContent = block ? block.closest('.toggle-content') : null;
     if (toggleContent) {
-        // Insert inside toggle-content
+        // toggle-content 内へ挿入
         if (block && block.parentNode === toggleContent) {
             if (block.textContent.trim() === '' && block.tagName === 'P') {
                 toggleContent.replaceChild(table, block);
@@ -94,7 +94,7 @@ function insertTable() {
         editor.appendChild(table);
         editor.appendChild(afterP);
     }
-    // Place cursor in first header cell
+    // 先頭ヘッダーセルへカーソルを配置
     const firstTh = table.querySelector('th');
     if (firstTh) {
         const r = document.createRange();
@@ -110,7 +110,7 @@ function insertTable() {
  * テーブルコンテキストメニューをセットアップ
  */
 function setupTableContextMenu() {
-    // Create context menu element
+    // コンテキストメニュー要素を作成
     tableContextMenu = document.createElement('div');
     tableContextMenu.id = 'tableContextMenu';
     tableContextMenu.className = 'table-context-menu';
@@ -127,7 +127,7 @@ function setupTableContextMenu() {
     tableContextMenu.style.display = 'none';
     document.body.appendChild(tableContextMenu);
 
-    // Prevent menu from stealing editor focus
+    // メニューがエディタフォーカスを奪わないようにする
     tableContextMenu.addEventListener('mousedown', e => {
         e.preventDefault();
         e.stopPropagation();
@@ -139,7 +139,7 @@ function setupTableContextMenu() {
         hideTableContextMenu();
     });
 
-    // Show on right-click inside table cell
+    // テーブルセル内の右クリックで表示
     editor.addEventListener('contextmenu', e => {
         const cell = e.target.closest('td, th');
         if (cell && editor.contains(cell)) {
@@ -151,7 +151,7 @@ function setupTableContextMenu() {
         }
     });
 
-    // Hide on click/key elsewhere
+    // それ以外のクリック/キー操作で非表示
     document.addEventListener('click', e => {
         if (tableContextMenu && !tableContextMenu.contains(e.target)) {
             hideTableContextMenu();
@@ -169,7 +169,7 @@ function showTableContextMenu(x, y) {
     tableContextMenu.style.display = 'block';
     tableContextMenu.style.left = x + 'px';
     tableContextMenu.style.top = y + 'px';
-    // Keep within viewport
+    // ビューポート内に収める
     requestAnimationFrame(() => {
         const rect = tableContextMenu.getBoundingClientRect();
         if (rect.right > window.innerWidth) {
@@ -248,7 +248,7 @@ function handleTableAction(action) {
             break;
         }
         case 'deleteRow': {
-            if (isHeader) break; // Don't delete header row
+            if (isHeader) break; // ヘッダー行は削除しない
             const tbody = row.parentNode;
             row.remove();
             if (tbody.tagName === 'TBODY' && tbody.children.length === 0) {
@@ -304,27 +304,27 @@ function csvToMarkdownTable(csvText, title) {
     const rows = parseCsv(csvText);
     if (rows.length === 0) return null;
 
-    // Find max columns
+    // 最大列数を算出
     const maxCols = Math.max(...rows.map(r => r.length));
     if (maxCols === 0) return null;
 
-    // Normalize rows to have equal columns
+    // すべての行を同じ列数に正規化
     const normalized = rows.map(row => {
         while (row.length < maxCols) row.push('');
         return row;
     });
 
-    // Build Markdown table
+    // Markdownテーブルを構築
     let md = '';
     if (title) {
         md += '**' + title + '**\n\n';
     }
 
-    // Header row
+    // ヘッダー行
     md += '| ' + normalized[0].map(c => c.replace(/\|/g, '\\|')).join(' | ') + ' |\n';
-    // Separator
+    // 区切り行
     md += '| ' + normalized[0].map(() => '---').join(' | ') + ' |\n';
-    // Data rows
+    // データ行
     for (let i = 1; i < normalized.length; i++) {
         md += '| ' + normalized[i].map(c => c.replace(/\|/g, '\\|')).join(' | ') + ' |\n';
     }
@@ -351,7 +351,7 @@ function parseCsv(text) {
             if (ch === '"') {
                 if (i + 1 < len && text[i + 1] === '"') {
                     field += '"';
-                    i++; // skip escaped quote
+                    i++; // エスケープされた引用符をスキップ
                 } else {
                     inQuotes = false;
                 }
@@ -372,14 +372,14 @@ function parseCsv(text) {
                 current = [];
                 field = '';
             } else if (ch === '\r') {
-                // skip carriage return
+                // キャリッジリターンは無視
             } else {
                 field += ch;
             }
         }
     }
 
-    // Last field/row
+    // 最終フィールド/行
     current.push(field.trim());
     if (current.some(c => c !== '')) {
         rows.push(current);

@@ -46,7 +46,7 @@ function resetEditorZoom() {
 function setupZoomKeyboardShortcuts() {
     window.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && !e.altKey) {
-            // Mac配列対応: Ctrl+Shift+; も+になる。Ctrl+= も+として扱う。
+            // Mac配列対応: Ctrl+Shift+; も+になる。Ctrl+= も+として扱う
             if (
                 e.code === 'Equal' ||
                 e.key === '+' ||
@@ -65,7 +65,7 @@ function setupZoomKeyboardShortcuts() {
         }
     });
 
-    // Ctrl+マウスホイール
+    // Ctrl+マウスホイール拡大縮小
     window.addEventListener('wheel', (e) => {
         if (e.ctrlKey || e.metaKey) {
             if (e.deltaY < 0) {

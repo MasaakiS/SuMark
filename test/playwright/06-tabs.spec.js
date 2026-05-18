@@ -163,4 +163,114 @@ test.describe('タブ操作テスト', () => {
         const hasMark = await app.helpers.activeTabHasModifiedMark();
         expect(hasMark).toBe(true);
     });
+
+    test('タブ復元後の後処理だけでは更新マークが付かない', async ({ app }) => {
+        const md = [
+            '# React',
+            '',
+            '```jsx',
+            'function HelloMessage({ name }) {',
+            '  return <div>Hello {name}</div>;',
+            '}',
+            '```',
+        ].join('\n');
+
+        await app.page.evaluate((markdown) => {
+            if (typeof setMarkdown === 'function') setMarkdown(markdown);
+        }, md);
+        await app.helpers.wait(800);
+
+        await app.helpers.pressShortcut('n');
+        await app.helpers.wait(500);
+        await app.helpers.typeInEditor('second tab');
+        await app.helpers.wait(500);
+
+        const tabs = app.page.locator('.tab-item');
+        await tabs.first().click();
+        await app.helpers.wait(800);
+
+        const hasMark = await app.helpers.activeTabHasModifiedMark();
+        expect(hasMark).toBe(false);
+    });
+
+    test('画像読み込み失敗は更新マークを付けない', async ({ app }) => {
+        const md = '<img src="https://example.invalid/sumark-test-image.png" alt="broken image">';
+
+        await app.page.evaluate((markdown) => {
+            if (typeof setMarkdown === 'function') setMarkdown(markdown);
+        }, md);
+        await app.helpers.wait(500);
+
+        await app.page.evaluate(() => {
+            const img = document.querySelector('#editor img');
+            if (img) img.dispatchEvent(new Event('error'));
+        });
+        await app.helpers.wait(200);
+
+        const hasMark = await app.helpers.activeTabHasModifiedMark();
+        expect(hasMark).toBe(false);
+    });
+
+    test('タブ切替後もコードブロックヘッダーが崩れない', async ({ app }) => {
+        const md = '```js\nconsole.log("tab switch");\n```';
+        await app.page.evaluate((markdown) => {
+            if (typeof setMarkdown === 'function') setMarkdown(markdown);
+        }, md);
+        await app.helpers.wait(800);
+
+        await app.helpers.pressShortcut('n');
+        await app.helpers.wait(500);
+        await app.helpers.typeInEditor('second tab');
+        await app.helpers.wait(500);
+
+        const tabs = app.page.locator('.tab-item');
+        await tabs.first().click();
+        await app.helpers.wait(800);
+
+        const langSelectCount = await app.page.locator('#editor .code-block-toolbar .code-lang-select').count();
+        const copyBtnCount = await app.page.locator('#editor .code-block-toolbar .code-copy-btn').count();
+        const preCount = await app.page.locator('#editor pre').count();
+
+        expect(preCount).toBeGreaterThan(0);
+        expect(langSelectCount).toBeGreaterThan(0);
+        expect(copyBtnCount).toBeGreaterThan(0);
+    });
+
+    test('コードブロック複数のタブと空タブを往復してもヘッダーが崩れない', async ({ app }) => {
+        const md = [
+            '```js',
+            'console.log("first");',
+            '```',
+            '',
+            '```bash',
+            'echo "second"',
+            '```',
+        ].join('\n');
+
+        await app.page.evaluate((markdown) => {
+            if (typeof setMarkdown === 'function') setMarkdown(markdown);
+        }, md);
+        await app.helpers.wait(800);
+
+        const initialPreCount = await app.page.locator('#editor pre').count();
+        expect(initialPreCount).toBe(2);
+
+        // 空タブを作成（複数ファイルD&Dで空ファイルタブが混在するケース相当）
+        await app.helpers.pressShortcut('n');
+        await app.helpers.wait(500);
+
+        const tabs = app.page.locator('.tab-item');
+        await tabs.first().click();
+        await app.helpers.wait(800);
+
+        const preCount = await app.page.locator('#editor pre').count();
+        const toolbarCount = await app.page.locator('#editor .code-block-toolbar').count();
+        const langSelectCount = await app.page.locator('#editor .code-block-toolbar .code-lang-select').count();
+        const copyBtnCount = await app.page.locator('#editor .code-block-toolbar .code-copy-btn').count();
+
+        expect(preCount).toBe(2);
+        expect(toolbarCount).toBe(2);
+        expect(langSelectCount).toBe(2);
+        expect(copyBtnCount).toBeGreaterThanOrEqual(2);
+    });
 });

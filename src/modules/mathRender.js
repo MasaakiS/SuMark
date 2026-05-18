@@ -17,13 +17,13 @@ function renderMathBlocks() {
         return;
     }
 
-    // Find all text nodes containing $$...$$ or $...$ patterns
+    // $$...$$または$...$パターンを含むテキストノードを全て検索
     const walker = document.createTreeWalker(
         editor,
         NodeFilter.SHOW_TEXT,
         {
             acceptNode: function(node) {
-                // Skip if already inside a math element
+                // 既に数式要素の中にあれば スキップ
                 let parent = node.parentNode;
                 while (parent && parent !== editor) {
                     if (parent.classList && (parent.classList.contains('math-display') || parent.classList.contains('math-inline'))) {
@@ -31,7 +31,7 @@ function renderMathBlocks() {
                     }
                     parent = parent.parentNode;
                 }
-                // Accept if contains $ pattern
+                // $パターンを含めば受け入れ
                 if (node.textContent.includes('$')) {
                     return NodeFilter.FILTER_ACCEPT;
                 }
@@ -46,7 +46,7 @@ function renderMathBlocks() {
         nodesToProcess.push(node);
     }
 
-    // Process display math first ($$...$$)
+    // ブロック数式（$$...$$）を最初に処理
     nodesToProcess.forEach(textNode => {
         if (!textNode.parentNode || !editor.contains(textNode)) return;
         
@@ -60,8 +60,8 @@ function renderMathBlocks() {
 
         displayMathPatterns.forEach((pattern, patternIndex) => {
             while ((match = pattern.exec(text)) !== null) {
-                // Avoid overlapping matches for $$...$$ blocks when the second pattern
-                // could start at the second '$' of an opening '$$'.
+                // ブロック数式内での重複マッチングを回避：
+                // 2番目の$で開始する可能性があるため
                 if (patternIndex === 1 && match.index > 0 && text[match.index - 1] === '$') {
                     continue;
                 }
@@ -109,7 +109,7 @@ function renderMathBlocks() {
         }
     });
 
-    // Process inline math ($...$) - need to re-collect nodes after display math processing
+    // インライン数式を処理（ブロック数式の後）
     const walker2 = document.createTreeWalker(
         editor,
         NodeFilter.SHOW_TEXT,
@@ -144,7 +144,7 @@ function renderMathBlocks() {
         const replacements = [];
         
         while ((match = inlineMathRegex.exec(text)) !== null) {
-            // Make sure it's not part of $$
+            // $$の一部ではないことを確認
             if (match.index > 0 && text[match.index - 1] === '$') continue;
             if (match.index + match[0].length < text.length && text[match.index + match[0].length] === '$') continue;
             

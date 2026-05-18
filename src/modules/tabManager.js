@@ -58,16 +58,19 @@ function getActiveTab() {
  * @param {number} id - 切り替え先のタブID
  */
 function switchTab(id) {
-    // 現在のタブの状態を保存
-    const current = getActiveTab();
-    if (current) {
-        current.content = editor.innerHTML;
-        current.scrollTop = editor.parentElement.scrollTop;
-    }
+    beginProgrammaticEditorUpdate();
 
-    activeTabId = id;
-    const tab = getActiveTab();
-    if (!tab) return;
+    try {
+        // 現在のタブの状態を保存
+        const current = getActiveTab();
+        if (current) {
+            current.content = editor.innerHTML;
+            current.scrollTop = editor.parentElement.scrollTop;
+        }
+
+        activeTabId = id;
+        const tab = getActiveTab();
+        if (!tab) return;
 
     try {
         console.log('[TabSwitch] Restoring tab content:', tab);
@@ -80,15 +83,15 @@ function switchTab(id) {
                     'br', 'strong', 'em', 'del', 's', 'a', 'img',
                     'table', 'thead', 'tbody', 'tr', 'th', 'td',
                     'details', 'summary',
-                    'div', 'span', 'input',
+                    'div', 'span', 'input', 'select', 'option', 'button',
                 ],
                 ALLOWED_ATTR: [
                     'href', 'title', 'src', 'alt', 'width', 'height',
                     'class', 'id', 'style',
-                    'type', 'checked', 'disabled',
+                    'type', 'checked', 'disabled', 'value',
                     'open',
                     'contenteditable',
-                    'data-mermaid-source', 'data-math', 'data-wrap',
+                    'data-mermaid-source', 'data-math', 'data-wrap', 'data-code-lang',
                 ],
                 ALLOW_DATA_ATTR: true,
                 ALLOWED_URI_REGEXP: DOMPURIFY_URI_REGEXP
@@ -100,17 +103,17 @@ function switchTab(id) {
     } catch (e) {
         console.error('[TabSwitch] Exception:', e);
     }
+    // サニタイズ後にコードブロックツールバーを再構築（restoredHTMLでは要素削除される）
+    editor.querySelectorAll('.code-block-toolbar').forEach(el => el.remove());
+    // タブ復元ではSVGがsanitizeで落ちる場合があるため、描画済みフラグを一度クリアする
+    editor.querySelectorAll('.mermaid-diagram-only[data-mermaid-rendered], .mermaid-code-and-diagram[data-mermaid-rendered]').forEach(el => {
+        el.removeAttribute('data-mermaid-rendered');
+    });
     editor.parentElement.scrollTop = tab.scrollTop;
     
     // エディタが編集可能要素で始まることを確認
     ensureEditableStart();
     
-    // タブ切り替え時にUndo/Redoスタックをリセット
-    undoStack = [];
-    redoStack = [];
-    currentState = null;
-    saveEditorState(); // 保存状態の初期化
-
     // チェックボックスをインタラクティブにする
     editor.querySelectorAll('input[type="checkbox"]').forEach(cb => {
         cb.removeAttribute('disabled');
@@ -118,7 +121,10 @@ function switchTab(id) {
 
     // コードブロックをハイライト
     editor.querySelectorAll('pre code').forEach(block => {
-        if (typeof hljs !== 'undefined') hljs.highlightElement(block);
+        if (block.classList.contains('language-mermaid')) return;
+        if (typeof hljs !== 'undefined' && !block.dataset.highlighted) {
+            hljs.highlightElement(block);
+        }
     });
 
     // Mermaid ダイアグラムをレンダリング
@@ -138,7 +144,7 @@ function switchTab(id) {
     // コードブロックに行番号を追加
     updateAllLineNumbers();
 
-    // Ensure copy/wrap buttons are available after tab switch
+    // タブ切替後、コピー/ラップボタンが利用可能であることを確認
     if (typeof addCopyButtonsToCodeBlocks === 'function') {
         addCopyButtonsToCodeBlocks();
         editor.querySelectorAll('pre').forEach(pre => {
@@ -154,9 +160,23 @@ function switchTab(id) {
     // 画像エラーハンドリングをセットアップ
     setupImageErrorHandling();
 
-    renderTabs();
-    updateWordCount();
-    updateStatusBar();
+    // タブ復元後の後処理でDOMが変化するため、未変更タブは最終HTMLを基準にそろえる
+    if (!tab.isModified) {
+        tab.content = editor.innerHTML;
+    }
+
+    // タブ切り替え時にUndo/Redoスタックを最終DOM基準でリセット
+    undoStack = [];
+    redoStack = [];
+    currentState = null;
+    saveEditorState();
+
+        renderTabs();
+        updateWordCount();
+        updateStatusBar();
+    } finally {
+        endProgrammaticEditorUpdate();
+    }
 }
 
 /**

@@ -1,5 +1,5 @@
 // =====================================================
-// SuMark - Toolbar Actions Module
+// SuMark - ツールバー操作モジュール
 // =====================================================
 // applyHeading, insertUnorderedList, insertOrderedList, applyBlockquote,
 // applyInlineCode, showModal, insertLink, insertImage, insertCodeBlock,
@@ -7,7 +7,7 @@
 // insertHorizontalRule, insertDate, insertTime, insertDateTime,
 // showEmojiPicker, CODE_LANGUAGES
 
-// ========== Search Highlight State ==========
+// ========== 検索ハイライト状態 ==========
 let currentSearchHighlights = [];
 let currentSearchIndex = -1;
 
@@ -109,7 +109,7 @@ function moveToNextSearchHighlight() {
     moveToSearchHighlight(currentSearchIndex + 1);
 }
 
-// ========== Formatting Commands ==========
+// ========== フォーマット処理 ==========
 
 function applyHeading(level) {
     const tag = 'h' + level;
@@ -119,16 +119,16 @@ function applyHeading(level) {
     const block = getParentBlock(sel.anchorNode);
     if (!block) return;
     
-    // Check if we're toggling off the same heading level
+    // 同じ見出しレベルを再適用した場合は解除トグル
     if (block.tagName.toLowerCase() === tag) {
-        // Toggle off: revert to paragraph
+        // トグル解除: 段落へ戻す
         document.execCommand('formatBlock', false, 'p');
         return;
     }
     
-    // Special handling for list items: convert list item to heading
+    // リスト項目の特別処理: 見出しへ変換
     if (block.tagName === 'LI') {
-        // Get the text content (excluding checkbox if present)
+        // テキスト内容を取得（チェックボックスは除外）
         const checkbox = block.querySelector('input[type="checkbox"]');
         let textContent = '';
         for (let node of block.childNodes) {
@@ -139,30 +139,30 @@ function applyHeading(level) {
             }
         }
         
-        // Create heading element
+        // 見出し要素を作成
         const heading = document.createElement(tag);
         heading.textContent = textContent.trim();
         
-        // Get the parent list
+        // 親リストを取得
         const list = block.parentNode;
         
-        // Insert heading before the list or after it depending on position
+        // 位置に応じて見出しをリストの前後へ挿入
         list.parentNode.insertBefore(heading, list.nextSibling);
         
-        // Remove the list item
+        // リスト項目を削除
         block.remove();
         
-        // If list is now empty, remove it
+        // リストが空になったら削除
         if (list.children.length === 0) {
             list.remove();
         }
         
-        // Set cursor at the end of the heading
+        // カーソルを見出し末尾へ移動
         setCursorTo(heading);
         return;
     }
     
-    // For other block types, use the standard formatBlock command
+    // それ以外のブロック種別は標準 formatBlock を使用
     document.execCommand('formatBlock', false, tag);
 }
 
@@ -170,7 +170,7 @@ function insertUnorderedList() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
     
-    // Prevent list insertion inside table cells
+    // テーブルセル内でのリスト挿入を禁止
     if (isInsideTableCell(sel.anchorNode)) {
         showWarn('表のセル内ではリストを作成できません。');
         return;
@@ -184,27 +184,27 @@ function insertUnorderedList() {
         return;
     }
     
-    // Special handling for headings: convert heading to list item
+    // 見出しの特別処理: リスト項目へ変換
     if (/^H[1-6]$/.test(block.tagName)) {
         const textContent = block.textContent.trim();
         
-        // Create list and list item
+        // リストとリスト項目を作成
         const ul = document.createElement('ul');
         const li = document.createElement('li');
         li.textContent = textContent;
         ul.appendChild(li);
         
-        // Replace heading with list
+        // 見出しをリストへ置換
         block.parentNode.insertBefore(ul, block);
         block.remove();
         
-        // Set cursor in the list item
+        // カーソルをリスト項目へ移動
         setCursorTo(li);
         if (toggleContent) ensureToggleContentEditable(toggleContent);
         return;
     }
     
-    // For other block types, use the standard command
+    // それ以外のブロック種別は標準コマンドを使用
     document.execCommand('insertUnorderedList');
     if (toggleContent) ensureToggleContentEditable(toggleContent);
 }
@@ -213,7 +213,7 @@ function insertOrderedList() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
     
-    // Prevent list insertion inside table cells
+    // テーブルセル内のリスト挿入を禁止
     if (isInsideTableCell(sel.anchorNode)) {
         showWarn('表のセル内ではリストを作成できません。');
         return;
@@ -227,45 +227,45 @@ function insertOrderedList() {
         return;
     }
     
-    // Special handling for headings: convert heading to list item
+    // 見出しの特別処理: リスト項目へ変換
     if (/^H[1-6]$/.test(block.tagName)) {
         const textContent = block.textContent.trim();
         
-        // Create list and list item
+        // リストとリスト項目を作成
         const ol = document.createElement('ol');
         const li = document.createElement('li');
         li.textContent = textContent;
         ol.appendChild(li);
         
-        // Replace heading with list
+        // 見出しをリストへ置換
         block.parentNode.insertBefore(ol, block);
         block.remove();
         
-        // Set cursor in the list item
+        // カーソルをリスト項目へ設定
         setCursorTo(li);
         if (toggleContent) ensureToggleContentEditable(toggleContent);
         return;
     }
     
-    // For other block types, use the standard command
+    // それ以外のブロック種別は標準コマンドを使用
     document.execCommand('insertOrderedList');
     if (toggleContent) ensureToggleContentEditable(toggleContent);
 }
 
 function applyBlockquote() {
     const sel = window.getSelection();
-    // Prevent blockquote insertion inside table cells
+    // テーブルセル内での引用挿入を禁止
     if (sel.rangeCount && isInsideTableCell(sel.anchorNode)) {
         showWarn('表のセル内では引用を作成できません。');
         return;
     }
     const block = getParentBlock(sel.anchorNode);
     const toggleContent = block ? block.closest('.toggle-content') : null;
-    // Check if already in blockquote
+    // 既に引用内かどうか確認
     let node = block;
     while (node && node !== editor) {
         if (node.tagName === 'BLOCKQUOTE') {
-            // Exit blockquote
+            // 引用を解除
             document.execCommand('formatBlock', false, 'p');
             if (toggleContent) ensureToggleContentEditable(toggleContent);
             return;
@@ -280,7 +280,7 @@ function applyInlineCode() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
 
-    // Check if already in code
+    // 既にインラインコード内か確認
     let node = sel.anchorNode;
     let codeParent = null;
     while (node && node !== editor) {
@@ -293,7 +293,7 @@ function applyInlineCode() {
     }
 
     if (codeParent) {
-        // Remove code formatting
+        // コード装飾を解除
         const text = codeParent.textContent;
         const textNode = document.createTextNode(text);
         codeParent.parentNode.replaceChild(textNode, codeParent);
@@ -307,9 +307,9 @@ function applyInlineCode() {
     }
 }
 
-// ========== Custom Modal Dialog ==========
+// ========== カスタムモーダルダイアログ ==========
 function showModal(title, fields, callback, options = {}) {
-    // options: { okText, cancelText, keepOpenOnOk }
+    // オプション: { okText, cancelText, keepOpenOnOk }
     const overlay = document.getElementById('modalOverlay');
     const titleEl = document.getElementById('modalTitle');
     const fieldsEl = document.getElementById('modalFields');
@@ -319,7 +319,7 @@ function showModal(title, fields, callback, options = {}) {
     titleEl.textContent = title;
     fieldsEl.innerHTML = '';
 
-    // Build input fields
+    // 入力フィールドを構築
     fields.forEach((field, i) => {
         const div = document.createElement('div');
         div.className = 'modal-field';
@@ -381,7 +381,7 @@ function showModal(title, fields, callback, options = {}) {
 
     overlay.style.display = 'flex';
 
-    // Position dialog in the center by default
+    // 既定ではダイアログを中央配置
     const dialog = overlay.querySelector('.modal-dialog');
     if (dialog) {
         dialog.style.left = '50%';
@@ -389,11 +389,11 @@ function showModal(title, fields, callback, options = {}) {
         dialog.style.transform = 'translate(-50%, -50%)';
     }
 
-    // Focus first input/select
+    // 先頭の input/select にフォーカス
     const firstInput = fieldsEl.querySelector('input, select');
     if (firstInput) setTimeout(() => firstInput.focus(), 50);
 
-    // Cleanup previous listeners
+    // 以前のリスナーをクリーンアップ
     const newOk = okBtn.cloneNode(true);
     okBtn.parentNode.replaceChild(newOk, okBtn);
     const newCancel = cancelBtn.cloneNode(true);
@@ -410,14 +410,14 @@ function showModal(title, fields, callback, options = {}) {
         overlay.style.display = 'none';
         fieldsEl.onkeydown = null;
         clearSearchHighlights();
-        // Remove drag listeners (if any)
+        // ドラッグ用リスナーを解除（存在する場合）
         document.removeEventListener('mousemove', onDrag);
         document.removeEventListener('mouseup', endDrag);
         document.removeEventListener('touchmove', onTouchDrag);
         document.removeEventListener('touchend', endDrag);
     }
 
-    // Drag & move support (for moving the modal)
+    // モーダル移動のためのドラッグ対応
     let dragStartX = 0;
     let dragStartY = 0;
     let startLeft = 0;
@@ -434,7 +434,7 @@ function showModal(title, fields, callback, options = {}) {
         dragStartX = clientX;
         dragStartY = clientY;
 
-        // Convert % centering to absolute px so movement doesn't jump
+        // 移動時のジャンプを防ぐため、%中央寄せを絶対pxへ変換
         dialog.style.left = `${rect.left}px`;
         dialog.style.top = `${rect.top}px`;
         dialog.style.transform = 'none';
@@ -504,7 +504,7 @@ function showModal(title, fields, callback, options = {}) {
         editor.focus();
     });
 
-    // Enter key submits, Escape cancels
+    // Enterで送信、Escapeでキャンセル
     fieldsEl.onkeydown = (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -554,7 +554,7 @@ function showFindDialog() {
             return;
         }
 
-        // Same query: move to next match
+        // 同一クエリの場合は次の一致へ移動
         moveToNextSearchHighlight();
     }, {
         okText: '次へ',
@@ -606,7 +606,7 @@ function showReplaceDialog() {
         if (typeof setMarkdown === 'function') {
             setMarkdown(replaced);
         } else {
-            // Fallback: directly replace editor text content
+            // フォールバック: エディタのテキスト内容を直接置換
             if (editor) editor.textContent = replaced;
         }
 
@@ -618,7 +618,7 @@ function showReplaceDialog() {
     });
 }
 
-// Backwards-compat shim (existing calls)
+// 後方互換のためのシム（既存呼び出し用）
 function showFindReplace() {
     showReplaceDialog();
 }
@@ -626,7 +626,7 @@ function showFindReplace() {
 // ========== Element Insertion ==========
 
 async function insertLink() {
-    // Save selection before opening dialog
+    // ダイアログ表示前に選択状態を保存
     const sel = window.getSelection();
     let savedRange = null;
     let selectedText = '';
@@ -635,8 +635,8 @@ async function insertLink() {
         selectedText = sel.toString() || '';
     }
 
-    // Determine default URL and text values: if selection is inside an <a>,
-    // use its href and text; if selected text itself looks like a URL, use it.
+    // URLとテキストの初期値を決定：選択範囲が <a> 内なら href と表示文字列を採用
+    // 選択文字列自体がURLに見える場合はそれをURL初期値に使う。
     let defaultUrl = 'https://';
     let defaultText = selectedText;
     if (sel.rangeCount) {
@@ -668,7 +668,7 @@ async function insertLink() {
         if (!url || url === 'https://') { editor.focus(); return; }
         const linkText = values.text || url;
 
-        // Restore selection and insert
+        // 選択状態を復元して挿入
         editor.focus();
         const s = window.getSelection();
         if (savedRange) {
@@ -681,14 +681,14 @@ async function insertLink() {
         saveEditorState(); // Save state after inserting link
     });
 
-    // Add file selection button after modal is displayed
+    // モーダル表示後にファイル選択ボタンを追加
     const fieldsEl = document.getElementById('modalFields');
     if (fieldsEl) {
-        // Remove existing file button if present
+        // 既存のファイルボタンがあれば削除
         const existingBtn = fieldsEl.querySelector('.modal-file-select-btn');
         if (existingBtn) existingBtn.remove();
 
-        // Create file selection button
+        // ファイル選択ボタンを作成
         const buttonContainer = document.createElement('div');
         buttonContainer.style.marginTop = '12px';
         const fileBtn = document.createElement('button');
@@ -703,7 +703,7 @@ async function insertLink() {
                 });
                 
                 if (selected) {
-                    // Set the selected path to the URL field
+                    // 選択したパスをURL入力欄へ設定
                     const urlInput = document.getElementById('modalInput0');
                     if (urlInput) {
                         urlInput.value = selected;
@@ -764,7 +764,7 @@ async function insertImage() {
     }
 
     try {
-        // Open file dialog for local images
+        // ローカル画像選択用のファイルダイアログを開く
         const selected = await tauriOpen({
             multiple: false,
             filters: [{ name: '画像ファイル', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'] }]
@@ -784,7 +784,7 @@ async function insertImage() {
             };
             const mime = mimeTypes[ext] || 'image/png';
 
-            // Convert Uint8Array to base64
+            // Uint8Array を base64 へ変換
             let binary = '';
             const bytes = new Uint8Array(data);
             const chunkSize = 8192;
@@ -793,20 +793,19 @@ async function insertImage() {
             }
             const base64 = btoa(binary);
 
-            // Restore selection and insert
-            editor.focus();
-            const s = window.getSelection();
-            if (savedRange) {
-                s.removeAllRanges();
-                s.addRange(savedRange);
-            }
-
             const filename = selected.split('/').pop().split('\\').pop();
             showModal('画像を挿入', [
                 { name: 'alt', label: '代替テキスト', type: 'text', value: filename }
             ], (values) => {
                 const altText = (values.alt || filename).trim();
                 const html = '<img src="data:' + mime + ';base64,' + base64 + '" alt="' + escapeHtml(altText) + '">';
+                // モーダルを閉じた後にエディタにフォーカスを戻してからカーソル位置を復元
+                editor.focus();
+                const s = window.getSelection();
+                if (savedRange) {
+                    s.removeAllRanges();
+                    s.addRange(savedRange);
+                }
                 document.execCommand('insertHTML', false, html);
                 markModified();
                 saveEditorState(); // Save state after inserting image
@@ -817,7 +816,7 @@ async function insertImage() {
     }
 }
 
-// Supported languages for code block dropdown (Highlight.js common languages)
+// コードブロック言語ドロップダウン用の対応言語（Highlight.jsの主要言語）
 const CODE_LANGUAGES = [
     { value: '', label: '（自動検出）' },
     { value: 'bash', label: 'Bash / Shell' },
@@ -865,9 +864,9 @@ const CODE_LANGUAGES = [
 ];
 
 function insertCodeBlock() {
-    // Save selection and selected text
+    // 選択範囲と選択テキストを保存
     const sel = window.getSelection();
-    // Prevent code block insertion inside table cells
+    // テーブルセル内でのコードブロック挿入を禁止
     if (sel.rangeCount && isInsideTableCell(sel.anchorNode)) {
         showWarn('表のセル内ではコードブロックを作成できません。');
         return;
@@ -893,11 +892,11 @@ function doInsertCodeBlock(lang, savedRange, selectedText) {
     const pre = document.createElement('pre');
     const code = document.createElement('code');
     if (lang) code.className = 'language-' + lang;
-    // Use selected text if available, otherwise use placeholder
+    // 選択テキストがあれば使用し、無ければプレースホルダを使用
     code.textContent = selectedText || 'コードをここに記述';
     pre.appendChild(code);
 
-    // Restore selection first
+    // 先に選択状態を復元
     if (!editor) {
         console.error('Editor element not found');
         return;
@@ -909,12 +908,12 @@ function doInsertCodeBlock(lang, savedRange, selectedText) {
         sel.addRange(savedRange);
     }
 
-    // Insert at cursor position
+    // カーソル位置に挿入
     if (sel.rangeCount) {
         const range = sel.getRangeAt(0);
         range.deleteContents();
 
-        // Make sure we're inserting at block level
+        // ブロックレベルで挿入されるよう調整
         const block = getParentBlock(range.startContainer);
         const toggleContent = block ? block.closest('.toggle-content') : null;
         if (block && block !== editor) {
@@ -929,28 +928,28 @@ function doInsertCodeBlock(lang, savedRange, selectedText) {
             p.innerHTML = '<br>';
             editor.appendChild(p);
         }
-        // Ensure editable lines at start/end of toggle-content
+        // toggle-content の先頭/末尾に編集可能行を保証
         if (toggleContent) {
             ensureToggleContentEditable(toggleContent);
         }
 
-        // Select the code content (whether placeholder or selected text)
+        // コード内容を選択（プレースホルダ/選択テキストのいずれでも）
         const codeRange = document.createRange();
         codeRange.selectNodeContents(code);
         sel.removeAllRanges();
         sel.addRange(codeRange);
 
-        // Temporarily prevent input events during highlighting
+        // ハイライト中は一時的に入力イベントを抑止
         const wasConverting = isConverting;
         isConverting = true;
         
         try {
-            // Apply highlighting first
+            // 先にハイライトを適用
             if (lang && typeof hljs !== 'undefined') {
                 highlightCodeBlock(code);
             }
 
-            // Then add line numbers
+            // その後に行番号を追加
             updateLineNumbers(pre);
         } finally {
             isConverting = wasConverting;
@@ -961,7 +960,7 @@ function doInsertCodeBlock(lang, savedRange, selectedText) {
 }
 
 /**
- * Restore code wrap states from data attributes
+ * data属性からコード折り返し状態を復元する
  */
 function restoreCodeWrapStates() {
     editor.querySelectorAll('pre code[data-wrap="true"]').forEach(code => {
@@ -981,7 +980,7 @@ function insertTaskList() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
     
-    // Prevent list insertion inside table cells
+    // テーブルセル内のリスト挿入を禁止
     if (isInsideTableCell(sel.anchorNode)) {
         showWarn('表のセル内ではリストを作成できません。');
         return;
@@ -992,7 +991,7 @@ function insertTaskList() {
     const selectedText = sel.toString().trim();
 
     if (selectedText) {
-        // Convert selected block elements to task list items (preserves <br> within blocks)
+        // 選択ブロック要素をタスク項目へ変換（ブロック内の <br> を保持）
         const range = sel.getRangeAt(0);
         const container = toggleContent || editor;
         const blocks = Array.from(container.children).filter(child =>
@@ -1010,30 +1009,30 @@ function insertTaskList() {
                 cb.type = 'checkbox';
                 li.appendChild(cb);
                 li.appendChild(document.createTextNode(' '));
-                // Move inline content from block to li, preserving <br>
+                // ブロックのインラインコンテンツを li へ移動（<br> 保持）
                 while (blk.firstChild) {
                     li.appendChild(blk.firstChild);
                 }
                 ul.appendChild(li);
             });
 
-            // Insert ul where first block was
+            // 最初のブロック位置に ul を挿入
             const firstBlock = blocks[0];
             firstBlock.parentNode.insertBefore(ul, firstBlock);
 
-            // Remove original blocks
+            // 元のブロックを削除
             blocks.forEach(b => b.remove());
 
-            // Add trailing paragraph for continuing editing after the list
+            // リスト後の編集継続用に段落を追加
             const p = document.createElement('p');
             p.innerHTML = '<br>';
             ul.parentNode.insertBefore(p, ul.nextSibling);
 
-            // Position cursor in the first list item
+            // カーソルを最初のリスト項目に配置
             const firstLi = ul.querySelector('li');
             if (firstLi) setCursorTo(firstLi);
         } else {
-            // Fallback: no block elements found, use text splitting
+            // フォールバック：ブロック要素が見つからない場合、テキスト分割を使用
             const lines = selectedText.split('\n').filter(l => l.trim());
             const items = lines.map(line =>
                 '<li class="task-list-item"><input type="checkbox"> ' + escapeHtml(line.trim()) + '</li>'
@@ -1042,7 +1041,7 @@ function insertTaskList() {
             document.execCommand('insertHTML', false, html);
         }
     } else {
-        // Build task list via DOM manipulation for precise structure control
+        // DOM操作でタスクリストを構築（構造を厳密制御）
         const ul = document.createElement('ul');
         ul.className = 'contains-task-list';
 
@@ -1052,18 +1051,18 @@ function insertTaskList() {
         const cb = document.createElement('input');
         cb.type = 'checkbox';
 
-        // Use non-breaking space so cursor is visible and has width
+        // ノーブレークスペースでカーソルが見える幅を確保
         const textNode = document.createTextNode('\u00A0');
 
         li.appendChild(cb);
         li.appendChild(textNode);
         ul.appendChild(li);
 
-        // Trailing paragraph for continuing editing after the list
+        // リスト後の編集継続用に段落を追加
         const p = document.createElement('p');
         p.innerHTML = '<br>';
 
-        // Find the current block-level element to insert after
+        // 挿入後の現在のブロック要素を検出
         const range = sel.getRangeAt(0);
         range.deleteContents();
 
@@ -1094,7 +1093,7 @@ function insertTaskList() {
         if (insertAfter && insertAfter.parentNode === insertParent) {
             insertParent.insertBefore(ul, insertAfter.nextSibling);
             insertParent.insertBefore(p, ul.nextSibling);
-            // Remove empty placeholder block in the same container
+            // 同一コンテナの空プレースホルダ要素を削除
             if (insertAfter.tagName === 'P' && insertAfter.textContent.trim() === '') {
                 insertAfter.remove();
             }
@@ -1103,7 +1102,7 @@ function insertTaskList() {
             insertParent.appendChild(p);
         }
 
-        // Position cursor right after the non-breaking space (beside checkbox)
+        // ノーブレークスペースの直後（チェックボックス横）に カーソル配置
         const newRange = document.createRange();
         newRange.setStart(textNode, 1);
         newRange.collapse(true);
@@ -1113,7 +1112,7 @@ function insertTaskList() {
         editor.focus();
     }
 
-    // Make checkboxes interactive
+    // チェックボックスをインタラクティブに
     editor.querySelectorAll('input[type="checkbox"][disabled]').forEach(cb => {
         cb.removeAttribute('disabled');
     });
@@ -1124,7 +1123,7 @@ function insertTaskList() {
 
 function insertHorizontalRule() {
     const sel = window.getSelection();
-    // Prevent horizontal rule insertion inside table cells
+    // テーブルセル内の水平線挿入を禁止
     if (sel.rangeCount && isInsideTableCell(sel.anchorNode)) {
         showWarn('表のセル内では水平線を挿入できません。');
         return;
@@ -1180,7 +1179,7 @@ function showEmojiPicker() {
         return;
     }
 
-    // Save selection
+    // 選択範囲を保存
     const sel = window.getSelection();
     let savedRange = null;
     if (sel.rangeCount) {
@@ -1215,7 +1214,7 @@ function showEmojiPicker() {
 
     emojiPickerEl.style.display = 'grid';
 
-    // Position near emoji button
+    // 絵文字ボタン付近に配置
     const btn = document.getElementById('emojiBtn');
     if (btn) {
         const rect = btn.getBoundingClientRect();
@@ -1223,7 +1222,7 @@ function showEmojiPicker() {
         emojiPickerEl.style.top = (rect.bottom + 4) + 'px';
     }
 
-    // Handle click
+    // クリック処理
     function onEmojiClick(e) {
         const item = e.target.closest('.emoji-item');
         if (!item) return;
@@ -1231,7 +1230,7 @@ function showEmojiPicker() {
         emojiPickerEl.style.display = 'none';
         emojiPickerEl.removeEventListener('click', onEmojiClick);
 
-        // Restore selection and insert
+        // 選択範囲を復元して挿入
         editor.focus();
         if (savedRange) {
             const s = window.getSelection();
@@ -1245,7 +1244,7 @@ function showEmojiPicker() {
 
     emojiPickerEl.addEventListener('click', onEmojiClick);
 
-    // Close on click outside
+    // 外側クリックで閉じる
     function onOutsideClick(e) {
         if (emojiPickerEl && !emojiPickerEl.contains(e.target) && e.target.id !== 'emojiBtn') {
             emojiPickerEl.style.display = 'none';
