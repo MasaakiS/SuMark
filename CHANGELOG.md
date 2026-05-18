@@ -2,6 +2,14 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v1.0.4] - 2026-05-18
+### 改善
+- 複数モジュール（18 ファイル）の英語コメントを日本語に統一し、コメント品質を向上
+  - `exportManager.js`、`markdown.js`、`undoRedo.js`、`tableManager.js`、`nodeUtils.js`、`imageManager.js`、`toolbarActions.js`、`keyboard.js`、`toggleBlock.js`、`mermaidManager.js`、`mathRender.js`、`tabManager.js`、`codeHighlight.js`、`pasteUtils.js`、`editorZoom.js`、`autoConvert.js`、`tocManager.js`、`main.js`
+  - 各モジュールの実装内容・制約・依存関係に関する説明をすべて日本語化
+- コメント品質ガイドライン（`docs/COMMENT_POLICY.md`）を新規作成し、今後のコメント統一ルールを定義
+- ドキュメント（`docs/README.md`）を更新し、最新の実装状況を反映
+
 ## [v1.0.3] - 2026-05-17
 ### 修正
 - 複数ファイル D&D 時に未編集タブへ誤って「更新あり」マーク（●）が付く問題を修正
