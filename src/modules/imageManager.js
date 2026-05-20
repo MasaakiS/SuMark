@@ -385,16 +385,13 @@ function closeImageViewer() {
 // ========== 画像ペースト ==========
 // ========== 画像リサイズ ==========
 /**
-    // 画像コピーボタン
  * @param {File} file - ペーストされた画像ファイル
-        // 品質優先で自然寸法を使用
+ */
 function pasteImageFile(file) {
-            // blob を base64 へ変換
+    const reader = new FileReader();
     reader.onload = function(event) {
-        // --- ハイブリッドクリップボード処理開始 ---
-        // 1. 利用可能ならTauriネイティブクリップボードAPIを試す
-        // 2. Web Clipboard APIを試す
-        // 3. フォールバック: 画像ファイル名をテキストとしてコピー
+        const base64 = event.target.result;
+        const html = '<img src="' + base64 + '" alt="貼り付け画像">';
         editor.focus();
         document.execCommand('insertHTML', false, html);
         markModified();
@@ -402,7 +399,13 @@ function pasteImageFile(file) {
     reader.readAsDataURL(file);
 }
 
-// ========== 画像ファイルユーティリティ ==========
+
+// ========== 画像ファイルユーティリティ ========== 
+
+// グローバル公開
+if (typeof window !== 'undefined') {
+    window.pasteImageFile = pasteImageFile;
+}
 
 /**
  * MIMEタイプから拡張子に変換

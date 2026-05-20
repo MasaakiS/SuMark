@@ -150,6 +150,32 @@ function resolveRelativeImages(markdown, fileDir) {
     fileDir = fileDir.replace(/\/$/, '');
     console.log('[DEBUG resolveRelativeImages] fileDir:', fileDir);
 
+    // コードフェンス/インラインコード内のMarkdown記法は文字列として扱う。
+    // その範囲は相対画像変換の対象外にする。
+    function collectCodeRanges(text) {
+        const ranges = [];
+
+        const fencedRegex = /```[\s\S]*?```/g;
+        let m;
+        while ((m = fencedRegex.exec(text)) !== null) {
+            ranges.push({ start: m.index, end: m.index + m[0].length });
+        }
+
+        const inlineRegex = /`[^`\n]*`/g;
+        while ((m = inlineRegex.exec(text)) !== null) {
+            ranges.push({ start: m.index, end: m.index + m[0].length });
+        }
+
+        ranges.sort((a, b) => a.start - b.start);
+        return ranges;
+    }
+
+    function isInCodeRange(index, ranges) {
+        return ranges.some(r => index >= r.start && index < r.end);
+    }
+
+    const codeRanges = collectCodeRanges(markdown);
+
     // URL内の入れ子括弧に対応（Notion書き出しなど）
     const imgRegex = /!\[([^\]]*)\]\(([^)]*(?:\([^)]*\)[^)]*)*)\)/g;
     let match;
@@ -159,6 +185,11 @@ function resolveRelativeImages(markdown, fileDir) {
         const fullMatch = match[0];
         const alt = match[1];
         const rawPath = match[2];
+
+        if (isInCodeRange(match.index, codeRanges)) {
+            continue;
+        }
+
         console.log('[DEBUG resolveRelativeImages] matched image:', fullMatch, 'rawPath:', rawPath);
 
         // data URI / http(s) / 絶対パス / 既変換のasset URLは除外
@@ -206,6 +237,10 @@ function resolveRelativeImages(markdown, fileDir) {
     while ((match = htmlImgRegex.exec(markdown)) !== null) {
         const fullMatch = match[0];
         const rawPath = match[1];
+
+        if (isInCodeRange(match.index, codeRanges)) {
+            continue;
+        }
 
         // 絶対URL / data / 既存asset は除外
         if (rawPath.startsWith('data:') || rawPath.startsWith('http://') ||
