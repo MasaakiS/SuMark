@@ -984,6 +984,7 @@ function setupEventListeners() {
         const okBtn = document.getElementById('modalOk');
         const cancelBtn = document.getElementById('modalCancel');
         const extraBtn = document.getElementById('modalExtra');
+        const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
         if (!overlay || !titleEl || !fieldsEl || !okBtn || !cancelBtn || !extraBtn) {
             return Promise.resolve('cancel');
@@ -1000,6 +1001,11 @@ function setupEventListeners() {
         extraBtn.style.display = 'inline-flex';
 
         overlay.style.display = 'flex';
+        requestAnimationFrame(() => {
+            if (overlay.style.display !== 'none') {
+                okBtn.focus({ preventScroll: true });
+            }
+        });
 
         let resolveChoice;
         const cleanup = () => {
@@ -1015,6 +1021,9 @@ function setupEventListeners() {
             extraBtn.removeEventListener('click', handleDiscard);
             cancelBtn.removeEventListener('click', handleCancel);
             overlay.removeEventListener('click', handleOverlayClick);
+            if (previousActiveElement && document.contains(previousActiveElement)) {
+                previousActiveElement.focus({ preventScroll: true });
+            }
         };
 
         const handleOverlayClick = e => {

@@ -191,6 +191,7 @@ function showUnsavedCloseDialog(tab) {
     const okBtn = document.getElementById('modalOk');
     const cancelBtn = document.getElementById('modalCancel');
     const extraBtn = document.getElementById('modalExtra');
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     if (!overlay || !titleEl || !fieldsEl || !okBtn || !cancelBtn || !extraBtn) {
         return Promise.resolve('cancel');
@@ -205,6 +206,11 @@ function showUnsavedCloseDialog(tab) {
     fieldsEl.onkeydown = null;
 
     overlay.style.display = 'flex';
+    requestAnimationFrame(() => {
+        if (overlay.style.display !== 'none') {
+            okBtn.focus({ preventScroll: true });
+        }
+    });
 
     let resolveChoice;
     const handleOverlayClick = e => {
@@ -251,6 +257,9 @@ function showUnsavedCloseDialog(tab) {
         extraBtn.removeEventListener('click', handleDiscard);
         cancelBtn.removeEventListener('click', handleCancel);
         overlay.removeEventListener('click', handleOverlayClick);
+        if (previousActiveElement && document.contains(previousActiveElement)) {
+            previousActiveElement.focus({ preventScroll: true });
+        }
     };
 
     const promise = new Promise(resolve => {

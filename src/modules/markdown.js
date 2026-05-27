@@ -49,6 +49,31 @@ function configureTurndown() {
         console.log('Turndown GFM plugin loaded');
     }
 
+    // カスタムルール: bare URL autolink をラウンドトリップ保持する
+    // marked の GFM モードが https://... や www.xxx を <a href="...">...</a> に変換するが、
+    // Turndown のデフォルト links ルールは [url](url) 形式で出力するため保存時に形式が変化してしまう。
+    // このルールで元の bare URL テキストとして保存し、形式変化を防ぐ。
+    // 判定条件:
+    //   - https?:// bare URL → getAttribute('href') === textContent
+    //   - www. bare URL     → marked が "http://" を付加するため href === "http://" + textContent
+    // 明示リンク [text](url)（text ≠ url）はこの条件に一致せず、従来どおり保存される。
+    turndownService.addRule('bareUrlLink', {
+        filter: function(node) {
+            if (node.nodeName !== 'A') return false;
+            const href = node.getAttribute('href');
+            const text = node.textContent.trim();
+            if (!href || !text) return false;
+            // https?:// bare URL
+            if (href === text) return true;
+            // www. bare URL（marked が "http://" を付加）
+            if (text.startsWith('www.') && href === 'http://' + text) return true;
+            return false;
+        },
+        replacement: function(content, node) {
+            return node.textContent.trim();
+        }
+    });
+
     // カスタムルール: チェックボックス付きタスクリスト項目（GFMルールを上書きするため後で登録）
     turndownService.addRule('taskListCheckbox', {
         filter: function(node) {
