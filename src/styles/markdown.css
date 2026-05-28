@@ -307,6 +307,19 @@
     background-color: #f6f8fa;
 }
 
+/* 列選択ハイライト */
+.markdown-body table td.col-anchor,
+.markdown-body table th.col-anchor {
+    background-color: #bfdbfe !important;
+    outline: 2px solid #3b82f6;
+    outline-offset: -2px;
+}
+
+.markdown-body table td.col-selected,
+.markdown-body table th.col-selected {
+    background-color: #dbeafe !important;
+}
+
 .markdown-body img {
     max-width: 100%;
     height: auto;

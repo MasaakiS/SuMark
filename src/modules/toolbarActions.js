@@ -10,6 +10,9 @@
 // ========== 検索ハイライト状態 ==========
 let currentSearchHighlights = [];
 let currentSearchIndex = -1;
+let findDialogOpen = false;
+let lastFindQuery = null;
+let lastFindCaseSensitive = null;
 
 function clearSearchHighlights() {
     if (!currentSearchHighlights || currentSearchHighlights.length === 0) return;
@@ -94,13 +97,6 @@ function moveToSearchHighlight(index) {
     const el = currentSearchHighlights[currentSearchIndex];
     if (!el) return;
     el.classList.add('active-search-highlight');
-
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -409,7 +405,6 @@ function showModal(title, fields, callback, options = {}) {
     function close() {
         overlay.style.display = 'none';
         fieldsEl.onkeydown = null;
-        clearSearchHighlights();
         // ドラッグ用リスナーを解除（存在する場合）
         document.removeEventListener('mousemove', onDrag);
         document.removeEventListener('mouseup', endDrag);
@@ -517,49 +512,163 @@ function showModal(title, fields, callback, options = {}) {
     };
 }
 
+// ========== フローティング検索ダイアログ ==========
+function updateFindCount() {
+    const countEl = document.getElementById('findDialogCount');
+    if (!countEl) return;
+    if (!currentSearchHighlights.length) {
+        countEl.textContent = '';
+    } else {
+        countEl.textContent = `${currentSearchIndex + 1} / ${currentSearchHighlights.length}`;
+    }
+}
+
+function getFindDialog() {
+    let dialog = document.getElementById('findDialog');
+    if (dialog) return dialog;
+
+    dialog = document.createElement('div');
+    dialog.id = 'findDialog';
+    dialog.className = 'find-dialog';
+    dialog.style.display = 'none';
+    dialog.innerHTML =
+        '<div class="find-dialog-title" id="findDialogTitle">検索</div>' +
+        '<div class="find-dialog-body">' +
+          '<div class="find-dialog-row">' +
+            '<input type="text" id="findInput" class="find-dialog-input" placeholder="検索する文字列" autocomplete="off" spellcheck="false">' +
+            '<span id="findDialogCount" class="find-dialog-count"></span>' +
+          '</div>' +
+          '<div class="find-dialog-row find-dialog-options">' +
+            '<label class="find-dialog-checkbox-label">' +
+              '<input type="checkbox" id="findCaseSensitive"> 大/小文字を区別' +
+            '</label>' +
+          '</div>' +
+        '</div>' +
+        '<div class="find-dialog-footer">' +
+          '<button id="findNextBtn" class="modal-btn modal-btn-ok">次へ</button>' +
+          '<button id="findCloseBtn" class="modal-btn modal-btn-cancel">閉じる</button>' +
+        '</div>';
+
+    document.body.appendChild(dialog);
+
+    // ドラッグ
+    let dragging = false, dragStartX = 0, dragStartY = 0, startLeft = 0, startTop = 0;
+    document.getElementById('findDialogTitle').addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        dragging = true;
+        const rect = dialog.getBoundingClientRect();
+        startLeft = rect.left;
+        startTop = rect.top;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        dialog.style.right = 'auto';
+        dialog.style.left = rect.left + 'px';
+        dialog.style.top = rect.top + 'px';
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        dialog.style.left = (startLeft + e.clientX - dragStartX) + 'px';
+        dialog.style.top = (startTop + e.clientY - dragStartY) + 'px';
+    });
+    document.addEventListener('mouseup', () => { dragging = false; });
+
+    document.getElementById('findCloseBtn').addEventListener('click', closeFindDialog);
+    document.getElementById('findNextBtn').addEventListener('click', doFindNext);
+
+    dialog.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeFindDialog();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            doFindNext();
+        }
+    });
+
+    document.getElementById('findInput').addEventListener('input', () => {
+        clearSearchHighlights();
+        lastFindQuery = null;
+        lastFindCaseSensitive = null;
+        updateFindCount();
+    });
+
+    return dialog;
+}
+
+function closeFindDialog() {
+    const dialog = document.getElementById('findDialog');
+    if (dialog) dialog.style.display = 'none';
+    findDialogOpen = false;
+    clearSearchHighlights();
+    lastFindQuery = null;
+    lastFindCaseSensitive = null;
+    if (editor) editor.focus();
+}
+
+function doFindNext() {
+    const input = document.getElementById('findInput');
+    const csCheckbox = document.getElementById('findCaseSensitive');
+    if (!input) return;
+
+    const query = input.value.trim();
+    if (!query) {
+        showWarn('検索語を入力してください');
+        input.focus();
+        return;
+    }
+
+    const cs = csCheckbox ? csCheckbox.checked : false;
+    const isSameSearch = query === lastFindQuery && cs === lastFindCaseSensitive;
+
+    if (!isSameSearch) {
+        lastFindQuery = query;
+        lastFindCaseSensitive = cs;
+        const count = highlightSearchMatches(query, cs);
+        if (count === 0) {
+            showWarn('一致する文字列は見つかりませんでした');
+            input.focus();
+            return;
+        }
+        showWarn(`${count} 件見つかりました`);
+        moveToSearchHighlight(0);
+    } else {
+        moveToNextSearchHighlight();
+    }
+
+    updateFindCount();
+    input.focus();
+}
+
 function showFindDialog() {
+    const dialog = getFindDialog();
+
+    if (findDialogOpen) {
+        const input = document.getElementById('findInput');
+        if (input) input.focus();
+        return;
+    }
+
+    // 選択テキストを初期値に設定
     const sel = window.getSelection();
     const selectedText = sel ? sel.toString() : '';
+    const input = document.getElementById('findInput');
+    if (input && selectedText) {
+        input.value = selectedText;
+    }
 
-    const fields = [
-        { key: 'query', label: '検索', value: selectedText || '', placeholder: '検索する文字列' },
-        { key: 'caseSensitive', label: '大/小文字を区別', type: 'checkbox', value: false },
-    ];
+    clearSearchHighlights();
+    lastFindQuery = null;
+    lastFindCaseSensitive = null;
+    updateFindCount();
 
-    let lastQuery = null;
-    let lastCaseSensitive = null;
+    dialog.style.display = 'block';
+    findDialogOpen = true;
 
-    showModal('検索', fields, (values) => {
-        const query = (values.query || '').trim();
-        if (!query) {
-            showWarn('検索語を入力してください');
-            return;
+    requestAnimationFrame(() => {
+        if (input) {
+            input.focus();
+            input.select();
         }
-
-        const caseSensitive = Boolean(values.caseSensitive);
-        const isSameSearch = query === lastQuery && caseSensitive === lastCaseSensitive;
-
-        if (!isSameSearch) {
-            lastQuery = query;
-            lastCaseSensitive = caseSensitive;
-
-            const count = highlightSearchMatches(query, caseSensitive);
-            if (count === 0) {
-                showWarn('一致する文字列は見つかりませんでした');
-                return;
-            }
-
-            showWarn(`${count} 件見つかりました`);
-            moveToSearchHighlight(0);
-            return;
-        }
-
-        // 同一クエリの場合は次の一致へ移動
-        moveToNextSearchHighlight();
-    }, {
-        okText: '次へ',
-        cancelText: '閉じる',
-        keepOpenOnOk: true,
     });
 }
 

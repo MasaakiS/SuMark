@@ -712,7 +712,10 @@ function setupEventListeners() {
         if (btn) {
             btn.addEventListener('click', () => {
                 handler();
-                editor.focus();
+                // 検索ダイアログはモードレスなので editor.focus() を行わない
+                if (id !== 'searchBtn') {
+                    editor.focus();
+                }
             });
         }
     });

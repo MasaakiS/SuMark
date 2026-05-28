@@ -12,6 +12,10 @@
 let tableContextMenu = null;
 let activeTableCell = null;
 
+// ========== 列選択状態 ==========
+let colAnchorCell = null;    // 最初にクリックしたセル（アンカー）
+let colSelectedCells = [];   // 選択中のセル配列（アンカー含む）
+
 /**
  * テーブルセル内かどうかを判定する
  * @param {Node} node - 判定対象ノード
@@ -106,6 +110,64 @@ function insertTable() {
     saveEditorState();
 }
 
+// ========== 列選択ヘルパー関数 ==========
+
+/**
+ * セルの列インデックスを取得
+ * @param {HTMLTableCellElement} cell
+ * @returns {number}
+ */
+function getCellColIndex(cell) {
+    const row = cell.closest('tr');
+    if (!row) return -1;
+    return Array.from(row.children).indexOf(cell);
+}
+
+/**
+ * テーブル内でのセルの行インデックスを取得
+ * @param {HTMLTableCellElement} cell
+ * @param {HTMLTableElement} table
+ * @returns {number}
+ */
+function getCellRowIndex(cell, table) {
+    const allRows = Array.from(table.querySelectorAll('tr'));
+    return allRows.indexOf(cell.closest('tr'));
+}
+
+/**
+ * 同一列の行範囲内のセルを取得（両端を含む）
+ * @param {HTMLTableElement} table
+ * @param {number} colIndex
+ * @param {number} rowIndexA
+ * @param {number} rowIndexB
+ * @returns {HTMLTableCellElement[]}
+ */
+function getCellsBetween(table, colIndex, rowIndexA, rowIndexB) {
+    const allRows = Array.from(table.querySelectorAll('tr'));
+    const min = Math.min(rowIndexA, rowIndexB);
+    const max = Math.max(rowIndexA, rowIndexB);
+    const cells = [];
+    for (let i = min; i <= max; i++) {
+        if (allRows[i] && allRows[i].children[colIndex]) {
+            cells.push(allRows[i].children[colIndex]);
+        }
+    }
+    return cells;
+}
+
+/**
+ * 列選択状態をクリア
+ */
+function clearColSelection() {
+    colSelectedCells.forEach(c => {
+        c.classList.remove('col-selected');
+        c.classList.remove('col-anchor');
+    });
+    if (colAnchorCell) colAnchorCell.classList.remove('col-anchor');
+    colSelectedCells = [];
+    colAnchorCell = null;
+}
+
 /**
  * テーブルコンテキストメニューをセットアップ
  */
@@ -151,13 +213,60 @@ function setupTableContextMenu() {
         }
     });
 
+    // 列選択: セルのmousedownイベント
+    editor.addEventListener('mousedown', e => {
+        const cell = e.target.closest('td, th');
+        if (!cell || !editor.contains(cell)) return;
+
+        if (e.shiftKey && colAnchorCell) {
+            const anchorTable = colAnchorCell.closest('table');
+            const currentTable = cell.closest('table');
+            if (anchorTable === currentTable) {
+                const anchorColIdx = getCellColIndex(colAnchorCell);
+                const currentColIdx = getCellColIndex(cell);
+                if (anchorColIdx === currentColIdx) {
+                    e.preventDefault(); // ブラウザのテキスト選択を防止
+                    // 既存のハイライトをリセット（アンカーは保持）
+                    colSelectedCells.forEach(c => {
+                        c.classList.remove('col-selected');
+                        c.classList.remove('col-anchor');
+                    });
+                    colSelectedCells = [];
+                    const anchorRowIdx = getCellRowIndex(colAnchorCell, currentTable);
+                    const currentRowIdx = getCellRowIndex(cell, currentTable);
+                    const cells = getCellsBetween(currentTable, anchorColIdx, anchorRowIdx, currentRowIdx);
+                    colSelectedCells = cells;
+                    cells.forEach(c => {
+                        if (c === colAnchorCell) {
+                            c.classList.add('col-anchor');
+                        } else {
+                            c.classList.add('col-selected');
+                        }
+                    });
+                }
+            }
+        } else if (!e.shiftKey) {
+            // 通常クリック: 選択解除してこのセルをアンカーに設定
+            clearColSelection();
+            colAnchorCell = cell;
+            cell.classList.add('col-anchor');
+        }
+    });
+
     // それ以外のクリック/キー操作で非表示
     document.addEventListener('click', e => {
         if (tableContextMenu && !tableContextMenu.contains(e.target)) {
             hideTableContextMenu();
         }
+        // テーブルセル以外のクリックで列選択を解除
+        if (!e.target.closest('td, th')) {
+            clearColSelection();
+        }
     });
-    document.addEventListener('keydown', () => hideTableContextMenu());
+    document.addEventListener('keydown', e => {
+        hideTableContextMenu();
+        if (e.key === 'Escape') clearColSelection();
+    });
 }
 
 /**
@@ -275,6 +384,7 @@ function handleTableAction(action) {
         }
     }
 
+    clearColSelection();
     markModified();
 }
 

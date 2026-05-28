@@ -73,6 +73,24 @@ function handleKeyDown(e) {
         return;
     }
 
+    // Cmd/Ctrl+Enter: テーブル列選択の一括入力
+    if (mod && e.key === 'Enter') {
+        if (typeof colSelectedCells !== 'undefined' && colSelectedCells.length >= 2 &&
+            typeof colAnchorCell !== 'undefined' && colAnchorCell) {
+            e.preventDefault();
+            const content = colAnchorCell.innerHTML;
+            colSelectedCells.forEach(cell => {
+                if (cell !== colAnchorCell) {
+                    cell.innerHTML = content;
+                }
+            });
+            onEditorInput();
+            markModified();
+            if (typeof clearColSelection === 'function') clearColSelection();
+            return;
+        }
+    }
+
     // Backspace/Delete: 非編集要素（TOC, Mermaid など）を処理
     if (e.key === 'Backspace' || e.key === 'Delete') {
         const sel = window.getSelection();
