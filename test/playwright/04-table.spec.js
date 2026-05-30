@@ -50,6 +50,98 @@ test.describe('テーブル操作テスト', () => {
             const menu = app.page.locator('#tableContextMenu');
             await expect(menu).toBeVisible();
         });
+
+        test('右クリックメニューで列を右揃えでき、Markdownに保持される', async ({ app }) => {
+            const targetCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(1);
+            await targetCell.click({ button: 'right' });
+            await app.helpers.wait(150);
+
+            await app.page.locator('#tableContextMenu button[data-action="alignRight"]').click();
+            await app.helpers.wait(200);
+
+            const styleAlign = await targetCell.evaluate(el => {
+                const node = /** @type {HTMLElement} */ (el);
+                return node.style.textAlign;
+            });
+            expect(styleAlign).toBe('right');
+
+            const md = await app.page.evaluate(() => window.getMarkdown());
+            expect(md).toContain('| --- | ---: | --- |');
+        });
+
+        test('右揃え列は保存後の再読込でも表示が維持される', async ({ app }) => {
+            const targetCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(2);
+            await targetCell.click({ button: 'right' });
+            await app.helpers.wait(120);
+            await app.page.locator('#tableContextMenu button[data-action="alignRight"]').click();
+            await app.helpers.wait(180);
+
+            const saved = await app.page.evaluate(() => window.getMarkdown());
+            await app.page.evaluate((md) => window.setMarkdown(md), saved);
+            await app.helpers.wait(300);
+
+            const reloadedCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(2);
+            const reloadedAlign = await reloadedCell.evaluate(el => {
+                const node = /** @type {HTMLElement} */ (el);
+                const inline = node.style.textAlign;
+                const attr = node.getAttribute('align') || '';
+                const computed = window.getComputedStyle(node).textAlign;
+                return { inline, attr, computed };
+            });
+
+            expect(reloadedAlign.attr.toLowerCase()).toBe('right');
+            expect(['right', '-webkit-right']).toContain(reloadedAlign.computed.toLowerCase());
+        });
+
+        test('列揃え設定は後から追加した行にも継承される', async ({ app }) => {
+            const targetCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(2);
+            await targetCell.click({ button: 'right' });
+            await app.helpers.wait(120);
+            await app.page.locator('#tableContextMenu button[data-action="alignRight"]').click();
+            await app.helpers.wait(150);
+
+            await targetCell.click({ button: 'right' });
+            await app.helpers.wait(120);
+            await app.page.locator('#tableContextMenu button[data-action="addRowBelow"]').click();
+            await app.helpers.wait(180);
+
+            const newRowCell = app.page.locator('#editor table tbody tr').nth(1).locator('td').nth(2);
+            const state = await newRowCell.evaluate(el => {
+                const node = /** @type {HTMLElement} */ (el);
+                return {
+                    attr: (node.getAttribute('align') || '').toLowerCase(),
+                    computed: (window.getComputedStyle(node).textAlign || '').toLowerCase(),
+                };
+            });
+
+            expect(state.attr).toBe('right');
+            expect(['right', '-webkit-right']).toContain(state.computed);
+        });
+
+        test('左端ハンドル領域のドラッグで行を並べ替えできる', async ({ app }) => {
+            const rows = app.page.locator('#editor table tbody tr');
+            const row1Cell = rows.nth(0).locator('td').nth(0);
+            const row2Cell = rows.nth(1).locator('td').nth(0);
+
+            await row1Cell.evaluate(el => { el.textContent = '行A'; });
+            await row2Cell.evaluate(el => { el.textContent = '行B'; });
+
+            const fromBox = await row2Cell.boundingBox();
+            const toBox = await row1Cell.boundingBox();
+            expect(fromBox).not.toBeNull();
+            expect(toBox).not.toBeNull();
+
+            await app.page.mouse.move(fromBox.x + 6, fromBox.y + fromBox.height / 2);
+            await app.page.mouse.down();
+            await app.page.mouse.move(toBox.x + 6, toBox.y + 4, { steps: 8 });
+            await app.page.mouse.up();
+            await app.helpers.wait(250);
+
+            const firstText = await rows.nth(0).locator('td').nth(0).innerText();
+            const secondText = await rows.nth(1).locator('td').nth(0).innerText();
+            expect(firstText).toContain('行B');
+            expect(secondText).toContain('行A');
+        });
     });
 
     // ─────────────────────────────────────────────

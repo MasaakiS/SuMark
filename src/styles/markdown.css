@@ -300,11 +300,67 @@
 
 .markdown-body table th {
     font-weight: 600;
-    background-color: #f6f8fa;
+    background-color: #eaf3ff;
+    color: #1f3b5b;
+    border-color: #b9d5ff;
 }
 
 .markdown-body table tr:nth-child(2n) {
     background-color: #f6f8fa;
+}
+
+/* テーブル行ドラッグ（左端オーバーレイハンドル） */
+.markdown-body table.row-drag-enabled tbody tr td:first-child {
+    position: relative;
+    padding-left: 24px;
+    cursor: grab;
+}
+
+.markdown-body table.row-drag-enabled tbody tr td:first-child::before {
+    content: '≡';
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    line-height: 1;
+    color: #8a8f99;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.markdown-body table.row-drag-enabled tbody tr:hover td:first-child::before,
+.markdown-body table.row-drag-enabled tbody tr.row-drag-active td:first-child::before {
+    opacity: 0.9;
+}
+
+.markdown-body table.row-drag-enabled tbody tr.row-drag-active {
+    opacity: 0.72;
+}
+
+.markdown-body table.row-drag-enabled tbody tr.row-drag-active td:first-child {
+    cursor: grabbing;
+}
+
+.markdown-body table.row-drag-enabled tbody tr.row-drop-before td {
+    border-top: 2px solid #4a9eff;
+}
+
+.markdown-body table.row-drag-enabled tbody tr.row-drop-after td {
+    border-bottom: 2px solid #4a9eff;
+}
+
+.row-dragging,
+.row-dragging * {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+@media (hover: none) {
+    .markdown-body table.row-drag-enabled tbody tr td:first-child::before {
+        opacity: 0.35;
+    }
 }
 
 /* 列選択ハイライト */
@@ -427,8 +483,9 @@
     left: 0;
     top: 0;
     margin: 0 0.5em 0 0;
-    vertical-align: middle;
-    align-self: center;
+    align-self: flex-start;
+    margin-top: 0.15em;
+    transform: none;
 }
 
 /* Defensive: hide bullet for any li containing a checkbox (even if parent lacks contains-task-list) */
@@ -468,8 +525,9 @@
     left: 0;
     top: 0;
     margin: 0 0.5em 0 0;
-    vertical-align: middle;
-    align-self: center;
+    align-self: flex-start;
+    margin-top: 0.15em;
+    transform: none;
 }
 
 /* ========== Nested List Styles ========== */

@@ -11,10 +11,23 @@
 // ========== テーブルコンテキストメニュー状態 ==========
 let tableContextMenu = null;
 let activeTableCell = null;
+let rowDragObserver = null;
 
 // ========== 列選択状態 ==========
 let colAnchorCell = null;    // 最初にクリックしたセル（アンカー）
 let colSelectedCells = [];   // 選択中のセル配列（アンカー含む）
+
+// ========== 行ドラッグ状態 ==========
+const ROW_DRAG_HANDLE_WIDTH_MOUSE = 34;
+const ROW_DRAG_HANDLE_WIDTH_TOUCH = 44;
+const rowDragState = {
+    dragging: false,
+    table: null,
+    sourceRow: null,
+    sourceIndex: -1,
+    dropTargetRow: null,
+    dropPosition: null,
+};
 
 /**
  * テーブルセル内かどうかを判定する
@@ -108,6 +121,7 @@ function insertTable() {
     }
     onEditorInput();
     saveEditorState();
+    refreshTableRowDragSupport();
 }
 
 // ========== 列選択ヘルパー関数 ==========
@@ -169,6 +183,302 @@ function clearColSelection() {
 }
 
 /**
+ * 列全体へ揃えを適用する
+ * @param {HTMLTableElement} table
+ * @param {number} colIndex
+ * @param {'left'|'center'|'right'} align
+ */
+function applyColumnAlignment(table, colIndex, align) {
+    if (!table || colIndex < 0) return;
+    const rows = table.querySelectorAll('tr');
+    rows.forEach(r => {
+        const cell = r.children[colIndex];
+        if (!cell) return;
+        cell.style.textAlign = align;
+        cell.setAttribute('align', align);
+    });
+}
+
+/**
+ * 指定列の揃え設定を既存行から取得
+ * @param {HTMLTableElement} table
+ * @param {number} colIndex
+ * @returns {'left'|'center'|'right'|null}
+ */
+function getColumnAlignment(table, colIndex) {
+    if (!table || colIndex < 0) return null;
+    const rows = table.querySelectorAll('tr');
+    for (const r of rows) {
+        const cell = r.children[colIndex];
+        if (!cell) continue;
+        const alignAttr = (cell.getAttribute('align') || '').toLowerCase();
+        if (alignAttr === 'left' || alignAttr === 'center' || alignAttr === 'right') {
+            return alignAttr;
+        }
+        const styleAlign = (cell.style.textAlign || '').toLowerCase();
+        if (styleAlign === 'left' || styleAlign === 'center' || styleAlign === 'right') {
+            return styleAlign;
+        }
+    }
+    return null;
+}
+
+/**
+ * 行ドラッグ用の装飾クラスをテーブルへ付与
+ */
+function refreshTableRowDragSupport() {
+    if (!editor) return;
+    editor.querySelectorAll('table').forEach(table => {
+        if (table.querySelector('tbody tr')) {
+            table.classList.add('row-drag-enabled');
+        } else {
+            table.classList.remove('row-drag-enabled');
+        }
+    });
+}
+
+/**
+ * マウス/タッチイベントから座標を取得
+ * @param {MouseEvent|TouchEvent} e
+ * @returns {{x:number, y:number}|null}
+ */
+function getPointerClientXY(e) {
+    if (typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+        return { x: e.clientX, y: e.clientY };
+    }
+    const touch = e.touches && e.touches[0] ? e.touches[0] : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : null);
+    if (!touch) return null;
+    return { x: touch.clientX, y: touch.clientY };
+}
+
+/**
+ * 左端ハンドル領域かを判定
+ * @param {HTMLTableCellElement} cell
+ * @param {number} clientX
+ * @param {boolean} isTouch
+ * @returns {boolean}
+ */
+function isRowDragHandleArea(cell, clientX, isTouch) {
+    if (!cell || cell.tagName !== 'TD') return false;
+    const row = cell.closest('tr');
+    if (!row || !row.parentNode || row.parentNode.tagName !== 'TBODY') return false;
+    const firstCell = row.querySelector('td, th');
+    if (firstCell !== cell) return false;
+
+    const rect = firstCell.getBoundingClientRect();
+    const widthBase = isTouch ? ROW_DRAG_HANDLE_WIDTH_TOUCH : ROW_DRAG_HANDLE_WIDTH_MOUSE;
+    const style = window.getComputedStyle(firstCell);
+    const paddingLeft = parseFloat(style.paddingLeft) || 0;
+    // 視覚上のハンドル位置（左パディング領域）に合わせて当たり判定を広めに取る
+    const width = Math.max(widthBase, paddingLeft + 10);
+    return clientX >= rect.left - 6 && clientX <= rect.left + width;
+}
+
+/**
+ * 既存ドロップ候補の強調表示をクリア
+ */
+function clearRowDropIndicator() {
+    if (rowDragState.dropTargetRow) {
+        rowDragState.dropTargetRow.classList.remove('row-drop-before');
+        rowDragState.dropTargetRow.classList.remove('row-drop-after');
+    }
+    rowDragState.dropTargetRow = null;
+    rowDragState.dropPosition = null;
+}
+
+/**
+ * ドロップ候補を現在座標から計算
+ * @param {HTMLTableElement} table
+ * @param {HTMLTableRowElement} sourceRow
+ * @param {number} clientY
+ * @returns {{targetRow: HTMLTableRowElement, position: 'before'|'after'}|null}
+ */
+function computeRowDropTarget(table, sourceRow, clientY) {
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    if (rows.length <= 1) return null;
+
+    for (const row of rows) {
+        if (row === sourceRow) continue;
+        const rect = row.getBoundingClientRect();
+        const midpoint = rect.top + rect.height / 2;
+        if (clientY < midpoint) {
+            return { targetRow: row, position: 'before' };
+        }
+    }
+
+    const last = rows[rows.length - 1];
+    if (!last || last === sourceRow) return null;
+    return { targetRow: last, position: 'after' };
+}
+
+/**
+ * ドロップ候補表示を更新
+ * @param {number} clientY
+ */
+function updateRowDropIndicator(clientY) {
+    if (!rowDragState.dragging || !rowDragState.table || !rowDragState.sourceRow) return;
+    const drop = computeRowDropTarget(rowDragState.table, rowDragState.sourceRow, clientY);
+    clearRowDropIndicator();
+    if (!drop) return;
+
+    rowDragState.dropTargetRow = drop.targetRow;
+    rowDragState.dropPosition = drop.position;
+    drop.targetRow.classList.add(drop.position === 'before' ? 'row-drop-before' : 'row-drop-after');
+}
+
+/**
+ * 行ドラッグを終了
+ * @param {boolean} applyDrop
+ */
+function finishRowDrag(applyDrop) {
+    if (!rowDragState.dragging) return;
+
+    const sourceRow = rowDragState.sourceRow;
+    const sourceIndexBefore = rowDragState.sourceIndex;
+    const targetRow = rowDragState.dropTargetRow;
+    const dropPosition = rowDragState.dropPosition;
+
+    document.removeEventListener('mousemove', onRowDragMove);
+    document.removeEventListener('mouseup', onRowDragEnd);
+    document.removeEventListener('touchmove', onRowDragMove);
+    document.removeEventListener('touchend', onRowDragEnd);
+    document.removeEventListener('touchcancel', onRowDragEnd);
+    document.body.classList.remove('row-dragging');
+
+    if (sourceRow) {
+        sourceRow.classList.remove('row-drag-active');
+    }
+    if (rowDragState.table) {
+        rowDragState.table.classList.remove('row-dragging-table');
+    }
+
+    let moved = false;
+    if (applyDrop && sourceRow && targetRow && sourceRow.parentNode && targetRow.parentNode === sourceRow.parentNode) {
+        const parent = sourceRow.parentNode;
+        if (dropPosition === 'before') {
+            if (targetRow !== sourceRow && targetRow !== sourceRow.nextElementSibling) {
+                parent.insertBefore(sourceRow, targetRow);
+            }
+        } else if (dropPosition === 'after') {
+            if (targetRow.nextElementSibling !== sourceRow) {
+                parent.insertBefore(sourceRow, targetRow.nextElementSibling);
+            }
+        }
+
+        const sourceIndexAfter = Array.from(parent.children).indexOf(sourceRow);
+        moved = sourceIndexAfter !== sourceIndexBefore;
+        if (moved) {
+            clearColSelection();
+            const focusCell = sourceRow.querySelector('td, th');
+            if (focusCell) {
+                setCursorTo(focusCell);
+            }
+            onEditorInput();
+            markModified();
+            saveEditorState();
+        }
+    }
+
+    clearRowDropIndicator();
+
+    rowDragState.dragging = false;
+    rowDragState.table = null;
+    rowDragState.sourceRow = null;
+    rowDragState.sourceIndex = -1;
+
+    if (moved) {
+        refreshTableRowDragSupport();
+    }
+}
+
+/**
+ * ドラッグ移動中
+ * @param {MouseEvent|TouchEvent} e
+ */
+function onRowDragMove(e) {
+    if (!rowDragState.dragging) return;
+    const point = getPointerClientXY(e);
+    if (!point) return;
+
+    if (e.cancelable) {
+        e.preventDefault();
+    }
+    updateRowDropIndicator(point.y);
+}
+
+/**
+ * ドラッグ終了
+ * @param {MouseEvent|TouchEvent} _e
+ */
+function onRowDragEnd(_e) {
+    finishRowDrag(true);
+}
+
+/**
+ * 行ドラッグ開始
+ * @param {HTMLTableRowElement} row
+ * @param {HTMLTableElement} table
+ * @param {number} clientY
+ */
+function startRowDrag(row, table, clientY) {
+    if (rowDragState.dragging) {
+        finishRowDrag(false);
+    }
+
+    const tbody = row.parentNode;
+    if (!tbody || tbody.tagName !== 'TBODY') return;
+
+    clearColSelection();
+    hideTableContextMenu();
+    saveEditorState();
+
+    rowDragState.dragging = true;
+    rowDragState.table = table;
+    rowDragState.sourceRow = row;
+    rowDragState.sourceIndex = Array.from(tbody.children).indexOf(row);
+    row.classList.add('row-drag-active');
+    table.classList.add('row-dragging-table');
+    document.body.classList.add('row-dragging');
+
+    updateRowDropIndicator(clientY);
+
+    document.addEventListener('mousemove', onRowDragMove);
+    document.addEventListener('mouseup', onRowDragEnd);
+    document.addEventListener('touchmove', onRowDragMove, { passive: false });
+    document.addEventListener('touchend', onRowDragEnd);
+    document.addEventListener('touchcancel', onRowDragEnd);
+}
+
+/**
+ * セルイベントから行ドラッグを開始できるか判定し、開始する
+ * @param {HTMLTableCellElement} cell
+ * @param {MouseEvent|TouchEvent} e
+ * @param {boolean} isTouch
+ * @returns {boolean}
+ */
+function maybeStartRowDrag(cell, e, isTouch) {
+    const point = getPointerClientXY(e);
+    if (!point) return false;
+
+    if (!isRowDragHandleArea(cell, point.x, isTouch)) {
+        return false;
+    }
+
+    const row = cell.closest('tr');
+    const table = cell.closest('table');
+    if (!row || !table || !row.parentNode || row.parentNode.tagName !== 'TBODY') {
+        return false;
+    }
+
+    if (e.cancelable) {
+        e.preventDefault();
+    }
+    e.stopPropagation();
+    startRowDrag(row, table, point.y);
+    return true;
+}
+
+/**
  * テーブルコンテキストメニューをセットアップ
  */
 function setupTableContextMenu() {
@@ -182,6 +492,10 @@ function setupTableContextMenu() {
         <div class="ctx-divider"></div>
         <button data-action="addColLeft">← 左に列を追加</button>
         <button data-action="addColRight">→ 右に列を追加</button>
+        <div class="ctx-divider"></div>
+        <button data-action="alignLeft">⇤ 左揃え</button>
+        <button data-action="alignCenter">⇆ 中央揃え</button>
+        <button data-action="alignRight">⇥ 右揃え</button>
         <div class="ctx-divider"></div>
         <button data-action="deleteRow" class="ctx-danger">行を削除</button>
         <button data-action="deleteCol" class="ctx-danger">列を削除</button>
@@ -215,8 +529,13 @@ function setupTableContextMenu() {
 
     // 列選択: セルのmousedownイベント
     editor.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
         const cell = e.target.closest('td, th');
         if (!cell || !editor.contains(cell)) return;
+
+        if (maybeStartRowDrag(cell, e, false)) {
+            return;
+        }
 
         if (e.shiftKey && colAnchorCell) {
             const anchorTable = colAnchorCell.closest('table');
@@ -253,6 +572,15 @@ function setupTableContextMenu() {
         }
     });
 
+    // タッチ環境向けの行ドラッグ開始
+    editor.addEventListener('touchstart', e => {
+        const target = e.target;
+        if (!target || !target.closest) return;
+        const cell = target.closest('td, th');
+        if (!cell || !editor.contains(cell)) return;
+        maybeStartRowDrag(cell, e, true);
+    }, { passive: false });
+
     // それ以外のクリック/キー操作で非表示
     document.addEventListener('click', e => {
         if (tableContextMenu && !tableContextMenu.contains(e.target)) {
@@ -267,6 +595,15 @@ function setupTableContextMenu() {
         hideTableContextMenu();
         if (e.key === 'Escape') clearColSelection();
     });
+
+    refreshTableRowDragSupport();
+    if (rowDragObserver) {
+        rowDragObserver.disconnect();
+    }
+    rowDragObserver = new MutationObserver(() => {
+        refreshTableRowDragSupport();
+    });
+    rowDragObserver.observe(editor, { childList: true, subtree: true });
 }
 
 /**
@@ -316,7 +653,7 @@ function handleTableAction(action) {
 
     switch (action) {
         case 'addRowAbove': {
-            const newRow = createTableRow(colCount, 'td');
+            const newRow = createTableRow(table, colCount, 'td');
             if (isHeader) {
                 let tbody = table.querySelector('tbody');
                 if (!tbody) { tbody = document.createElement('tbody'); table.appendChild(tbody); }
@@ -327,7 +664,7 @@ function handleTableAction(action) {
             break;
         }
         case 'addRowBelow': {
-            const newRow = createTableRow(colCount, 'td');
+            const newRow = createTableRow(table, colCount, 'td');
             if (isHeader) {
                 let tbody = table.querySelector('tbody');
                 if (!tbody) { tbody = document.createElement('tbody'); table.appendChild(tbody); }
@@ -354,6 +691,18 @@ function handleTableAction(action) {
                 const ref = r.children[cellIndex];
                 r.insertBefore(newCell, ref ? ref.nextSibling : null);
             });
+            break;
+        }
+        case 'alignLeft': {
+            applyColumnAlignment(table, cellIndex, 'left');
+            break;
+        }
+        case 'alignCenter': {
+            applyColumnAlignment(table, cellIndex, 'center');
+            break;
+        }
+        case 'alignRight': {
+            applyColumnAlignment(table, cellIndex, 'right');
             break;
         }
         case 'deleteRow': {
@@ -385,20 +734,28 @@ function handleTableAction(action) {
     }
 
     clearColSelection();
+    refreshTableRowDragSupport();
     markModified();
 }
 
 /**
  * テーブル行を作成するヘルパー
+ * 列揃え設定は既存列の設定を継承する
+ * @param {HTMLTableElement} table - 対象テーブル
  * @param {number} colCount - 列数
  * @param {string} tag - セルタグ ('td' or 'th')
  * @returns {HTMLTableRowElement}
  */
-function createTableRow(colCount, tag) {
+function createTableRow(table, colCount, tag) {
     const tr = document.createElement('tr');
     for (let i = 0; i < colCount; i++) {
         const cell = document.createElement(tag);
         cell.innerHTML = '&nbsp;';
+        const align = getColumnAlignment(table, i);
+        if (align) {
+            cell.style.textAlign = align;
+            cell.setAttribute('align', align);
+        }
         tr.appendChild(cell);
     }
     return tr;

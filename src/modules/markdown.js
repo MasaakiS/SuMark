@@ -349,6 +349,45 @@ function configureTurndown() {
     console.log('Turndown configured');
 }
 
+/**
+ * テーブル区切り行のアライン記法を正規化する
+ * marked は最低3本のハイフンを期待するため、短い区切り（例: --:）を ---: に補正する
+ * @param {string} md
+ * @returns {string}
+ */
+function normalizeTableAlignmentDelimiters(md) {
+    const lines = md.split('\n');
+    const out = [];
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        const isSeparator = /^\|(?:\s*:?-+:?\s*\|)+\s*$/.test(trimmed);
+        if (!isSeparator) {
+            out.push(line);
+            continue;
+        }
+
+        const cells = trimmed
+            .replace(/^\|\s*/, '')
+            .replace(/\s*\|$/, '')
+            .split('|')
+            .map(c => c.trim());
+
+        const normalized = cells.map(cell => {
+            const left = cell.startsWith(':');
+            const right = cell.endsWith(':');
+            const core = cell.replace(/^:/, '').replace(/:$/, '').replace(/-/g, '');
+            // coreは使わないが、想定外文字が混じった場合も最小安全形へ寄せる
+            const dashes = '---';
+            return (left ? ':' : '') + dashes + (right ? ':' : '');
+        });
+
+        out.push('| ' + normalized.join(' | ') + ' |');
+    }
+
+    return out.join('\n');
+}
+
 // ========== Markdown変換 ==========
 function getMarkdown() {
     const editorEl = editor || document.getElementById('editor');
@@ -393,6 +432,7 @@ function getMarkdown() {
     });
 
     let md = turndownService.turndown(clone.innerHTML);
+    md = normalizeTableAlignmentDelimiters(md);
 
     return md;
 }
@@ -564,7 +604,7 @@ function setMarkdown(md) {
         ],
         ALLOWED_ATTR: [
             'href', 'title', 'src', 'alt', 'width', 'height',
-            'class', 'id', 'style',
+            'class', 'id', 'style', 'align',
             'type', 'checked', 'disabled',
             'open',
             'contenteditable',
