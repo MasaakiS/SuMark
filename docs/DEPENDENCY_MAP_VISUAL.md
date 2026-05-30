@@ -98,40 +98,41 @@ graph TD
 ```
 
 **凡例:**
-- 🟢 Core Layer: 最小限のユーティリティ（他に依存しない）
-- 🟡 Render Layer: 外部ライブラリに依存（相互依存なし）
-- 🟠 Feature Layer: 複数機能が統合（Core に依存）
-- 🔴 UI Layer: ユーザーインタラクション・ファイル操作
-- ⚫ Core Logic: Markdown 処理（中心的ロジック）
-- 矢印：実線 = 直接依存
+
+-   🟢 Core Layer: 最小限のユーティリティ（他に依存しない）
+-   🟡 Render Layer: 外部ライブラリに依存（相互依存なし）
+-   🟠 Feature Layer: 複数機能が統合（Core に依存）
+-   🔴 UI Layer: ユーザーインタラクション・ファイル操作
+-   ⚫ Core Logic: Markdown 処理（中心的ロジック）
+-   矢印：実線 = 直接依存
 
 ---
 
-## 実装済みモジュール構成（v1.0.1 現在）
+## 実装済みモジュール構成（v1.0.7 現在）
 
-```
+```css
 src/
-├── main.js (1,468行) ← オーケストレーション・ペースト・グローバル状態
+├── main.js (1,544行) ← オーケストレーション・ペースト・グローバル状態
 ├── modules/
 │   ├── utils.js (160行)          ← 共有ユーティリティ
 │   ├── nodeUtils.js (175行)      ← DOM ノード操作
 │   ├── pasteUtils.js (144行)     ← ペースト判定・変換
 │   ├── codeHighlight.js (340行)  ← シンタックスハイライト・折り返し
 │   ├── mathRender.js (194行)     ← KaTeX 数式レンダリング
-│   ├── mermaidManager.js (601行) ← Mermaid ダイアグラム管理
-│   ├── tocManager.js (152行)     ← 目次（TOC）管理
+│   ├── mermaidManager.js (675行) ← Mermaid ダイアグラム管理
+│   ├── tocManager.js (227行)     ← 目次（TOC）管理
 │   ├── toggleBlock.js (276行)    ← トグルブロック管理
-│   ├── tabManager.js (465行)     ← タブ管理・未保存確認
+│   ├── tabManager.js (494行)     ← タブ管理・未保存確認
 │   ├── editorZoom.js (79行)      ← エディタズーム
 │   ├── undoRedo.js (166行)       ← Undo/Redo スタック管理
-│   ├── tableManager.js (389行)   ← テーブル操作・CSV読込
-│   ├── imageManager.js (484行)   ← 画像管理・拡大ビューア
-│   ├── toolbarActions.js (1,257行) ← ツールバー・検索/置換
-│   ├── fileManager.js (520行)    ← ファイル I/O
+│   ├── tableManager.js (856行)   ← テーブル操作・CSV読込
+│   ├── imageManager.js (490行)   ← 画像管理・拡大ビューア
+│   ├── toolbarActions.js (1,365行) ← ツールバー・検索/置換
+│   ├── fileManager.js (561行)    ← ファイル I/O
 │   ├── exportManager.js (254行)  ← PDF エクスポート
-│   ├── markdown.js (582行)       ← Markdown ↔ HTML 変換
-│   ├── autoConvert.js (647行)    ← リアルタイム自動変換
-│   └── keyboard.js (1,060行)     ← キーボード処理
+│   ├── markdown.js (678行)       ← Markdown ↔ HTML 変換
+│   ├── autoConvert.js (656行)    ← リアルタイム自動変換
+│   └── keyboard.js (1,078行)     ← キーボード処理
 │
 └── styles/
     ├── base.css        ← リセット、body、コンテナ
@@ -143,7 +144,7 @@ src/
     └── print.css       ← 印刷/PDF 専用スタイル
 ```
 
-**合計**: 9,413 行（modules + main.js）
+**合計**: 10,412 行（modules + main.js）
 
 ---
 
@@ -151,7 +152,7 @@ src/
 
 ### **許可された依存パターン**
 
-```
+```css
 ✓ 一方向依存
   UI Layer → Feature Layer → Render Layer → Core Layer
   
@@ -164,7 +165,7 @@ src/
 
 ### **禁止パターン**
 
-```
+```css
 ✗ 循環依存
   A → B → A  NG
   
@@ -172,12 +173,3 @@ src/
   Core → Feature  NG
   Render → UI  NG
 ```
-
----
-
-## 📝 今後の改善候補
-
-- `main.js` (1,468行) からペースト処理・コードコピーボタン等をさらに分離
-- `toolbarActions.js` (1,257行) の検索/置換機能を独立モジュール（`searchReplace.js`）に分離
-- `keyboard.js` (1,060行) の Enter キー処理を独立モジュール化の検討
-

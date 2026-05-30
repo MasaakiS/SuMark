@@ -1,6 +1,6 @@
 # SuMark モジュール構成ドキュメント
 
-SuMark のフロントエンド JavaScript は `src/main.js` と `src/modules/` 配下の 19 モジュールで構成されています。  
+SuMark のフロントエンド JavaScript は `src/main.js` と `src/modules/` 配下の 19 モジュールで構成されています（合計約 10,412 行）。  
 すべてのファイルは `<script>` タグで読み込まれ、グローバルスコープで関数を公開します（ES Modules 不使用）。
 
 ## アーキテクチャ概要
@@ -67,13 +67,17 @@ index.html
 ### modules/markdown.js
 
 Markdown ↔ HTML の双方向変換。Turndown に 20+ のカスタムルールを設定し、
-marked.js + DOMPurify でサニタイズされた HTML を生成。
+marked.js + DOMPurify でサニタイズされた HTML を生成。テーブル区切り行の正規化処理も含む。
 
 **公開関数:**
 - `configureTurndown()` — Turndown インスタンスの初期化とカスタムルール登録
 - `getMarkdown()` — エディタ HTML → Markdown 文字列
 - `setMarkdown(md)` — Markdown → エディタ HTML（後処理含む）
 - `preprocessNotionMarkdown(md)` — Notion 形式テーブルの前処理
+
+**主な内部関数:**
+- `normalizeTableAlignmentDelimiters(md)` — テーブル区切り行の揃え記法を正規化（`--:`→`---:` 等、marked.js の最小ハイフン要件対応）
+- `normalizeLegacyJapaneseTocNotation(md)` — 旧形式の日本語 TOC 記法を正規化
 
 **依存先:** `editor`, `resetGlobalState` (main.js), vendor ライブラリ群, 各モジュールの後処理関数
 
@@ -198,16 +202,30 @@ Undo/Redo スタック管理（最大 100 履歴）。
 
 ### modules/tableManager.js
 
-テーブル操作とコンテキストメニュー。
+テーブル操作とコンテキストメニュー。行ドラッグによる並び替えと列揃えの永続化機能を含む。
 
 **公開関数:**
 - `isInsideTableCell(node)` — テーブルセル内判定
 - `insertTable()` — テーブル挿入（モーダル経由）
-- `handleTableAction(action)` — テーブル操作（行列追加/削除）
-- `createTableRow(colCount, tag)` — テーブル行生成
+- `handleTableAction(action)` — テーブル操作（行列追加/削除/揃え設定）
+- `createTableRow(table, colCount, tag)` — テーブル行生成
 - `setupTableContextMenu()` — テーブル右クリックメニュー設定
 - `csvToMarkdownTable(csvText, title)` — CSV テキストを Markdown テーブルに変換
 - `parseCsv(text)` — CSV パース
+- `refreshTableRowDragSupport()` — 行ドラッグ用クラスをテーブルへ付与/更新
+- `applyColumnAlignment(table, colIndex, align)` — 列全体に揃えを適用
+- `getColumnAlignment(table, colIndex)` — 指定列の揃え設定を取得
+
+**主な内部関数（行ドラッグ）:**
+- `startRowDrag(row, table, clientY)` / `onRowDragMove(e)` / `onRowDragEnd(e)` — ドラッグ開始/移動/終了
+- `finishRowDrag(applyDrop)` — ドラッグ確定・キャンセル処理（Undo登録含む）
+- `computeRowDropTarget(table, sourceRow, clientY)` — ドロップ先行の計算
+- `isRowDragHandleArea(cell, clientX, isTouch)` — ドラッグハンドル領域判定
+
+**列選択（複数セル一括入力）関連:**
+- `getCellColIndex(cell)` / `getCellRowIndex(cell, table)` — セル位置取得
+- `getCellsBetween(table, colIndex, rowIndexA, rowIndexB)` — 選択セル一覧取得
+- `clearColSelection()` — 列選択解除
 
 ### modules/imageManager.js
 
@@ -360,4 +378,6 @@ vendor/ (marked, hljs, TurndownService, mermaid, katex, DOMPurify)
 | v0.7.1 | モジュールディレクトリ再編成（src/*.js → src/modules/*.js） |
 | v0.7.2 | 3 モジュール追加分離（markdown.js, autoConvert.js, keyboard.js）— main.js 3,051→1,161 行 |
 | v0.9.x | 各モジュールに機能追加：tabManager に未保存確認・ステータスバー機能追加、tableManager に CSV 読込・コンテキストメニュー追加、toolbarActions に検索/置換機能追加、imageManager に拡大ビューア追加、keyboard.js にテーブルナビ・Shift+Enter・Cmd+Q 対応追加、utils.js に debounce/throttle/localStorage 等ユーティリティ追加、codeHighlight.js にコード折り返し機能追加 |
-| v1.0.1 | 現行バージョン — 合計 9,413 行 |
+| v1.0.1 | 合計 9,413 行 |
+| v1.0.7 | tabManager に未保存ダイアログ表示時の Enter キー誤操作防止を追加 |
+| v1.0.7（現行） | tableManager に行ドラッグ（並び替え）・列揃え永続化を追加（`applyColumnAlignment`, `refreshTableRowDragSupport` 等）、markdown.js に `normalizeTableAlignmentDelimiters` 追加 — 合計 10,412 行 |
