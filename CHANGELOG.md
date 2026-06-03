@@ -2,6 +2,17 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v1.0.9] - 2026-06-03
+### 修正
+- タブの未保存判定を共通化し、タブ×クローズ確認とアプリ終了確認で同一の補正ロジックを使うよう改善
+  - `ensureTabUnsavedState()` を導入し、`closeTab()` / `getUnsavedTabs()` / `hasUnsavedTabs()` の判定経路を統一
+- Mermaid の非同期再描画後に未変更タブの保存基準HTMLを再同期し、終了時のみ保存確認が出る誤判定を修正
+  - `renderMermaidBlocks()` 完了時に `syncActiveTabContentIfPristine()` を呼び出すよう変更
+
+### テスト
+- `npm run test:e2e -- test/playwright/06-tabs.spec.js`
+- `npm run test:e2e -- test/playwright/11-editor-extras.spec.js`
+
 ## [v1.0.5] - 2026-05-21
 ### 修正
 - 画像貼り付け時に`pasteImageFile`が未定義となり、JSエラーで画像貼り付けに失敗する問題を修正

@@ -317,6 +317,10 @@ async function renderMermaidBlocks() {
             container.parentNode.insertBefore(pAfter, container.nextSibling);
         }
     });
+
+    if (typeof syncActiveTabContentIfPristine === 'function') {
+        syncActiveTabContentIfPristine();
+    }
 }
 
 // Mermaidコンテナにモード変更ボタンを追加

@@ -283,6 +283,7 @@ async function closeTab(id) {
     if (tabIndex === -1) return;
 
     const tab = tabs[tabIndex];
+    ensureTabUnsavedState(tab);
 
     // 保存されていない場合は確認
     if (tab.isModified) {
@@ -386,10 +387,61 @@ function markModified() {
 }
 
 /**
+ * 未変更タブの保存基準HTMLを現在の描画後DOMへ同期する。
+ * 描画系の後処理でDOMだけが変わるケースの誤dirty補正を防ぐ。
+ */
+function syncActiveTabContentIfPristine() {
+    const tab = getActiveTab();
+    if (
+        tab &&
+        !tab.isModified &&
+        typeof editor !== 'undefined' &&
+        editor
+    ) {
+        tab.content = editor.innerHTML;
+    }
+}
+
+/**
+ * アクティブタブに対して未保存判定の補正を適用する。
+ * タブクローズ確認とアプリ終了確認で同じ判定を使うための共通入口。
+ * @param {Object|null} tab
+ * @param {{ renderOnChange?: boolean }} options
+ * @returns {boolean}
+ */
+function ensureTabUnsavedState(tab, options = {}) {
+    if (!tab) return false;
+    if (tab.isModified) return true;
+    if (tab.id !== activeTabId) return false;
+    if (typeof editor === 'undefined' || !editor) return false;
+
+    const { renderOnChange = true } = options;
+    let shouldMarkModified = tab.content !== editor.innerHTML;
+
+    if (!shouldMarkModified && !tab.filePath) {
+        const text = (editor.innerText || '').replace(/\u200B/g, '').trim();
+        const hasStructuredContent = !!editor.querySelector(
+            'img, table, pre, blockquote, ul, ol, details, hr, h1, h2, h3, h4, h5, h6, input[type="checkbox"]'
+        );
+        shouldMarkModified = text.length > 0 || hasStructuredContent;
+    }
+
+    if (shouldMarkModified) {
+        tab.isModified = true;
+        if (renderOnChange) {
+            renderTabs();
+        }
+    }
+
+    return tab.isModified;
+}
+
+/**
  * 未保存タブ一覧を取得
  * @returns {Array<Object>} isModified=true のタブ配列
  */
 function getUnsavedTabs() {
+    ensureTabUnsavedState(getActiveTab());
     return tabs.filter(tab => tab.isModified);
 }
 
@@ -398,38 +450,6 @@ function getUnsavedTabs() {
  * @returns {boolean}
  */
 function hasUnsavedTabs() {
-    // 入力イベント取りこぼし時の保険: アクティブタブの内容差分で dirty を補正
-    const activeTab = getActiveTab();
-    if (
-        activeTab &&
-        !activeTab.isModified &&
-        typeof editor !== 'undefined' &&
-        editor &&
-        activeTab.content !== editor.innerHTML
-    ) {
-        activeTab.isModified = true;
-        renderTabs();
-    }
-
-    // さらに保険: 無題タブで内容が存在するなら未保存扱いにする
-    if (
-        activeTab &&
-        !activeTab.isModified &&
-        !activeTab.filePath &&
-        typeof editor !== 'undefined' &&
-        editor
-    ) {
-        const text = (editor.innerText || '').replace(/\u200B/g, '').trim();
-        const hasStructuredContent = !!editor.querySelector(
-            'img, table, pre, blockquote, ul, ol, details, hr, h1, h2, h3, h4, h5, h6, input[type="checkbox"]'
-        );
-
-        if (text.length > 0 || hasStructuredContent) {
-            activeTab.isModified = true;
-            renderTabs();
-        }
-    }
-
     return getUnsavedTabs().length > 0;
 }
 
