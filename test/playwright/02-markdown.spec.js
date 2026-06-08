@@ -212,6 +212,61 @@ test.describe('Markdown 自動変換テスト', () => {
             expect(wrapButtons).toBeGreaterThan(0);
         });
 
+        test('事前作成HTMLの pre[data-wrap] でも wrap ボタンで折り返しを切り替えできる', async ({ app }) => {
+            await app.page.evaluate(() => {
+                const editor = document.getElementById('editor');
+                editor.innerHTML = '<pre data-wrap="true"><code class="language-js">const longLine = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz";</code></pre>';
+
+                if (typeof addCopyButtonsToCodeBlocks === 'function') {
+                    addCopyButtonsToCodeBlocks();
+                }
+                if (typeof updateAllLineNumbers === 'function') {
+                    updateAllLineNumbers();
+                }
+                if (typeof restoreCodeWrapStates === 'function') {
+                    restoreCodeWrapStates();
+                }
+            });
+            await app.helpers.wait(800);
+
+            const wrapBtn = app.page.locator('#editor .code-block-toolbar .code-wrap-btn').first();
+            await expect(wrapBtn).toBeVisible();
+
+            const wrappedBefore = await app.page.locator('#editor pre').first().getAttribute('data-wrap');
+            expect(wrappedBefore).toBe('true');
+
+            await wrapBtn.click();
+            await app.helpers.wait(150);
+
+            const wrappedAfterOff = await app.page.locator('#editor pre').first().getAttribute('data-wrap');
+            expect(wrappedAfterOff).toBe('false');
+
+            await wrapBtn.click();
+            await app.helpers.wait(150);
+
+            const state = await app.page.evaluate(() => {
+                const pre = document.querySelector('#editor pre');
+                const code = pre ? pre.querySelector('code') : null;
+                if (!pre || !code) return null;
+
+                const style = window.getComputedStyle(code);
+                return {
+                    preWrapAttr: pre.getAttribute('data-wrap'),
+                    codeWrapAttr: code.getAttribute('data-wrap'),
+                    preHasClass: pre.classList.contains('wrap-enabled'),
+                    codeHasClass: code.classList.contains('wrap-enabled'),
+                    whiteSpace: style.whiteSpace
+                };
+            });
+
+            expect(state).not.toBeNull();
+            expect(state.preWrapAttr).toBe('true');
+            expect(state.codeWrapAttr).toBe('true');
+            expect(state.preHasClass).toBe(true);
+            expect(state.codeHasClass).toBe(true);
+            expect(state.whiteSpace).toBe('pre-wrap');
+        });
+
         test('bash コードブロックにシンタックスハイライトが適用される', async ({ app }) => {
             const md = '```bash\n# comment\necho "hello"\n```';
             await app.page.evaluate((markdown) => {

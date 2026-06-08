@@ -243,9 +243,19 @@ function setupCodeWrapButton(pre) {
     button.textContent = '↵ Wrap';
     button.title = 'Toggle text wrapping (Hold Shift to wrap long lines within window)';
     
-    // data属性から折り返し有効状態を復元
+    // data属性 / 既存クラスから折り返し有効状態を復元（pre/code互換）
     const code = pre.querySelector('code');
-    if (code && code.classList.contains('wrap-enabled')) {
+    const shouldWrap = !!(code && (
+        code.classList.contains('wrap-enabled') ||
+        code.getAttribute('data-wrap') === 'true' ||
+        pre.classList.contains('wrap-enabled') ||
+        pre.getAttribute('data-wrap') === 'true'
+    ));
+    if (code && shouldWrap) {
+        code.classList.add('wrap-enabled');
+        code.setAttribute('data-wrap', 'true');
+        pre.classList.add('wrap-enabled');
+        pre.setAttribute('data-wrap', 'true');
         button.classList.add('wrap-enabled');
     }
     
@@ -329,12 +339,14 @@ function toggleCodeWrap(pre) {
         : null;
     if (!button) return;
     
-    // 折り返し用クラスを切り替え
+    // 折り返し用クラスを切り替え（pre/code双方で同期）
     const isWrapped = code.classList.toggle('wrap-enabled');
+    pre.classList.toggle('wrap-enabled', isWrapped);
     button.classList.toggle('wrap-enabled', isWrapped);
     
-    // 折り返し状態を data 属性へ保存
+    // 折り返し状態を data 属性へ保存（pre/code双方で互換維持）
     code.setAttribute('data-wrap', isWrapped ? 'true' : 'false');
+    pre.setAttribute('data-wrap', isWrapped ? 'true' : 'false');
     
     console.log(`[CodeWrap] Toggled for code block: ${isWrapped ? 'enabled' : 'disabled'}`);
 }

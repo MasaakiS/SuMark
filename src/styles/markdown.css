@@ -265,6 +265,7 @@
 /* Code element inside pre (editable area) */
 .markdown-body pre code {
     flex: 1;
+    min-width: 0;
     padding: 16px;
     margin: 0;
     color: inherit;
@@ -279,10 +280,11 @@
 }
 
 /* Code wrap enabled */
+.markdown-body pre.wrap-enabled code,
 .markdown-body pre code.wrap-enabled {
     white-space: pre-wrap;
     word-wrap: break-word;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere;
 }
 
 .markdown-body table {

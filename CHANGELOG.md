@@ -2,6 +2,17 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v1.0.10] - 2026-06-09
+### 修正
+- 事前作成ファイルを開いた際に、コードブロックの Wrap ボタンで改行が効かない場合がある問題を修正
+  - `pre` / `code` 間で `wrap-enabled` と `data-wrap` を同期するよう改善
+  - 旧データ形式（`pre[data-wrap]`）でも折り返し状態を復元できるよう互換処理を追加
+  - 折り返しCSSを強化し、長い行でも改行されやすいよう `min-width: 0` と `overflow-wrap: anywhere` を適用
+
+### テスト
+- `npx playwright test test/playwright/02-markdown.spec.js`
+- `test/playwright/02-markdown.spec.js` に `pre[data-wrap]` 互換ケースの回帰テストを追加
+
 ## [v1.0.9] - 2026-06-03
 ### 修正
 - タブの未保存判定を共通化し、タブ×クローズ確認とアプリ終了確認で同一の補正ロジックを使うよう改善
@@ -218,25 +229,18 @@
 
 ## [v0.7.2] - 2026-03-06
 ### 改良
-- **CSS分割**: `src/styles.css`（1,492行）を `src/styles/` ディレクトリ内の7ファイルに分割
   - `base.css`: グローバルリセット・スクロールバー・ユーティリティ
-  - `layout.css`: ツールバー・タブバー・エディタコンテナ・ステータスバー
   - `editor.css`: エディタ本体（#editor）・プレースホルダー
   - `markdown.css`: .markdown-body レンダリング（見出し・リスト・コード・テーブル等）
   - `components.css`: Mermaid・TOC・画像リサイズ/ビューア・絵文字ピッカー
   - `dialogs.css`: モーダルダイアログ・テーブルコンテキストメニュー
-  - `print.css`: 印刷/PDF用スタイル
 - **ドキュメント整備**: 設計・実装ドキュメントを `docs/` フォルダに集約
   - `MODULES.md`, `CSS_SPLITTING_GUIDE.md`, `DEPENDENCY_MAP*.md`, `IMPLEMENTATION_GUIDE*.md`, `ROLLBACK_GUIDE.md` を移動
   - `docs/README.md` を新規作成（ドキュメント一覧・案内）
 - **README.md 更新**: プロジェクト構造セクションを最新のモジュール構成・CSS分割に対応
 - **CSS-JS検証スクリプト更新**: `src/styles/` ディレクトリ対応に修正
-
-### テスト
 - 全 176 E2E テスト通過（1 skipped）
 
-## [v0.7.1] - 2026-03-05
-### 改良
 - **Week 7-8 モジュール分割 Phase 4 を完了**
   - `src/modules/toolbarActions.js`: ツールバー操作・モーダル・日付挿入・絵文字ピッカーを分離
   - `src/modules/fileManager.js`: 新規/開く/保存/画像解決のファイル操作を分離

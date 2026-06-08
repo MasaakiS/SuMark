@@ -1072,10 +1072,24 @@ function doInsertCodeBlock(lang, savedRange, selectedText) {
  * data属性からコード折り返し状態を復元する
  */
 function restoreCodeWrapStates() {
-    editor.querySelectorAll('pre code[data-wrap="true"]').forEach(code => {
+    editor.querySelectorAll('pre').forEach(pre => {
+        const code = pre.querySelector('code');
+        if (!code) return;
+
+        const shouldWrap = (
+            code.getAttribute('data-wrap') === 'true' ||
+            code.classList.contains('wrap-enabled') ||
+            pre.getAttribute('data-wrap') === 'true' ||
+            pre.classList.contains('wrap-enabled')
+        );
+        if (!shouldWrap) return;
+
         code.classList.add('wrap-enabled');
-        const pre = code.closest('pre');
-        const toolbar = pre && pre.previousElementSibling;
+        pre.classList.add('wrap-enabled');
+        code.setAttribute('data-wrap', 'true');
+        pre.setAttribute('data-wrap', 'true');
+
+        const toolbar = pre.previousElementSibling;
         const button = toolbar && toolbar.classList.contains('code-block-toolbar')
             ? toolbar.querySelector('.code-wrap-btn')
             : null;
