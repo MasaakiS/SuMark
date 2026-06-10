@@ -2,6 +2,12 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v1.0.12] - 2026-06-11
+### 修正
+- GitHub Actions の Node.js 20 非推奨警告への対応を実施
+  - `.github/workflows/build.yml` の `actions/checkout` を `v5` に更新
+  - `softprops/action-gh-release` を廃止し、`gh release create/edit/upload` に置換
+
 ## [v1.0.11] - 2026-06-11
 ### 修正
 - Windows 環境で Undo 操作時などに発生しうる CSP エラーを修正

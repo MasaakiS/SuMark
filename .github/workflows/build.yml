@@ -17,12 +17,9 @@ jobs:
   create_release:
     runs-on: ubuntu-latest
     name: Create Release
-    outputs:
-      release_id: ${{ steps.create.outputs.id }}
-      upload_url: ${{ steps.create.outputs.upload_url }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Extract changelog for release
         id: changelog
@@ -37,35 +34,47 @@ jobs:
             echo "CHANGELOG_DELIM_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create draft release
-        id: create
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: 'SuMark ${{ github.ref_name }}'
-          body: |
-            ## Changes
+      - name: Create or update draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat > /tmp/release_body.md <<EOF
+          ## Changes
 
-            ${{ steps.changelog.outputs.body }}
+          ${{ steps.changelog.outputs.body }}
 
-            ## Downloads
+          ## Downloads
 
-            ### Installer (recommended)
-            | OS | File |
-            |---|---|
-            | macOS | `.dmg` |
-            | Windows | `.msi` |
-            | Linux / Chromebook (x86_64) | `.deb` |
-            | Linux / Chromebook (ARM64) | `.deb` (arm64) |
+          ### Installer (recommended)
+          | OS | File |
+          |---|---|
+          | macOS | `.dmg` |
+          | Windows | `.msi` |
+          | Linux / Chromebook (x86_64) | `.deb` |
+          | Linux / Chromebook (ARM64) | `.deb` (arm64) |
 
-            ### Portable (no install required)
-            | OS | File |
-            |---|---|
-            | macOS | `SuMark-portable-macos-${{ github.ref_name }}.zip` |
-            | Windows | `SuMark-portable-windows-${{ github.ref_name }}.zip` |
-            | Linux / Chromebook (x86_64) | `SuMark-linux-x86_64-${{ github.ref_name }}.AppImage` |
-          draft: true
-          prerelease: false
+          ### Portable (no install required)
+          | OS | File |
+          |---|---|
+          | macOS | `SuMark-portable-macos-${GITHUB_REF_NAME}.zip` |
+          | Windows | `SuMark-portable-windows-${GITHUB_REF_NAME}.zip` |
+          | Linux / Chromebook (x86_64) | `SuMark-linux-x86_64-${GITHUB_REF_NAME}.AppImage` |
+          EOF
+
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "SuMark $GITHUB_REF_NAME" \
+              --notes-file /tmp/release_body.md \
+              --draft
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "SuMark $GITHUB_REF_NAME" \
+              --notes-file /tmp/release_body.md \
+              --draft
+          fi
 
   # macOS ビルド専用ジョブ（必要最小限）
   build_macos:
@@ -75,7 +84,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -114,11 +123,14 @@ jobs:
           fi
 
       - name: Upload portable zip (macOS)
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          tag_name: ${{ github.ref_name }}
-          files: SuMark-portable-macos-${{ github.ref_name }}.zip
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            "SuMark-portable-macos-${GITHUB_REF_NAME}.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
 
   # Linux / Windows 用のビルド
   build_others:
@@ -142,7 +154,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Linux dependencies (x86_64)
         if: matrix.platform == 'ubuntu-22.04' && matrix.target == 'x86_64-unknown-linux-gnu'
@@ -249,11 +261,14 @@ jobs:
 
       - name: Upload portable zip (Windows)
         if: matrix.platform == 'windows-latest'
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          tag_name: ${{ github.ref_name }}
-          files: SuMark-portable-windows-${{ github.ref_name }}.zip
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            "SuMark-portable-windows-${GITHUB_REF_NAME}.zip" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
 
       - name: Upload AppImage (Linux)
         if: matrix.platform == 'ubuntu-22.04' && matrix.target == 'x86_64-unknown-linux-gnu'
@@ -265,8 +280,11 @@ jobs:
 
       - name: Upload AppImage artifact (Linux)
         if: matrix.platform == 'ubuntu-22.04' && matrix.target == 'x86_64-unknown-linux-gnu'
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          tag_name: ${{ github.ref_name }}
-          files: SuMark-linux-x86_64-${{ github.ref_name }}.AppImage
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" \
+            "SuMark-linux-x86_64-${GITHUB_REF_NAME}.AppImage" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
