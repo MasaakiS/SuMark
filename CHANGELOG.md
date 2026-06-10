@@ -2,6 +2,12 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v1.0.11] - 2026-06-11
+### 修正
+- Windows 環境で Undo 操作時などに発生しうる CSP エラーを修正
+  - `src/vendor/purify.min.js` の `sourceMappingURL` コメントを削除し、`purify.min.js.map` への不要な接続試行を防止
+  - `src-tauri/tauri.conf.json` の `connect-src` に `https://tauri.localhost` を追加し、WebView2 の `/.well-known/appspecific...` リクエストを許可
+
 ## [v1.0.10] - 2026-06-09
 ### 修正
 - 事前作成ファイルを開いた際に、コードブロックの Wrap ボタンで改行が効かない場合がある問題を修正
