@@ -6,13 +6,13 @@
 
 - Node.js 18 以上
 - Rust および Tauri CLI
-- `npm install` 済み
+- `npm ci` 済み
 
 ## セットアップ（初回のみ）
 
 ```bash
 # 依存関係のインストール
-npm install
+npm ci
 
 # アプリケーションのビルド
 npm run build

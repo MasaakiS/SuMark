@@ -136,7 +136,7 @@ Tauriベースのデスクトップ向けWYSIWYG Markdownエディターです�
 
 ```bash
 # 依存関係のインストール
-npm install
+npm ci
 
 # 開発モードで起動
 npm run dev

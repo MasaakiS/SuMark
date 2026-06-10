@@ -8,12 +8,12 @@ SuMark の E2E（End-to-End）テスト運用ガイドです。現行の公式E2
 
 - Node.js 18 以上
 - Rust および Tauri CLI
-- `npm install` 済み
+- `npm ci` 済み
 
 ## セットアップ
 
 ```bash
-npm install
+npm ci
 ```
 
 ## テストの実行

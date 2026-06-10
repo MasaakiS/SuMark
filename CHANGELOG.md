@@ -2,17 +2,15 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
-## [v1.0.12] - 2026-06-11
+## [v1.0.13] - 2026-06-11
 ### 修正
-- GitHub Actions の Node.js 20 非推奨警告への対応を実施
-  - `.github/workflows/build.yml` の `actions/checkout` を `v5` に更新
-  - `softprops/action-gh-release` を廃止し、`gh release create/edit/upload` に置換
+- dev依存の脆弱性対応として `jest` を `30.4.2`、`jsdom` を `29.1.1` に更新
+- `package-lock.json` を再生成し、`npm audit` で脆弱性 0 件を確認
 
-## [v1.0.11] - 2026-06-11
-### 修正
-- Windows 環境で Undo 操作時などに発生しうる CSP エラーを修正
-  - `src/vendor/purify.min.js` の `sourceMappingURL` コメントを削除し、`purify.min.js.map` への不要な接続試行を防止
-  - `src-tauri/tauri.conf.json` の `connect-src` に `https://tauri.localhost` を追加し、WebView2 の `/.well-known/appspecific...` リクエストを許可
+### CI / セキュリティ
+- GitHub Actions の Node/npm を固定（Node `24.11.1`、npm `11.16.0`）
+- `.npmrc` にサプライチェーン対策設定を追加（`ignore-scripts=true`, `min-release-age=7`, `audit=true`）
+- CI の依存インストールを `npm ci --ignore-scripts` に統一し、本番依存の監査ステップを追加
 
 ## [v1.0.10] - 2026-06-09
 ### 修正

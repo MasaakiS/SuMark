@@ -93,7 +93,11 @@ if [ -n "$LATEST_BACKUP" ]; then
             echo "✓ package.json を復元"
             
             echo "📦 依存関係を再インストール中..."
-            npm install
+            if [ -f "package-lock.json" ]; then
+                npm ci --ignore-scripts
+            else
+                npm install --ignore-scripts
+            fi
         fi
     fi
 else

@@ -11,7 +11,7 @@
 - ルートで依存とビルドを行う（開発中は `tauri dev` を使う）:
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
