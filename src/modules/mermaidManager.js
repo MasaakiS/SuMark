@@ -18,6 +18,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+/**
+ * mermaid.render() が返す SVG を DOMPurify でサニタイズする。
+ * SVG プロファイルを使用し、スクリプト系要素/属性を除去する。
+ * DOMPurify 未ロード時は警告を出したうえで素のSVGを返す（デスクトップ専用アプリ想定）。
+ */
+function sanitizeMermaidSvg(svg) {
+    if (typeof DOMPurify === 'undefined') {
+        console.warn('[WARN] DOMPurify not loaded - Mermaid SVG sanitization skipped');
+        return svg;
+    }
+    return DOMPurify.sanitize(svg, {
+        USE_PROFILES: { svg: true, svgFilters: true },
+        FORCE_BODY: false,
+    });
+}
+
 function getMermaidSource(container) {
     if (!container) return '';
 
@@ -194,7 +210,7 @@ async function renderMermaidBlocks() {
             container.setAttribute('data-mermaid-source', source);
             container.setAttribute('data-mermaid-mode', 'code-only');
             container.setAttribute('contenteditable', 'false');
-            container.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+            container.innerHTML = '<div class="mermaid-label">Mermaid</div>' + sanitizeMermaidSvg(svg);
             
             // モード変更ボタンを追加
             addMermaidModeButton(container, source);
@@ -227,7 +243,7 @@ async function renderMermaidBlocks() {
 
             container.setAttribute('data-mermaid-mode', 'code-only');
             container.setAttribute('contenteditable', 'false');
-            container.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+            container.innerHTML = '<div class="mermaid-label">Mermaid</div>' + sanitizeMermaidSvg(svg);
 
             addMermaidModeButton(container, source);
             container.ondblclick = () => {
@@ -254,7 +270,7 @@ async function renderMermaidBlocks() {
             const { svg } = await mermaid.render(id, source);
 
             container.setAttribute('data-mermaid-rendered', 'true');
-            container.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+            container.innerHTML = '<div class="mermaid-label">Mermaid</div>' + sanitizeMermaidSvg(svg);
             container.classList.add('mermaid-container');
             
             // モード変更ボタンを追加
@@ -287,7 +303,7 @@ async function renderMermaidBlocks() {
 
             container.setAttribute('data-mermaid-rendered', 'true');
             if (displayDiv) {
-                displayDiv.innerHTML = '<div class="mermaid-label">Mermaid</div>' + svg;
+                displayDiv.innerHTML = '<div class="mermaid-label">Mermaid</div>' + sanitizeMermaidSvg(svg);
                 displayDiv.classList.add('mermaid-svg-wrapper');
             }
             

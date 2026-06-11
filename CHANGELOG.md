@@ -2,6 +2,12 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v1.0.15] - 2026-06-11
+### セキュリティ
+- Mermaid SVG を `DOMPurify.sanitize()` でサニタイズするよう修正（XSS対策）
+- `isWebUrl()` のスキーム許可を `https?://` と `mailto:` のみに限定（`javascript:` などの危険スキームを除外）
+- PDF エクスポート時の hljs テーマ CSS を CDN（jsdelivr.net）からローカルバンドル済みファイル（`vendor/atom-one-light.min.css`）に切替え（サプライチェーン攻撃・オフライン問題の解消）
+
 ## [v1.0.14] - 2026-06-11
 ### 修正
 - GitHub Actions の `actions/setup-node` を `v4` から `v5` へ更新

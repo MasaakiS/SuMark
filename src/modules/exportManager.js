@@ -94,10 +94,10 @@ async function exportPDF() {
             console.error('Failed to read stylesheets:', e);
         }
 
-        // hljsテーマのCSSも取得して埋め込む
+        // hljsテーマのCSSも取得して埋め込む（ローカルバンドル済みファイルを使用）
         let hljsCSS = '';
         try {
-            const resp = await fetch('https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-light.min.css');
+            const resp = await fetch('./vendor/atom-one-light.min.css');
             if (resp.ok) hljsCSS = await resp.text();
         } catch (e) { /* ignore */ }
 

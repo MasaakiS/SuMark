@@ -440,7 +440,8 @@ function setupEventListeners() {
     // URLがWeb URLか判定
     function isWebUrl(url) {
         if (!url) return false;
-        return /^https?:\/\//.test(url) || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url) || url.startsWith('mailto:');
+        // 安全なスキームのみを許可（javascript: / vbscript: などを除外）
+        return /^https?:\/\//i.test(url) || /^mailto:/i.test(url);
     }
 
     const IN_APP_TEXT_EXTENSIONS = new Set([
