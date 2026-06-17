@@ -539,6 +539,22 @@ function normalizeLegacyJapaneseTocNotation(md) {
     return normalized;
 }
 
+/**
+ * 読み込んだテーブルの空セルにプレースホルダを入れる。
+ * DOM上で完全に空の td/th は高さが潰れやすいため、
+ * 内部生成時と同じく non-breaking space を補う。
+ * @param {HTMLElement} root
+ */
+function ensureTableCellPlaceholders(root) {
+    if (!root) return;
+
+    root.querySelectorAll('table td, table th').forEach(cell => {
+        if (!cell.children.length && cell.textContent.trim() === '') {
+            cell.innerHTML = '&nbsp;';
+        }
+    });
+}
+
 
 
 function setMarkdown(md) {
@@ -617,6 +633,7 @@ function setMarkdown(md) {
         try {
             editorEl.innerHTML = cleanHtml;
             console.log('[setMarkdown] editor.innerHTML length:', editorEl.innerHTML.length);
+            ensureTableCellPlaceholders(editorEl);
         } catch (e) {
             console.error('[setMarkdown] Exception:', e);
         }

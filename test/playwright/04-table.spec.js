@@ -1,6 +1,10 @@
 // @ts-check
 const { test, expect } = require('./fixtures');
 const { checkTableDataIntegrity } = require('./copilotMarkdownValidator');
+const fs = require('fs');
+const path = require('path');
+
+const EMPTY_LAST_ROW_FIXTURE = path.resolve(__dirname, '../../test_data/table_empty_last_row.md');
 
 test.describe('テーブル操作テスト', () => {
     test.beforeEach(async ({ app }) => {
@@ -215,6 +219,24 @@ test.describe('テーブル操作テスト', () => {
             await loadMarkdown(app.page, original);
             const saved = await app.page.evaluate(() => window.getMarkdown());
             await checkTableDataIntegrity(original, saved, '04-table: 日本語テーブル損失チェック');
+        });
+
+        test('空の最終行を含むテーブルが潰れない', async ({ app }) => {
+            const original = fs.readFileSync(EMPTY_LAST_ROW_FIXTURE, 'utf8');
+
+            await loadMarkdown(app.page, original);
+
+            const emptyRow = app.page.locator('#editor table tbody tr').last();
+            await expect(emptyRow).toBeVisible();
+
+            const lastRowCells = emptyRow.locator('td, th');
+            await expect(lastRowCells).toHaveCount(3);
+
+            const cellText = await lastRowCells.nth(0).innerText();
+            expect(cellText.trim()).toBe('');
+
+            const cellHtml = await lastRowCells.nth(0).evaluate(el => /** @type {HTMLElement} */ (el).innerHTML);
+            expect(cellHtml).toContain('&nbsp;');
         });
     });
 });
