@@ -1,6 +1,6 @@
 [package]
 name = "sumark"
-version = "1.0.16"
+version = "1.0.17"
 description = "SuMark - A WYSIWYG Markdown editor"
 authors = ["you"]
 license = ""

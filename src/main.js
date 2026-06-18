@@ -1164,6 +1164,17 @@ function hideProgressIndicator() {
 async function handlePaste(e) {
     // 0. コードブロック内では常にプレーンテキストとして貼り付け
     const sel = window.getSelection();
+    const activeRange = sel.rangeCount ? sel.getRangeAt(0) : null;
+    const activeContainer = activeRange
+        ? (activeRange.startContainer.nodeType === Node.ELEMENT_NODE
+            ? activeRange.startContainer
+            : activeRange.startContainer.parentElement)
+        : null;
+    const activeCell = activeContainer && activeContainer.closest
+        ? activeContainer.closest('td, th')
+        : null;
+    const activeOuterTable = activeCell ? activeCell.closest('table') : null;
+
     if (sel.rangeCount) {
         let node = sel.anchorNode;
         while (node && node !== editor) {
@@ -1261,7 +1272,13 @@ async function handlePaste(e) {
         e.preventDefault();
         const table = parseHtmlTable(htmlData);
         if (table) {
-            document.execCommand('insertHTML', false, table + '<p><br></p>');
+            if (activeOuterTable && activeOuterTable.parentNode) {
+                // セル内では入れ子テーブルを避けるため、外側テーブル直後へ退避挿入する
+                activeOuterTable.insertAdjacentHTML('afterend', table + '<p><br></p>');
+                showWarn('表セル内では入れ子表を防ぐため、外側の表の直後に貼り付けました');
+            } else {
+                document.execCommand('insertHTML', false, table + '<p><br></p>');
+            }
             markModified();
             return;
         }
@@ -1274,7 +1291,13 @@ async function handlePaste(e) {
     // 4. タブ区切りテキスト（TSV）を確認して表へ変換
     if (isTabDelimited(text)) {
         const table = tsvToHtmlTable(text);
-        document.execCommand('insertHTML', false, table + '<p><br></p>');
+        if (activeOuterTable && activeOuterTable.parentNode) {
+            // セル内では入れ子テーブルを避けるため、外側テーブル直後へ退避挿入する
+            activeOuterTable.insertAdjacentHTML('afterend', table + '<p><br></p>');
+            showWarn('表セル内では入れ子表を防ぐため、外側の表の直後に貼り付けました');
+        } else {
+            document.execCommand('insertHTML', false, table + '<p><br></p>');
+        }
         markModified();
         return;
     }
