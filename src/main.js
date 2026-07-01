@@ -1176,75 +1176,63 @@ async function handlePaste(e) {
     const activeOuterTable = activeCell ? activeCell.closest('table') : null;
 
     if (sel.rangeCount) {
-        let node = sel.anchorNode;
+        let node = activeRange ? activeRange.startContainer : null;
         while (node && node !== editor) {
             if (node.tagName === 'CODE' && node.parentElement && node.parentElement.tagName === 'PRE') {
                 e.preventDefault();
-                const text = e.clipboardData.getData('text/plain');
-                const lines = text.split('\n');
-                const lineCount = lines.length;
-                
-                // 大量貼り付け時の情報ログ
-                if (lineCount > 100) {
-                    console.log(`[大量コード貼り付け] ${lineCount}行のコードを貼り付けています...`);
+                const rawText = e.clipboardData.getData('text/plain');
+                // CRLF正規化（Windows環境でのA5M2等からの貼り付けに対応）
+                const normalized = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+                const codeEl = node;
+                const range2 = sel.getRangeAt(0);
+
+                // カーソル/選択範囲をtextContent内の文字オフセットで取得
+                const startOffset = getCaretCharacterOffsetWithin(codeEl);
+                let endOffset = startOffset;
+                if (!range2.collapsed) {
+                    const endRange = range2.cloneRange();
+                    endRange.selectNodeContents(codeEl);
+                    endRange.setEnd(range2.endContainer, range2.endOffset);
+                    endOffset = endRange.toString().length;
                 }
-                
-                // 大量貼り付け時はチャンク処理を使用
-                if (lineCount > 100) {
-                    await pasteTextInChunks(lines, node);
-                } else {
-                    // 少量貼り付けは直接挿入
-                    for (let i = 0; i < lines.length; i++) {
-                        if (i > 0) {
-                            document.execCommand('insertLineBreak');
-                        }
-                        if (lines[i]) {
-                            document.execCommand('insertText', false, lines[i]);
-                        }
-                    }
-                }
-                
+
+                // textContentを直接操作（execCommand非依存でWindows WebView2でも安全）
+                const currentText = codeEl.textContent;
+                codeEl.textContent = currentText.substring(0, startOffset) + normalized + currentText.substring(endOffset);
+
+                // 貼り付け後のカーソル位置を復元
+                setCaretCharacterOffset(codeEl, startOffset + normalized.length);
+
                 markModified();
                 debouncedHighlightCodeAtCursor();
-                
-                if (lineCount > 100) {
-                    const skipMsg = lineCount > 500 ? '（500行超えのためハイライトはスキップされます）' : '';
-                    console.log(`[大量コード貼り付け] 完了しました。${skipMsg}`);
-                }
                 return;
             }
             if (node.tagName === 'PRE') {
                 e.preventDefault();
-                const text = e.clipboardData.getData('text/plain');
-                const lines = text.split('\n');
-                const lineCount = lines.length;
-                
-                if (lineCount > 100) {
-                    console.log(`[大量コード貼り付け] ${lineCount}行のコードを貼り付けています...`);
+                const rawText = e.clipboardData.getData('text/plain');
+                const normalized = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+                // PRE内のCODE要素を優先して使用（通常は <pre><code> 構造）
+                const codeEl = node.querySelector('code') || node;
+                const range2 = sel.getRangeAt(0);
+
+                const startOffset = getCaretCharacterOffsetWithin(codeEl);
+                let endOffset = startOffset;
+                if (!range2.collapsed) {
+                    const endRange = range2.cloneRange();
+                    endRange.selectNodeContents(codeEl);
+                    endRange.setEnd(range2.endContainer, range2.endOffset);
+                    endOffset = endRange.toString().length;
                 }
-                
-                // 大量貼り付け時はチャンク処理を使用
-                if (lineCount > 100) {
-                    await pasteTextInChunks(lines, node);
-                } else {
-                    // 少量貼り付けは直接挿入
-                    for (let i = 0; i < lines.length; i++) {
-                        if (i > 0) {
-                            document.execCommand('insertLineBreak');
-                        }
-                        if (lines[i]) {
-                            document.execCommand('insertText', false, lines[i]);
-                        }
-                    }
-                }
-                
+
+                const currentText = codeEl.textContent;
+                codeEl.textContent = currentText.substring(0, startOffset) + normalized + currentText.substring(endOffset);
+
+                setCaretCharacterOffset(codeEl, startOffset + normalized.length);
+
                 markModified();
                 debouncedHighlightCodeAtCursor();
-                
-                if (lineCount > 100) {
-                    const skipMsg = lineCount > 500 ? '（500行超えのためハイライトはスキップされます）' : '';
-                    console.log(`[大量コード貼り付け] 完了しました。${skipMsg}`);
-                }
                 return;
             }
             node = node.parentElement;
@@ -1268,14 +1256,15 @@ async function handlePaste(e) {
 
     // 2. HTMLテーブル（Excelコピー）を確認
     const htmlData = e.clipboardData.getData('text/html');
-    if (htmlData && /<table[\s>]/i.test(htmlData)) {
+    // Option+V (Windows/Linux: Ctrl+Alt+V、macOS: Cmd+Option+V) の場合はテキスト貼り付けモード（案B）のため、表処理をスキップ
+    if (htmlData && /<table[\s>]/i.test(htmlData) && !e.altKey) {
         e.preventDefault();
         const table = parseHtmlTable(htmlData);
         if (table) {
             if (activeOuterTable && activeOuterTable.parentNode) {
                 // セル内では入れ子テーブルを避けるため、外側テーブル直後へ退避挿入する
                 activeOuterTable.insertAdjacentHTML('afterend', table + '<p><br></p>');
-                showWarn('表セル内では入れ子表を防ぐため、外側の表の直後に貼り付けました');
+                showWarn('表セル内では入れ子表を防ぐため、外側の表の直後に貼り付けました。\n(Windows/Linux) Ctrl+Alt+V または (macOS) Cmd+Option+V でテキストとして貼り付けられます。');
             } else {
                 document.execCommand('insertHTML', false, table + '<p><br></p>');
             }
@@ -1289,12 +1278,13 @@ async function handlePaste(e) {
     const text = e.clipboardData.getData('text/plain');
 
     // 4. タブ区切りテキスト（TSV）を確認して表へ変換
-    if (isTabDelimited(text)) {
+    // Option+V (Windows/Linux: Ctrl+Alt+V、macOS: Cmd+Option+V) の場合はテキスト貼り付けモード（案B）のため、表処理をスキップ
+    if (isTabDelimited(text) && !e.altKey) {
         const table = tsvToHtmlTable(text);
         if (activeOuterTable && activeOuterTable.parentNode) {
             // セル内では入れ子テーブルを避けるため、外側テーブル直後へ退避挿入する
             activeOuterTable.insertAdjacentHTML('afterend', table + '<p><br></p>');
-            showWarn('表セル内では入れ子表を防ぐため、外側の表の直後に貼り付けました');
+            showWarn('表セル内では入れ子表を防ぐため、外側の表の直後に貼り付けました。\n(Windows/Linux) Ctrl+Shift+V または (macOS) Cmd+Shift+V でテキストとして貼り付けられます。');
         } else {
             document.execCommand('insertHTML', false, table + '<p><br></p>');
         }
