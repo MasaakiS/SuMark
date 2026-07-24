@@ -2,6 +2,22 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v1.0.19] - 2026-07-24
+### 修正
+- Windows環境で、Mermaid記法の図を貼り付け/挿入した際にラベル文字が表示されない問題を修正
+  - Mermaid初期化で `flowchart.htmlLabels` を無効化し、`foreignObject` 依存のラベル描画を回避
+  - SVGサニタイズ後でも文字ラベルが保持される描画方式へ統一
+
+### 既知の問題
+- macOS版（Tauri / WKWebView）で、テーブルセル内でEnterキーを押した際に表が分割されたり列ずれしたりする事象を確認
+  - セル移動のみでは発生せず、Enter押下時に限って発生
+  - Playwright / Chromium ベースの自動テストでは未再現で、WebKit系実行環境依存の可能性が高い
+  - Windows版（WebView2）で同様に発生するかは現時点では未確認
+
+### 影響範囲
+- `src/modules/mermaidManager.js` の Mermaid 初期化処理（`renderMermaidBlocks`）
+
+
 ## [v1.0.18] - 2026-07-02
 ### 修正
 - Windows環境で、コードブロック内へSQLを貼り付けた際にコードブロック構造が壊れる問題を修正

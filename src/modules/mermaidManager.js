@@ -188,7 +188,14 @@ async function renderMermaidBlocks() {
 
     // Mermaid が初期化されていることを確認
     try {
-        mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+        // Windows(WebView2) では htmlLabels による foreignObject が
+        // DOMPurify の SVG サニタイズ後に欠落し、文字が消えることがあるため無効化する。
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: { htmlLabels: false },
+        });
     } catch (e) { /* already initialized */ }
 
     // 1. コード表示のみモード（通常の言語ブロック）
