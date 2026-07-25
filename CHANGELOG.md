@@ -8,11 +8,11 @@
   - Mermaid初期化で `flowchart.htmlLabels` を無効化し、`foreignObject` 依存のラベル描画を回避
   - SVGサニタイズ後でも文字ラベルが保持される描画方式へ統一
 
-### 既知の問題
-- macOS版（Tauri / WKWebView）で、テーブルセル内でEnterキーを押した際に表が分割されたり列ずれしたりする事象を確認
-  - セル移動のみでは発生せず、Enter押下時に限って発生
-  - Playwright / Chromium ベースの自動テストでは未再現で、WebKit系実行環境依存の可能性が高い
-  - Windows版（WebView2）で同様に発生するかは現時点では未確認
+### 検証メモ
+- テーブルセル内でEnterキー押下時の表崩れ事象について、以下の配布物で追加確認を実施
+  - Windows版配布物: 再現せず
+  - macOS版配布物（`SuMark-portable-macos-v1.0.19.zip`）: 再現せず
+  - そのため、v1.0.19配布物においては本事象は未再現
 
 ### 影響範囲
 - `src/modules/mermaidManager.js` の Mermaid 初期化処理（`renderMermaidBlocks`）
