@@ -46,6 +46,114 @@ test.describe('テーブル操作テスト', () => {
             expect(text).toContain('Test');
         });
 
+        test('テーブルセル内でEnterしても表構造が崩れない', async ({ app }) => {
+            const firstCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
+            await firstCell.click();
+
+            await firstCell.evaluate(el => { el.textContent = ''; });
+            await firstCell.click();
+            await app.page.keyboard.type('行1');
+            await app.page.keyboard.press('Enter');
+            await app.page.keyboard.type('行2');
+            await app.helpers.wait(200);
+
+            // セル内改行は <br> で保持される
+            const firstCellHtml = await firstCell.evaluate(el => /** @type {HTMLElement} */ (el).innerHTML);
+            expect(firstCellHtml).toContain('<br>');
+
+            // 保存・再読込しても表が分割/崩壊しない
+            const saved = await app.page.evaluate(() => window.getMarkdown());
+            await app.page.evaluate((md) => window.setMarkdown(md), saved);
+            await app.helpers.wait(300);
+
+            await expect(app.page.locator('#editor table')).toHaveCount(1);
+            const headerCount = await app.page.locator('#editor table thead tr').first().locator('th').count();
+            expect(headerCount).toBe(3);
+            const bodyRowCount = await app.page.locator('#editor table tbody tr').count();
+            expect(bodyRowCount).toBe(2);
+        });
+
+        test('セル選択状態（col-anchor）でEnterしても表構造が崩れない', async ({ app }) => {
+            // セル内容を単純化
+            const firstCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
+            await firstCell.evaluate(el => { el.textContent = '1'; });
+
+            // キャレットを tr 起点にして、セル選択寄りの状態を再現
+            await app.page.evaluate(() => {
+                const row = document.querySelector('#editor table tbody tr');
+                const sel = window.getSelection();
+                const range = document.createRange();
+                range.setStart(row, 0);
+                range.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(range);
+
+                const first = row.querySelector('td');
+                if (first) first.classList.add('col-anchor');
+            });
+
+            await app.page.keyboard.press('Enter');
+            await app.helpers.wait(150);
+
+            await expect(app.page.locator('#editor table')).toHaveCount(1);
+            const headerCount = await app.page.locator('#editor table thead tr').first().locator('th').count();
+            expect(headerCount).toBe(3);
+            const bodyRowCount = await app.page.locator('#editor table tbody tr').count();
+            expect(bodyRowCount).toBe(2);
+
+            const firstCellHtml = await app.page.locator('#editor table tbody tr').first().locator('td').first()
+                .evaluate(el => /** @type {HTMLElement} */ (el).innerHTML);
+            expect(firstCellHtml).toContain('<br>');
+        });
+
+        test('複数セル入力後に行2列1でEnterしてもテーブル分割や列ズレが起きない', async ({ app }) => {
+            const row1col1 = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
+            const row1col2 = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(1);
+            const row1col3 = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(2);
+            const row2col1 = app.page.locator('#editor table tbody tr').nth(1).locator('td').nth(0);
+
+            await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                const r1 = rows[0];
+                const r2 = rows[1];
+                if (!r1 || !r2) return;
+
+                const r1cells = r1.querySelectorAll('td');
+                const r2cells = r2.querySelectorAll('td');
+                if (r1cells[0]) r1cells[0].textContent = '1';
+                if (r1cells[1]) r1cells[1].textContent = '3';
+                if (r1cells[2]) r1cells[2].textContent = '4';
+                if (r2cells[0]) r2cells[0].textContent = '2';
+            });
+
+            await row2col1.click();
+
+            await app.page.keyboard.press('Enter');
+            await app.helpers.wait(200);
+
+            // 症状再現時は table が2つに分割されるため、まず件数を厳密に固定
+            await expect(app.page.locator('#editor table')).toHaveCount(1);
+
+            const headerCount = await app.page.locator('#editor table thead tr').first().locator('th').count();
+            expect(headerCount).toBe(3);
+
+            const firstBodyRowCells = await app.page.locator('#editor table tbody tr').nth(0).locator('td').count();
+            const secondBodyRowCells = await app.page.locator('#editor table tbody tr').nth(1).locator('td').count();
+            expect(firstBodyRowCells).toBe(3);
+            expect(secondBodyRowCells).toBe(3);
+
+            const r1c1Text = await row1col1.innerText();
+            const r1c2Text = await row1col2.innerText();
+            const r1c3Text = await row1col3.innerText();
+            const r2c1Html = await row2col1.evaluate(el => /** @type {HTMLElement} */ (el).innerHTML);
+
+            expect(r1c1Text.trim()).toContain('1');
+            expect(r1c2Text.trim()).toContain('3');
+            expect(r1c3Text.trim()).toContain('4');
+            expect(r2c1Html).toContain('2');
+            expect(r2c1Html).toContain('<br>');
+        });
+
         test('テーブルセルを右クリックでコンテキストメニューが表示される', async ({ app }) => {
             const firstCell = app.page.locator('#editor table td').first();
             await firstCell.click({ button: 'right' });

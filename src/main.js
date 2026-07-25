@@ -417,6 +417,7 @@ function setupEventListeners() {
 
     // エディタ関連イベント
     editor.addEventListener('input', onEditorInput);
+    editor.addEventListener('beforeinput', handleBeforeInput);
     editor.addEventListener('keydown', handleKeyDown);
     editor.addEventListener('paste', handlePaste);
     editor.addEventListener('compositionstart', () => { 

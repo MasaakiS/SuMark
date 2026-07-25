@@ -312,38 +312,117 @@ function setupImageResize() {
 let imageViewerModal = null;
 
 /**
- * 画像ビューア（モーダル）をセットアップ
+ * 画像ビューア（モーダル）をセットアップ（ズームコントロール付き）
  */
 function setupImageViewer() {
-    // モーダル要素を作成
+    let currentZoom = 1.0;
+    const ZOOM_STEPS = [0.1, 0.17, 0.25, 0.33, 0.5, 0.67, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0];
+    const MAX_ZOOM = 5.0;
+    const MIN_ZOOM = 0.1;
+
     imageViewerModal = document.createElement('div');
     imageViewerModal.className = 'image-viewer-modal';
     imageViewerModal.innerHTML = `
-        <div class="image-viewer-container">
-            <button class="image-viewer-close" title="閉じる (Esc)">✕</button>
+        <button class="image-viewer-close" title="閉じる (Esc)">✕</button>
+        <div class="image-viewer-scroll-area">
             <img class="image-viewer-img" src="" alt="">
-            <div class="image-viewer-info"></div>
+        </div>
+        <div class="image-viewer-toolbar">
+            <button class="iv-zoom-out" title="縮小 (−)">−</button>
+            <button class="iv-zoom-reset" title="フィットサイズに戻す (0)">100%</button>
+            <button class="iv-zoom-in" title="拡大 (+)">+</button>
+            <span class="image-viewer-info"></span>
         </div>
     `;
     document.body.appendChild(imageViewerModal);
 
-    // 閉じるボタン
-    const closeBtn = imageViewerModal.querySelector('.image-viewer-close');
+    const scrollArea  = imageViewerModal.querySelector('.image-viewer-scroll-area');
+    const viewerImg   = imageViewerModal.querySelector('.image-viewer-img');
+    const closeBtn    = imageViewerModal.querySelector('.image-viewer-close');
+    const zoomOutBtn  = imageViewerModal.querySelector('.iv-zoom-out');
+    const zoomResetBtn = imageViewerModal.querySelector('.iv-zoom-reset');
+    const zoomInBtn   = imageViewerModal.querySelector('.iv-zoom-in');
+
+    // ---- ズーム計算 ----
+    function calcFitRatio() {
+        const maxW = window.innerWidth  * 0.92;
+        const maxH = (window.innerHeight - 100) * 0.92; // ツールバー分を引く
+        const nw = viewerImg.naturalWidth  || 1;
+        const nh = viewerImg.naturalHeight || 1;
+        // 小さい画像は拡大、大きい画像は縮小してフィット
+        return Math.min(maxW / nw, maxH / nh);
+    }
+
+    function applyZoom() {
+        const nw = viewerImg.naturalWidth  || 1;
+        const nh = viewerImg.naturalHeight || 1;
+        const fit = calcFitRatio();
+        const displayW = Math.round(nw * fit * currentZoom);
+        const displayH = Math.round(nh * fit * currentZoom);
+
+        viewerImg.style.width    = displayW + 'px';
+        viewerImg.style.height   = displayH + 'px';
+        viewerImg.style.maxWidth  = 'none';
+        viewerImg.style.maxHeight = 'none';
+
+        zoomResetBtn.textContent = Math.round(currentZoom * 100) + '%';
+
+        // ズーム上下限でボタン無効化
+        zoomOutBtn.disabled = currentZoom <= MIN_ZOOM;
+        zoomInBtn.disabled  = currentZoom >= MAX_ZOOM;
+    }
+
+    function zoomIn() {
+        const idx = ZOOM_STEPS.findIndex(s => s > currentZoom + 0.001);
+        currentZoom = idx >= 0 ? ZOOM_STEPS[idx] : Math.min(currentZoom * 1.25, MAX_ZOOM);
+        applyZoom();
+    }
+
+    function zoomOut() {
+        const steps = [...ZOOM_STEPS].reverse();
+        const idx = steps.findIndex(s => s < currentZoom - 0.001);
+        currentZoom = idx >= 0 ? steps[idx] : Math.max(currentZoom / 1.25, MIN_ZOOM);
+        applyZoom();
+    }
+
+    function zoomReset() {
+        currentZoom = 1.0;
+        applyZoom();
+    }
+
+    // ---- ボタンイベント ----
+    zoomInBtn .addEventListener('click', (e) => { e.stopPropagation(); zoomIn();    });
+    zoomOutBtn.addEventListener('click', (e) => { e.stopPropagation(); zoomOut();   });
+    zoomResetBtn.addEventListener('click', (e) => { e.stopPropagation(); zoomReset(); });
+
+    // ---- ホイールでズーム ----
+    imageViewerModal.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (e.deltaY < 0) zoomIn();
+        else              zoomOut();
+    }, { passive: false });
+
+    // ---- 閉じる ----
     closeBtn.addEventListener('click', closeImageViewer);
-
-    // 背景クリックで閉じる
     imageViewerModal.addEventListener('click', (e) => {
-        if (e.target === imageViewerModal) {
-            closeImageViewer();
-        }
+        if (e.target === imageViewerModal || e.target === scrollArea) closeImageViewer();
     });
 
-    // Escapeキーで閉じる
+    // ---- キーボードショートカット ----
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && imageViewerModal && imageViewerModal.classList.contains('active')) {
-            closeImageViewer();
-        }
+        if (!imageViewerModal || !imageViewerModal.classList.contains('active')) return;
+        if (e.key === 'Escape') { closeImageViewer(); }
+        else if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomIn();    }
+        else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut();   }
+        else if (e.key === '0')                  { e.preventDefault(); zoomReset(); }
     });
+
+    // openImageViewer/closeImageViewer から使えるよう公開
+    imageViewerModal._resetZoom = function() {
+        currentZoom = 1.0;
+        if (viewerImg.naturalWidth > 0) applyZoom();
+        else viewerImg.onload = applyZoom;
+    };
 }
 
 /**
@@ -354,23 +433,26 @@ function openImageViewer(img) {
     if (!imageViewerModal) return;
 
     const viewerImg = imageViewerModal.querySelector('.image-viewer-img');
-    const infoDiv = imageViewerModal.querySelector('.image-viewer-info');
+    const infoDiv   = imageViewerModal.querySelector('.image-viewer-info');
 
     viewerImg.src = img.src;
     viewerImg.alt = img.alt || '画像';
-    
-    // 画像情報（altテキストまたはパス）を表示
+
+    // 画像情報表示
     if (img.alt) {
-        infoDiv.textContent = 'Alt: ' + img.alt;
+        infoDiv.textContent = img.alt;
     } else if (img.src) {
-        const fileName = img.src.split('/').pop();
-        infoDiv.textContent = fileName || img.src;
+        const fileName = img.src.split('/').pop().split('?')[0];
+        infoDiv.textContent = fileName || '';
     } else {
         infoDiv.textContent = '';
     }
 
     imageViewerModal.classList.add('active');
-    document.body.style.overflow = 'hidden';  // スクロールを抑止
+    document.body.style.overflow = 'hidden';
+
+    // ズームをフィットサイズにリセット
+    imageViewerModal._resetZoom && imageViewerModal._resetZoom();
 }
 
 /**
@@ -379,7 +461,7 @@ function openImageViewer(img) {
 function closeImageViewer() {
     if (!imageViewerModal) return;
     imageViewerModal.classList.remove('active');
-    document.body.style.overflow = '';  // スクロールを復元
+    document.body.style.overflow = '';
 }
 
 // ========== 画像ペースト ==========

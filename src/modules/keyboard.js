@@ -419,6 +419,98 @@ function handleKeyDown(e) {
     }
 }
 
+function getNodeTableCell(node) {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
+    if (node.tagName === 'TD' || node.tagName === 'TH') return node;
+    return node.closest ? node.closest('td, th') : null;
+}
+
+function getTableCellFromRange(range) {
+    if (!range) return null;
+    const start = range.startContainer;
+
+    if (start.nodeType === Node.TEXT_NODE) {
+        return start.parentElement ? getNodeTableCell(start.parentElement) : null;
+    }
+
+    let cell = getNodeTableCell(start);
+    if (cell) return cell;
+
+    // startContainer が tr/tbody/table 等の場合は offset 先の要素から推定
+    const children = start.childNodes || [];
+    if (children.length > 0) {
+        let idx = range.startOffset;
+        if (idx >= children.length) idx = children.length - 1;
+        if (idx < 0) idx = 0;
+        const candidate = children[idx] || children[idx - 1] || null;
+        if (candidate) {
+            cell = getNodeTableCell(candidate);
+            if (cell) return cell;
+            if (candidate.querySelector) {
+                const nested = candidate.querySelector('td, th');
+                if (nested) return nested;
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * テーブルセル内へ改行（<br>）を安全に挿入する。
+ * execCommand('insertLineBreak') はブラウザエンジンによって、
+ * セル境界付近で新規セル/行を生成してしまう（表構造が壊れる）ことがあるため、
+ * Range API による直接DOM操作のみで完結させる。
+ * @param {HTMLTableCellElement} cell
+ * @param {Range} currentRange - 呼び出し時点の選択範囲（セル外の場合はセル末尾へ寄せる）
+ */
+function insertLineBreakInTableCell(cell, currentRange) {
+    const sel = window.getSelection();
+    let range = currentRange;
+
+    // 渡されたレンジがセル外（セル選択状態など）なら、セル末尾に寄せる
+    if (!range || !cell.contains(range.startContainer)) {
+        range = document.createRange();
+        range.selectNodeContents(cell);
+        range.collapse(false);
+    } else {
+        range = range.cloneRange();
+    }
+
+    // 選択範囲があれば先に削除（execCommand同様の挙動に合わせる）
+    if (!range.collapsed) {
+        range.deleteContents();
+    }
+
+    const br = document.createElement('br');
+    range.insertNode(br);
+
+    // キャレットを br の直後へ移動
+    const newRange = document.createRange();
+    newRange.setStartAfter(br);
+    newRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+
+    markModified();
+}
+
+function handleBeforeInput(e) {
+    if (!e || !e.inputType) return;
+    if (e.inputType !== 'insertParagraph' && e.inputType !== 'insertLineBreak') return;
+
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+
+    const range = sel.getRangeAt(0);
+    const activeTableCell = getTableCellFromRange(range);
+    if (!activeTableCell) return;
+
+    // keydown 側で取りこぼした場合の最終フォールバック。
+    e.preventDefault();
+    insertLineBreakInTableCell(activeTableCell, range);
+}
+
 // ========== Enter Key Handling ==========
 function handleEnterKey(e) {
     // IME変換中（日本語入力など）はEnter処理をスキップ
@@ -458,6 +550,16 @@ function handleEnterKey(e) {
     if (!sel.rangeCount) return;
 
     const range = sel.getRangeAt(0);
+
+    // テーブルセル内 Enter は最優先で処理する。
+    // セル選択状態（startContainer が tr/tbody など）でも対象セルを推定し、
+    // ブラウザ既定動作による div/p 混入を防止する。
+    const activeTableCell = getTableCellFromRange(range);
+    if (activeTableCell) {
+        e.preventDefault();
+        insertLineBreakInTableCell(activeTableCell, range);
+        return;
+    }
 
     // ---- Details/Summary: handle BEFORE getParentBlock (summary is not a block tag) ----
     let detailsAncestor = range.startContainer;
@@ -604,6 +706,16 @@ function handleEnterKey(e) {
     if (!block) return;
 
     const tag = block.tagName;
+
+    // テーブルセル内の Enter は環境差が大きく、既定動作だとセル内に div/p が混入して
+    // 保存・再読込時に表構造が崩れることがあるため、常に <br> 挿入へ統一する。
+    // （通常はこの手前の early-return で処理済みだが、フォールバックとして維持）
+    if (tag === 'TD' || tag === 'TH' || (block.closest && block.closest('td, th'))) {
+        e.preventDefault();
+        const cellForBreak = (tag === 'TD' || tag === 'TH') ? block : block.closest('td, th');
+        insertLineBreakInTableCell(cellForBreak, range);
+        return;
+    }
 
     // 見出し内では次の見出しを作らず段落を作る
     if (/^H[1-6]$/.test(tag)) {

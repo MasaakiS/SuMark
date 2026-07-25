@@ -105,6 +105,13 @@ async function openFileFromPath(filePath) {
         const tab = createTab(normalizedFilePath, filename, '<p><br></p>');
         setMarkdown(contents);
         tab.content = editor.innerHTML;
+
+        // ファイル読込直後をUndo履歴の起点にする
+        // （空タブ作成時の履歴が残ると、Ctrl+Zで空ページまで戻ってしまうため）
+        undoStack = [];
+        redoStack = [];
+        currentState = null;
+        saveEditorState();
         console.log('[DEBUG openFileFromPath] SUCCESS');
 
     } catch (err) {

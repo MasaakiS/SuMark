@@ -374,8 +374,9 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.85);
+    background: rgba(0, 0, 0, 0.88);
     display: none;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     z-index: 10000;
@@ -387,74 +388,128 @@
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 
-.image-viewer-container {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    max-width: 90vw;
-    max-height: 90vh;
-    cursor: zoom-out;
-}
-
-.image-viewer-img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    border-radius: 4px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
+/* 閉じるボタン：モーダル右上に固定 */
 .image-viewer-close {
     position: absolute;
-    top: 20px;
-    right: 20px;
+    top: 16px;
+    right: 16px;
     width: 36px;
     height: 36px;
     background: rgba(255, 255, 255, 0.9);
     border: none;
     border-radius: 50%;
-    font-size: 24px;
+    font-size: 20px;
+    line-height: 1;
     color: #333;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     z-index: 10001;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-.image-viewer-close:hover {
-    background: #fff;
-    transform: scale(1.1);
+.image-viewer-close:hover  { background: #fff; transform: scale(1.1); }
+.image-viewer-close:active { transform: scale(0.95); }
+
+/* スクロール可能な画像エリア */
+.image-viewer-scroll-area {
+    flex: 1;
+    width: 100%;
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 56px 16px 8px; /* 上部は閉じるボタン分 */
+    box-sizing: border-box;
 }
 
-.image-viewer-close:active {
-    transform: scale(0.95);
+/* 画像本体：サイズはJSで設定 */
+.image-viewer-img {
+    display: block;
+    border-radius: 4px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+    /* width/height は JS の applyZoom() で設定 */
+    cursor: default;
+}
+
+/* ズームコントロールツールバー */
+.image-viewer-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    margin: 8px 0 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 28px;
+    backdrop-filter: blur(6px);
+    flex-shrink: 0;
+}
+
+.iv-zoom-out,
+.iv-zoom-in {
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    color: #fff;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, opacity 0.15s;
+    padding: 0;
+}
+
+.iv-zoom-out:hover,
+.iv-zoom-in:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.iv-zoom-out:disabled,
+.iv-zoom-in:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.iv-zoom-reset {
+    min-width: 60px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0 10px;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+.iv-zoom-reset:hover {
+    background: rgba(255, 255, 255, 0.25);
 }
 
 .image-viewer-info {
-    position: absolute;
-    bottom: 20px;
-    left: 20px;
-    color: white;
+    color: rgba(255, 255, 255, 0.65);
     font-size: 12px;
-    background: rgba(0, 0, 0, 0.5);
-    padding: 8px 12px;
-    border-radius: 4px;
-    max-width: 300px;
-    text-overflow: ellipsis;
+    max-width: 260px;
     overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
+    margin-left: 6px;
+    padding-left: 6px;
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 /* ========== Code Block - Syntax Highlighting Notice ========== */
