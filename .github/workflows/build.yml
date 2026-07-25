@@ -258,7 +258,8 @@ jobs:
           echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
           echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
 
-      - name: Build Tauri app (Windows / Linux)
+      - name: Build Tauri app (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -267,7 +268,13 @@ jobs:
           releaseName: 'SuMark ${{ github.ref_name }}'
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.target == 'x86_64-pc-windows-msvc' && '--target x86_64-pc-windows-msvc --bundles none' || (matrix.target == 'aarch64-unknown-linux-gnu' && '--target aarch64-unknown-linux-gnu --bundles deb' || format('--target {0} --bundles deb', matrix.target)) }}
+          args: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '--target aarch64-unknown-linux-gnu --bundles deb' || format('--target {0} --bundles deb', matrix.target) }}
+
+      - name: Build Tauri app (Windows, no installer bundles)
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          npx tauri build --target x86_64-pc-windows-msvc --bundles none
 
       - name: Create portable zip (Windows)
         if: matrix.platform == 'windows-latest'
