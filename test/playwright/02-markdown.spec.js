@@ -212,6 +212,36 @@ test.describe('Markdown 自動変換テスト', () => {
             expect(wrapButtons).toBeGreaterThan(0);
         });
 
+        test('コードブロック内でEnterを押すと次の行の先頭に入力できる', async ({ app }) => {
+            const md = '```javascript\nconsole.log("hello");\n```';
+            await app.page.evaluate((markdown) => window.setMarkdown(markdown), md);
+            await app.helpers.wait(800);
+            await app.helpers.focusEditor();
+
+            await app.page.evaluate(() => {
+                const code = document.querySelector('#editor pre code');
+                if (!code) {
+                    throw new Error('code block not found');
+                }
+
+                const range = document.createRange();
+                range.selectNodeContents(code);
+                range.collapse(false);
+
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            });
+
+            await app.page.keyboard.press('Enter');
+            await app.helpers.wait(300);
+            await app.page.keyboard.type('x');
+            await app.helpers.wait(300);
+
+            const codeText = await app.page.locator('#editor pre code').innerText();
+            expect(codeText).toContain('console.log("hello");\nx');
+        });
+
         test('事前作成HTMLの pre[data-wrap] でも wrap ボタンで折り返しを切り替えできる', async ({ app }) => {
             await app.page.evaluate(() => {
                 const editor = document.getElementById('editor');

@@ -761,38 +761,22 @@ function handleEnterKey(e) {
     // コードブロック（<pre> または <pre> 内 <code>）では改行を挿入
     // 末尾の空行にいる場合はコードブロックを抜ける
     if (tag === 'PRE' || (tag === 'CODE' && block.parentNode && block.parentNode.tagName === 'PRE')) {
-        const codeEl = tag === 'CODE' ? block : block.querySelector('code');
         const preEl = tag === 'PRE' ? block : block.parentNode;
+        const codeEl = tag === 'CODE' ? block : block.querySelector('code');
         const targetEl = codeEl || preEl;
 
-        // カーソルが末尾空行にあるか確認
-        if (isOnEmptyTrailingLine(targetEl, range)) {
-            e.preventDefault();
-            // 末尾の空要素（<br> と末尾 \n）を除去
-            removeTrailingEmptyLines(targetEl);
-            // 言語クラスが消えていた場合に備えて保持
-            if (codeEl && codeEl !== targetEl) {
-                // codeEl は <code> 要素なのでクラス維持のみ
-            }
-            // コードブロック直後に段落を作成
-            const p = document.createElement('p');
-            p.innerHTML = '<br>';
-            preEl.parentNode.insertBefore(p, preEl.nextSibling);
-            setCursorTo(p);
-            // コードブロックを再ハイライト
-            if (codeEl && typeof hljs !== 'undefined' && !codeEl.classList.contains('language-mermaid')) {
-                highlightCodeBlock(codeEl);
-            }
-            // Mermaidコードブロックなら再描画
-            if (codeEl && codeEl.classList.contains('language-mermaid')) {
-                renderMermaidBlocks();
-            }
-            return;
-        }
         e.preventDefault();
-        document.execCommand('insertLineBreak');
-        // 改行後に行番号を更新
+        if (codeEl) {
+            const caretOffset = getCaretCharacterOffsetWithin(codeEl);
+            const currentText = codeEl.textContent;
+            codeEl.textContent = currentText.slice(0, caretOffset) + '\n' + currentText.slice(caretOffset);
+            setCaretCharacterOffset(codeEl, caretOffset + 1);
+        } else if (targetEl) {
+            document.execCommand('insertText', false, '\n');
+        }
+
         if (preEl) updateLineNumbers(preEl);
+        markModified();
         return;
     }
 
