@@ -1,6 +1,6 @@
 {
   "name": "sumark",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "SuMark - A powerful WYSIWYG Markdown editor",
   "main": "src/index.html",
   "scripts": {

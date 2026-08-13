@@ -212,6 +212,38 @@ test.describe('Markdown 自動変換テスト', () => {
             expect(wrapButtons).toBeGreaterThan(0);
         });
 
+        test('コードブロックHTML再構築後も copy/wrap ボタンが動作する', async ({ app }) => {
+            const md = '```js\nconsole.log("hello");\n```';
+            await app.page.evaluate((markdown) => {
+                if (typeof setMarkdown === 'function') setMarkdown(markdown);
+            }, md);
+            await app.helpers.wait(800);
+
+            await app.page.evaluate(() => {
+                const editor = document.getElementById('editor');
+                const html = editor.innerHTML;
+                // innerHTML の再代入でノードを再生成し、イベント消失状態を再現
+                editor.innerHTML = html;
+
+                if (typeof addCopyButtonsToCodeBlocks === 'function') {
+                    addCopyButtonsToCodeBlocks();
+                }
+                if (typeof updateAllLineNumbers === 'function') {
+                    updateAllLineNumbers();
+                }
+            });
+            await app.helpers.wait(300);
+
+            const copyButton = app.page.locator('#editor .code-block-toolbar .code-copy-btn').first();
+            await copyButton.click();
+            await expect(copyButton).toHaveClass(/copied/);
+
+            const wrapButton = app.page.locator('#editor .code-block-toolbar .code-wrap-btn').first();
+            const pre = app.page.locator('#editor pre').first();
+            await wrapButton.click();
+            await expect(pre).toHaveClass(/wrap-enabled/);
+        });
+
         test('コードブロック内でEnterを押すと次の行の先頭に入力できる', async ({ app }) => {
             const md = '```javascript\nconsole.log("hello");\n```';
             await app.page.evaluate((markdown) => window.setMarkdown(markdown), md);

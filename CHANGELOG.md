@@ -2,6 +2,16 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v1.0.23] - 2026-08-13
+### 修正
+- Windows環境で、コードブロックの `Copy` / `Copy #` / `↵ Wrap` ボタンが表示されていても操作できなくなる場合がある問題を修正
+  - `innerHTML` 復元で再生成された既存ツールバー要素にもイベントハンドラを再バインドするよう改善
+  - 既存ボタンへの二重バインドを防止しつつ、復元後の操作性を維持
+
+### テスト
+- `npm run test:e2e -- test/playwright/02-markdown.spec.js`
+- `test/playwright/02-markdown.spec.js` に、`innerHTML` 再構築後も Copy/Wrap が動作する回帰テストを追加
+
 ## [v1.0.22] - 2026-08-02
 ### 修正
 - Windows のコードブロック内で Enter を押した際、カーソルが押下位置へ戻る問題を修正
@@ -10,17 +20,13 @@
 
 ## [v1.0.21] - 2026-07-26
 ### 修正
-- GitHub Actions の Windows ビルド経路を修正し、`--bundles none` 指定時のアーティファクト探索エラーで失敗しないよう改善
   - Windows は `tauri-action` ではなく `npx tauri build --bundles none` でビルド
   - Linux は従来どおり `tauri-action` で `.deb` を生成
 
 ## [v1.0.20] - 2026-07-25
-### 修正
-- 利用頻度の低い配布物を整理し、リリース時の作成ファイルを再編成
   - macOS / Windows の installer を作成しないよう変更
   - Linux / Chromebook (x86_64) の portable file を作成しないよう変更
   - macOS / Windows の portable file は継続
-  - Linux / Chromebook (x86_64) / (ARM64) の installer は継続
 - image viewer の操作性を改善
   - ズームコントロール（拡大・縮小・リセット）を追加
   - マウスホイールとキーボード（`+` / `-` / `0` / `Esc`）での操作を追加

@@ -1413,12 +1413,87 @@ function setupCodeCopyButtons() {
     observer.observe(editor, { childList: true, subtree: true });
 }
 
+function copyCodeTextWithFeedback(text, btn, label) {
+    navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = label; btn.classList.remove('copied'); }, 2000);
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;opacity:0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = label; btn.classList.remove('copied'); }, 2000);
+    });
+}
+
+function bindCodeCopyButton(pre, code, btn, kind) {
+    if (!btn || btn.__sumarkCopyBound) return;
+
+    btn.setAttribute('type', 'button');
+    btn.setAttribute('contenteditable', 'false');
+
+    btn.addEventListener('mousedown', e => {
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    btn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const rawText = code ? code.textContent : pre.textContent;
+        if (kind === 'numbered') {
+            const lines = rawText.split('\n');
+            if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+            const maxDigits = String(lines.length).length;
+            const numberedText = lines.map((line, i) => {
+                const num = String(i + 1).padStart(maxDigits, ' ');
+                return num + ' | ' + line;
+            }).join('\n');
+            copyCodeTextWithFeedback(numberedText, btn, 'Copy #');
+            return;
+        }
+
+        copyCodeTextWithFeedback(rawText, btn, 'Copy');
+    });
+
+    btn.__sumarkCopyBound = true;
+}
+
+function ensureCodeToolbarButtons(pre, toolbar) {
+    if (!pre || !toolbar || !toolbar.classList.contains('code-block-toolbar')) return;
+
+    const code = pre.querySelector('code');
+    const container = toolbar.querySelector('.code-copy-container');
+    if (!container) return;
+
+    container.querySelectorAll('.code-copy-btn').forEach(btn => {
+        let kind = btn.getAttribute('data-copy-kind');
+        if (!kind) {
+            kind = btn.textContent && btn.textContent.includes('#') ? 'numbered' : 'plain';
+            btn.setAttribute('data-copy-kind', kind);
+        }
+        bindCodeCopyButton(pre, code, btn, kind);
+    });
+}
+
 function addCopyButtonsToCodeBlocks() {
     editor.querySelectorAll('pre').forEach(pre => {
+        // 既存ツールバーがある場合は、復元後ノードで失われたハンドラを再バインド
+        const existingToolbar = pre.previousElementSibling;
+        if (existingToolbar && existingToolbar.classList.contains('code-block-toolbar')) {
+            ensureCodeToolbarButtons(pre, existingToolbar);
+            return;
+        }
+
         // 既にコピーボタンがある場合はスキップ
         if (pre.querySelector('.code-copy-container')) return;
-        // pre直前にツールバーがある場合もスキップ
-        if (pre.previousElementSibling && pre.previousElementSibling.classList.contains('code-block-toolbar')) return;
         // Mermaidコンテナは対象外
         if (pre.closest('.mermaid-container')) return;
 
@@ -1471,62 +1546,21 @@ function addCopyButtonsToCodeBlocks() {
 
         pre.parentNode.insertBefore(toolbar, pre);
 
-        // 補助: 生のコードテキストを取得
-        function getRawText() {
-            return code ? code.textContent : pre.textContent;
-        }
-
-        // 補助: 視覚フィードバック付きでクリップボードへコピー
-        function copyToClipboard(text, btn, label) {
-            navigator.clipboard.writeText(text).then(() => {
-                btn.textContent = 'Copied!';
-                btn.classList.add('copied');
-                setTimeout(() => { btn.textContent = label; btn.classList.remove('copied'); }, 2000);
-            }).catch(() => {
-                const ta = document.createElement('textarea');
-                ta.value = text;
-                ta.style.cssText = 'position:fixed;opacity:0';
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-                btn.textContent = 'Copied!';
-                btn.classList.add('copied');
-                setTimeout(() => { btn.textContent = label; btn.classList.remove('copied'); }, 2000);
-            });
-        }
-
         // ボタン1: 通常コピー（行番号なし）
         const btnCopy = document.createElement('button');
         btnCopy.className = 'code-copy-btn';
+        btnCopy.setAttribute('data-copy-kind', 'plain');
         btnCopy.textContent = 'Copy';
         btnCopy.title = 'コードをコピー';
-        btnCopy.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
-        btnCopy.addEventListener('click', e => {
-            e.preventDefault();
-            e.stopPropagation();
-            copyToClipboard(getRawText(), btnCopy, 'Copy');
-        });
+        bindCodeCopyButton(pre, code, btnCopy, 'plain');
 
         // ボタン2: 行番号付きコピー
         const btnNum = document.createElement('button');
         btnNum.className = 'code-copy-btn';
+        btnNum.setAttribute('data-copy-kind', 'numbered');
         btnNum.textContent = 'Copy #';
         btnNum.title = '行番号付きでコピー';
-        btnNum.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
-        btnNum.addEventListener('click', e => {
-            e.preventDefault();
-            e.stopPropagation();
-            const rawText = getRawText();
-            const lines = rawText.split('\n');
-            if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
-            const maxDigits = String(lines.length).length;
-            const numberedText = lines.map((line, i) => {
-                const num = String(i + 1).padStart(maxDigits, ' ');
-                return num + ' | ' + line;
-            }).join('\n');
-            copyToClipboard(numberedText, btnNum, 'Copy #');
-        });
+        bindCodeCopyButton(pre, code, btnNum, 'numbered');
 
         container.appendChild(btnCopy);
         container.appendChild(btnNum);

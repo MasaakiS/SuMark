@@ -8,6 +8,43 @@
 /** デバウンスタイマー（モジュール内で管理） */
 let codeHighlightTimer = null;
 
+function bindCodeWrapButton(button, pre) {
+    if (!button || !pre || button.__sumarkWrapBound) return;
+
+    button.setAttribute('type', 'button');
+    button.setAttribute('contenteditable', 'false');
+
+    button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleCodeWrap(pre);
+    });
+
+    button.__sumarkWrapBound = true;
+}
+
+function syncCodeWrapButtonState(button, pre) {
+    if (!button || !pre) return;
+
+    const code = pre.querySelector('code');
+    const shouldWrap = !!(code && (
+        code.classList.contains('wrap-enabled') ||
+        code.getAttribute('data-wrap') === 'true' ||
+        pre.classList.contains('wrap-enabled') ||
+        pre.getAttribute('data-wrap') === 'true'
+    ));
+
+    if (shouldWrap) {
+        code.classList.add('wrap-enabled');
+        code.setAttribute('data-wrap', 'true');
+        pre.classList.add('wrap-enabled');
+        pre.setAttribute('data-wrap', 'true');
+        button.classList.add('wrap-enabled');
+    } else {
+        button.classList.remove('wrap-enabled');
+    }
+}
+
 /**
  * 要素内のキャレット位置（文字オフセット）を取得する
  * @param {HTMLElement} element - 対象要素
@@ -228,8 +265,13 @@ function setupCodeWrapButton(pre) {
     const toolbar = pre.previousElementSibling;
     if (!toolbar || !toolbar.classList.contains('code-block-toolbar')) return;
     
-    // ツールバー内に既存ボタンがある場合は何もしない
-    if (toolbar.querySelector('.code-wrap-btn')) return;
+    // 既存ボタンがある場合は復元後ノード向けにハンドラを再バインド
+    const existingButton = toolbar.querySelector('.code-wrap-btn');
+    if (existingButton) {
+        bindCodeWrapButton(existingButton, pre);
+        syncCodeWrapButtonState(existingButton, pre);
+        return;
+    }
     
     const container = toolbar.querySelector('.code-copy-container');
     if (!container) return;
@@ -243,31 +285,13 @@ function setupCodeWrapButton(pre) {
     button.textContent = '↵ Wrap';
     button.title = 'Toggle text wrapping (Hold Shift to wrap long lines within window)';
     
-    // data属性 / 既存クラスから折り返し有効状態を復元（pre/code互換）
-    const code = pre.querySelector('code');
-    const shouldWrap = !!(code && (
-        code.classList.contains('wrap-enabled') ||
-        code.getAttribute('data-wrap') === 'true' ||
-        pre.classList.contains('wrap-enabled') ||
-        pre.getAttribute('data-wrap') === 'true'
-    ));
-    if (code && shouldWrap) {
-        code.classList.add('wrap-enabled');
-        code.setAttribute('data-wrap', 'true');
-        pre.classList.add('wrap-enabled');
-        pre.setAttribute('data-wrap', 'true');
-        button.classList.add('wrap-enabled');
-    }
+    syncCodeWrapButtonState(button, pre);
     
     // コピーボタンより前に折り返しボタンを挿入
     container.insertBefore(button, container.firstChild);
     
     // クリックハンドラを登録
-    button.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleCodeWrap(pre);
-    });
+    bindCodeWrapButton(button, pre);
 }
 
 /**
