@@ -222,6 +222,31 @@ test.describe('検索ダイアログ（モードレス）', () => {
             const highlights = await app.page.locator('#editor .search-highlight').count();
             expect(highlights).toBe(3);
         });
+
+        test('単語単位と正規表現の検索オプションが機能する', async ({ app }) => {
+            await app.helpers.typeInEditor('cat scatter cat2 cat');
+            await app.helpers.clickToolbarButton('searchBtn');
+            await app.page.fill('#findInput', 'cat');
+            await app.page.locator('#findWholeWord').click();
+            await app.page.locator('#findNextBtn').click();
+            await expect(app.page.locator('#editor .search-highlight')).toHaveCount(2);
+
+            await app.page.locator('#findRegex').click();
+            await app.page.fill('#findInput', 'c.t2');
+            await app.page.locator('#findNextBtn').click();
+            await expect(app.page.locator('#editor .search-highlight')).toHaveCount(1);
+        });
+
+        test('前へボタンで検索結果を逆順に移動できる', async ({ app }) => {
+            await app.helpers.typeInEditor('apple banana apple cherry apple');
+            await app.helpers.clickToolbarButton('searchBtn');
+            await app.page.fill('#findInput', 'apple');
+            await app.page.locator('#findNextBtn').click();
+            await app.page.locator('#findNextBtn').click();
+            expect(await app.page.locator('#findDialogCount').innerText()).toBe('2 / 3');
+            await app.page.locator('#findPreviousBtn').click();
+            expect(await app.page.locator('#findDialogCount').innerText()).toBe('1 / 3');
+        });
     });
 
     // ============================
@@ -335,6 +360,22 @@ test.describe('検索ダイアログ（モードレス）', () => {
             // カウント表示もクリアされていること
             const countText = await app.page.locator('#findDialogCount').innerText();
             expect(countText).toBe('');
+        });
+    });
+
+    test.describe('置換', () => {
+        test('正規表現のキャプチャグループで全置換できる', async ({ app }) => {
+            await app.helpers.typeInEditor('name: taro\nname: hanako');
+            await app.helpers.clickToolbarButton('replaceBtn');
+            await app.page.fill('#findInput', 'name: (\\w+)');
+            await app.page.locator('#findRegex').click();
+            await app.page.fill('#replaceInput', 'user: $1');
+            await app.page.locator('#replaceAllBtn').click();
+            await app.helpers.wait(200);
+
+            const text = await app.page.locator('#editor').innerText();
+            expect(text).toContain('user: taro');
+            expect(text).toContain('user: hanako');
         });
     });
 

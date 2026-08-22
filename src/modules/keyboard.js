@@ -19,6 +19,21 @@
 
 // ========== メインキーボードハンドラ ==========
 function handleKeyDown(e) {
+    if (e.key === 'Enter') {
+        const selection = window.getSelection();
+        const range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+        const tableCell = getTableCellFromEvent(e, range);
+        if (tableCell) {
+            // IME確定時を含め、WebViewの既定Enter動作を表セルへ適用しない。
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if (!isComposing) {
+                insertLineBreakInTableCell(tableCell, range);
+            }
+            return;
+        }
+    }
+
         // エンター押下時は即座に履歴を積む
         if (e.key === 'Enter' && !isComposing) {
             saveEditorState();
@@ -26,6 +41,51 @@ function handleKeyDown(e) {
         }
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const mod = isMac ? e.metaKey : e.ctrlKey;
+    if (mod && e.key.toLowerCase() === 'a') {
+        const selection = window.getSelection();
+        const range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+        const cell = getTableCellFromEvent(e, range);
+        if (cell) {
+            e.preventDefault();
+            const cellRange = document.createRange();
+            cellRange.selectNodeContents(cell);
+            selection.removeAllRanges();
+            selection.addRange(cellRange);
+            return;
+        }
+    }
+
+    const isTableNavigationKey = e.key === 'Tab' ||
+        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && isTableNavigationKey &&
+        typeof moveCurrentTableCell === 'function' && moveCurrentTableCell(e.key === 'Tab' && e.shiftKey ? 'Shift+Tab' : e.key)) {
+        e.preventDefault();
+        return;
+    }
+
+    const hasRectTableSelection =
+        typeof isRectTableSelectionActive === 'function' &&
+        isRectTableSelectionActive();
+
+    if (hasRectTableSelection && e.key === 'Escape' && typeof enterTableSelectionMode === 'function') {
+        e.preventDefault();
+        enterTableSelectionMode();
+        return;
+    }
+
+    if (hasRectTableSelection && typeof moveTableSelection === 'function') {
+        const isArrowKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+        if (e.key === 'Tab' || isArrowKey) {
+            const navigationKey = e.key === 'Tab' && e.shiftKey ? 'Shift+Tab' : e.key;
+            if (moveTableSelection(navigationKey, false)) return;
+        }
+    }
+
+    // 矩形選択中の Copy/Cut/Paste は tableManager 側の専用フローへ委譲する。
+    if (hasRectTableSelection && mod && (e.key === 'c' || e.key === 'x' || e.key === 'v')) {
+        return;
+    }
     
     // Cmd/Ctrl+Z: 元に戻す
     if (mod && e.key === 'z' && !e.shiftKey) {
@@ -75,6 +135,9 @@ function handleKeyDown(e) {
 
     // Cmd/Ctrl+Enter: テーブル列選択の一括入力
     if (mod && e.key === 'Enter') {
+        if (hasRectTableSelection) {
+            return;
+        }
         if (typeof colSelectedCells !== 'undefined' && colSelectedCells.length >= 2 &&
             typeof colAnchorCell !== 'undefined' && colAnchorCell) {
             e.preventDefault();
@@ -456,6 +519,18 @@ function getTableCellFromRange(range) {
     return null;
 }
 
+function getTableCellFromEvent(e, range) {
+    const target = e && e.target;
+    if (target) {
+        const element = target.nodeType === Node.ELEMENT_NODE ? target : target.parentElement;
+        const targetCell = element && element.closest ? element.closest('td, th') : null;
+        if (targetCell) return targetCell;
+    }
+    const rangeCell = getTableCellFromRange(range);
+    if (rangeCell) return rangeCell;
+    return typeof getLastActiveTableCell === 'function' ? getLastActiveTableCell() : null;
+}
+
 /**
  * テーブルセル内へ改行（<br>）を安全に挿入する。
  * execCommand('insertLineBreak') はブラウザエンジンによって、
@@ -469,7 +544,7 @@ function insertLineBreakInTableCell(cell, currentRange) {
     let range = currentRange;
 
     // 渡されたレンジがセル外（セル選択状態など）なら、セル末尾に寄せる
-    if (!range || !cell.contains(range.startContainer)) {
+    if (!range || !cell.contains(range.startContainer) || !cell.contains(range.endContainer)) {
         range = document.createRange();
         range.selectNodeContents(cell);
         range.collapse(false);
@@ -503,11 +578,12 @@ function handleBeforeInput(e) {
     if (!sel || !sel.rangeCount) return;
 
     const range = sel.getRangeAt(0);
-    const activeTableCell = getTableCellFromRange(range);
+    const activeTableCell = getTableCellFromEvent(e, range);
     if (!activeTableCell) return;
 
     // keydown 側で取りこぼした場合の最終フォールバック。
     e.preventDefault();
+    e.stopImmediatePropagation();
     insertLineBreakInTableCell(activeTableCell, range);
 }
 
@@ -554,7 +630,7 @@ function handleEnterKey(e) {
     // テーブルセル内 Enter は最優先で処理する。
     // セル選択状態（startContainer が tr/tbody など）でも対象セルを推定し、
     // ブラウザ既定動作による div/p 混入を防止する。
-    const activeTableCell = getTableCellFromRange(range);
+    const activeTableCell = getTableCellFromEvent(e, range);
     if (activeTableCell) {
         e.preventDefault();
         insertLineBreakInTableCell(activeTableCell, range);
@@ -1087,7 +1163,7 @@ function handleTabKey(e) {
 
                             if (!nextRow) {
                                 const colCount = cells.length;
-                                const newRow = createTableRow(colCount, 'td');
+                                const newRow = createTableRow(table, colCount, 'td');
                                 const parent = row.parentElement;
                                 if (parent && parent.tagName === 'THEAD') {
                                     let tbody = table.querySelector('tbody');

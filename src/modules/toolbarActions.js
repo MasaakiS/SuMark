@@ -13,6 +13,53 @@ let currentSearchIndex = -1;
 let findDialogOpen = false;
 let lastFindQuery = null;
 let lastFindCaseSensitive = null;
+const searchState = {
+    searchTerm: '',
+    replaceTerm: '',
+    isRegex: false,
+    isCaseSensitive: false,
+    isWholeWord: false,
+    isInSelection: false,
+    matches: [],
+    currentMatchIndex: -1,
+};
+const replaceHistory = [];
+
+function escapeRegexForSearch(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getSearchPattern(query, options) {
+    let pattern = options.isRegex ? query : escapeRegexForSearch(query);
+    if (options.isWholeWord) pattern = `\\b(?:${pattern})\\b`;
+    return pattern;
+}
+
+function findMatches(text, query, options = {}) {
+    if (!query) return [];
+    const flags = (options.isCaseSensitive ? '' : 'i') + 'g';
+    let regex;
+    try {
+        regex = new RegExp(getSearchPattern(query, options), flags);
+    } catch (error) {
+        return [];
+    }
+
+    const matches = [];
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+        if (match[0].length === 0) {
+            regex.lastIndex += 1;
+        }
+        matches.push({
+            start: match.index,
+            end: match.index + match[0].length,
+            text: match[0],
+            groups: match.slice(1),
+        });
+    }
+    return matches;
+}
 
 function clearSearchHighlights() {
     if (!currentSearchHighlights || currentSearchHighlights.length === 0) return;
@@ -30,16 +77,24 @@ function escapeRegExpForSearch(s) {
     return s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
 }
 
-function highlightSearchMatches(query, caseSensitive) {
+function highlightSearchMatches(query, options = {}) {
     clearSearchHighlights();
     if (!query) return 0;
 
-    const flags = caseSensitive ? 'g' : 'gi';
-    const re = new RegExp(escapeRegExpForSearch(query), flags);
+    let re;
+    try {
+        re = new RegExp(getSearchPattern(query, options), (options.isCaseSensitive ? '' : 'i') + 'g');
+    } catch (error) {
+        return 0;
+    }
+
+    const selectedRange = options.isInSelection ? window.getSelection() : null;
+    const selectedText = selectedRange && selectedRange.rangeCount ? selectedRange.toString() : '';
 
     const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
         acceptNode(node) {
             if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+            if (options.isInSelection && !selectedText.includes(node.nodeValue)) return NodeFilter.FILTER_REJECT;
             if (node.parentNode && node.parentNode.classList && node.parentNode.classList.contains('search-highlight')) {
                 return NodeFilter.FILTER_REJECT;
             }
@@ -81,6 +136,11 @@ function highlightSearchMatches(query, caseSensitive) {
     });
 
     currentSearchIndex = currentSearchHighlights.length > 0 ? 0 : -1;
+    searchState.matches = currentSearchHighlights.map(span => ({
+        text: span.textContent,
+        element: span,
+    }));
+    searchState.currentMatchIndex = currentSearchIndex;
     if (currentSearchHighlights.length > 0) {
         currentSearchHighlights[0].classList.add('active-search-highlight');
     }
@@ -538,14 +598,22 @@ function getFindDialog() {
             '<input type="text" id="findInput" class="find-dialog-input" placeholder="検索する文字列" autocomplete="off" spellcheck="false">' +
             '<span id="findDialogCount" class="find-dialog-count"></span>' +
           '</div>' +
+                    '<div class="find-dialog-row find-replace-row" id="findReplaceRow">' +
+                        '<input type="text" id="replaceInput" class="find-dialog-input" list="replaceHistoryList" placeholder="置換後の文字列" autocomplete="off" spellcheck="false">' +
+                        '<datalist id="replaceHistoryList"></datalist>' +
+                    '</div>' +
           '<div class="find-dialog-row find-dialog-options">' +
-            '<label class="find-dialog-checkbox-label">' +
-              '<input type="checkbox" id="findCaseSensitive"> 大/小文字を区別' +
-            '</label>' +
+                        '<label class="find-option-btn" title="大文字と小文字を区別"><input type="checkbox" id="findCaseSensitive"> Aa</label>' +
+                        '<button type="button" class="find-option-btn" id="findWholeWord" title="単語単位">ab</button>' +
+                        '<button type="button" class="find-option-btn" id="findRegex" title="正規表現">.*</button>' +
+                        '<button type="button" class="find-option-btn" id="findInSelection" title="選択範囲内">選択</button>' +
           '</div>' +
         '</div>' +
         '<div class="find-dialog-footer">' +
+                    '<button id="findPreviousBtn" class="modal-btn">前へ</button>' +
           '<button id="findNextBtn" class="modal-btn modal-btn-ok">次へ</button>' +
+                    '<button id="replaceOneBtn" class="modal-btn">置換</button>' +
+                    '<button id="replaceAllBtn" class="modal-btn">すべて置換</button>' +
           '<button id="findCloseBtn" class="modal-btn modal-btn-cancel">閉じる</button>' +
         '</div>';
 
@@ -574,6 +642,18 @@ function getFindDialog() {
 
     document.getElementById('findCloseBtn').addEventListener('click', closeFindDialog);
     document.getElementById('findNextBtn').addEventListener('click', doFindNext);
+    document.getElementById('findPreviousBtn').addEventListener('click', () => moveToPreviousSearchHighlight());
+    document.getElementById('replaceOneBtn').addEventListener('click', replaceCurrentMatch);
+    document.getElementById('replaceAllBtn').addEventListener('click', replaceAllMatches);
+
+    ['findWholeWord', 'findRegex', 'findInSelection'].forEach(id => {
+        document.getElementById(id).addEventListener('click', e => {
+            e.currentTarget.classList.toggle('active');
+            clearSearchHighlights();
+            lastFindQuery = null;
+            updateFindCount();
+        });
+    });
 
     dialog.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -581,7 +661,13 @@ function getFindDialog() {
             closeFindDialog();
         } else if (e.key === 'Enter') {
             e.preventDefault();
-            doFindNext();
+            if (e.altKey && document.getElementById('replaceInput')?.value !== undefined) {
+                replaceAllMatches();
+            } else if (e.shiftKey) {
+                moveToPreviousSearchHighlight();
+            } else {
+                doFindNext();
+            }
         }
     });
 
@@ -590,6 +676,15 @@ function getFindDialog() {
         lastFindQuery = null;
         lastFindCaseSensitive = null;
         updateFindCount();
+    });
+
+    document.getElementById('replaceInput').addEventListener('input', e => {
+        searchState.replaceTerm = e.target.value;
+    });
+
+    document.getElementById('findReplaceRow').style.display = 'none';
+    ['replaceOneBtn', 'replaceAllBtn'].forEach(id => {
+        document.getElementById(id).style.display = 'none';
     });
 
     return dialog;
@@ -617,13 +712,16 @@ function doFindNext() {
         return;
     }
 
-    const cs = csCheckbox ? csCheckbox.checked : false;
-    const isSameSearch = query === lastFindQuery && cs === lastFindCaseSensitive;
+    const options = getCurrentSearchOptions();
+    const cs = options.isCaseSensitive;
+    const isSameSearch = query === lastFindQuery && JSON.stringify(options) === JSON.stringify(searchState.lastOptions);
 
     if (!isSameSearch) {
         lastFindQuery = query;
         lastFindCaseSensitive = cs;
-        const count = highlightSearchMatches(query, cs);
+        searchState.searchTerm = query;
+        searchState.lastOptions = options;
+        const count = highlightSearchMatches(query, options);
         if (count === 0) {
             showWarn('一致する文字列は見つかりませんでした');
             input.focus();
@@ -637,6 +735,93 @@ function doFindNext() {
 
     updateFindCount();
     input.focus();
+}
+
+function getCurrentSearchOptions() {
+    const active = id => {
+        const element = document.getElementById(id);
+        return !!(element?.classList.contains('active') || element?.checked);
+    };
+    return {
+        isCaseSensitive: active('findCaseSensitive'),
+        isWholeWord: active('findWholeWord'),
+        isRegex: active('findRegex'),
+        isInSelection: active('findInSelection'),
+    };
+}
+
+function moveToPreviousSearchHighlight() {
+    if (!currentSearchHighlights.length) return;
+    moveToSearchHighlight(currentSearchIndex - 1);
+    updateFindCount();
+}
+
+function rememberReplaceHistory(value) {
+    if (!value || replaceHistory[0] === value) return;
+    replaceHistory.unshift(value);
+    if (replaceHistory.length > 20) replaceHistory.pop();
+    const list = document.getElementById('replaceHistoryList');
+    if (list) {
+        list.innerHTML = replaceHistory.map(item => '<option value="' + escapeHtml(item) + '"></option>').join('');
+    }
+}
+
+function getReplacementValue(matchText, replacement, options) {
+    if (!options.isRegex) return replacement;
+    try {
+        return matchText.replace(new RegExp(getSearchPattern(searchState.searchTerm, options), options.isCaseSensitive ? '' : 'i'), replacement);
+    } catch (error) {
+        return replacement;
+    }
+}
+
+function refreshSearchAfterReplace() {
+    const input = document.getElementById('findInput');
+    if (!input || !input.value) return;
+    const options = getCurrentSearchOptions();
+    searchState.lastOptions = options;
+    highlightSearchMatches(input.value, options);
+    updateFindCount();
+}
+
+function replaceCurrentMatch() {
+    if (!currentSearchHighlights.length) doFindNext();
+    const replacementInput = document.getElementById('replaceInput');
+    const current = currentSearchHighlights[currentSearchIndex];
+    if (!replacementInput || !current) return;
+    const options = getCurrentSearchOptions();
+    const replacement = getReplacementValue(current.textContent, replacementInput.value, options);
+    rememberReplaceHistory(replacementInput.value);
+    current.replaceWith(document.createTextNode(replacement));
+    markModified();
+    saveEditorState();
+    refreshSearchAfterReplace();
+}
+
+function replaceAllMatches() {
+    const input = document.getElementById('findInput');
+    const replacementInput = document.getElementById('replaceInput');
+    if (!input || !replacementInput || !input.value) return;
+    const options = getCurrentSearchOptions();
+    searchState.searchTerm = input.value;
+    searchState.replaceTerm = replacementInput.value;
+    searchState.lastOptions = options;
+    if (!currentSearchHighlights.length) {
+        highlightSearchMatches(input.value, options);
+    }
+    let replacedCount = 0;
+    const replacement = replacementInput.value;
+    currentSearchHighlights.forEach(span => {
+        if (!span.parentNode) return;
+        span.replaceWith(document.createTextNode(getReplacementValue(span.textContent, replacement, options)));
+        replacedCount += 1;
+    });
+    if (replacedCount === 0) return;
+    rememberReplaceHistory(replacement);
+    markModified();
+    saveEditorState();
+    refreshSearchAfterReplace();
+    showWarn(`${replacedCount}件を置換しました`);
 }
 
 function showFindDialog() {
@@ -673,58 +858,15 @@ function showFindDialog() {
 }
 
 function showReplaceDialog() {
-    const sel = window.getSelection();
-    const selectedText = sel ? sel.toString() : '';
-
-    const fields = [
-        { key: 'query', label: '検索', value: selectedText || '', placeholder: '検索する文字列' },
-        { key: 'replace', label: '置換', value: '', placeholder: '置換後の文字列（空の場合は削除）' },
-        { key: 'caseSensitive', label: '大/小文字を区別', type: 'checkbox', value: false },
-        { key: 'replaceAll', label: 'すべて置換', type: 'checkbox', value: true },
-    ];
-
-    showModal('置換', fields, (values) => {
-        const query = (values.query || '').trim();
-        if (!query) {
-            showWarn('検索語を入力してください');
-            return;
-        }
-
-        const replacement = values.replace || '';
-        const caseSensitive = Boolean(values.caseSensitive);
-        const global = Boolean(values.replaceAll);
-
-        const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
-        const flags = caseSensitive ? (global ? 'g' : '') : (global ? 'gi' : 'i');
-        const re = new RegExp(escapeRegExp(query), flags);
-
-        const md = (typeof getMarkdown === 'function') ? getMarkdown() : '';
-        if (md === null || md === undefined) {
-            showError('Markdown を取得できませんでした');
-            return;
-        }
-
-        const matches = md.match(re);
-        if (!matches || matches.length === 0) {
-            showWarn('一致する文字列は見つかりませんでした');
-            return;
-        }
-
-        const replaced = md.replace(re, replacement);
-
-        if (typeof setMarkdown === 'function') {
-            setMarkdown(replaced);
-        } else {
-            // フォールバック: エディタのテキスト内容を直接置換
-            if (editor) editor.textContent = replaced;
-        }
-
-        // 保存状態を更新
-        if (typeof markModified === 'function') markModified();
-        if (typeof saveEditorState === 'function') saveEditorState();
-
-        showWarn(`${matches.length} 件を置換しました`);
-    });
+    showFindDialog();
+    const dialog = getFindDialog();
+    dialog.querySelector('#findReplaceRow').style.display = 'flex';
+    dialog.querySelector('#replaceOneBtn').style.display = 'inline-block';
+    dialog.querySelector('#replaceAllBtn').style.display = 'inline-block';
+    dialog.querySelector('#findDialogTitle').textContent = '置換';
+    const selectedText = window.getSelection()?.toString() || '';
+    const input = dialog.querySelector('#findInput');
+    if (input && selectedText && !input.value) input.value = selectedText;
 }
 
 // 後方互換のためのシム（既存呼び出し用）

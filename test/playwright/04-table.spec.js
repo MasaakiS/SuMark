@@ -46,6 +46,40 @@ test.describe('テーブル操作テスト', () => {
             expect(text).toContain('Test');
         });
 
+        test('Tabで移動したセルを編集できる', async ({ app }) => {
+            const firstCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
+            const secondCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(1);
+
+            await firstCell.click();
+            await app.page.keyboard.press('Tab');
+            await app.page.keyboard.type('Tab編集');
+
+            await expect(secondCell).toContainText('Tab編集');
+        });
+
+        test('Tabでセル移動後に旧列選択の青色ハイライトが残らない', async ({ app }) => {
+            const firstCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
+
+            await firstCell.click();
+            await app.page.keyboard.press('Tab');
+
+            const staleColumnSelectionCount = await app.page.locator(
+                '#editor .col-anchor, #editor .col-selected'
+            ).count();
+            expect(staleColumnSelectionCount).toBe(0);
+        });
+
+        test('矢印キーで移動したセルを編集できる', async ({ app }) => {
+            const upperCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(1);
+            const lowerCell = app.page.locator('#editor table tbody tr').nth(1).locator('td').nth(1);
+
+            await lowerCell.click();
+            await app.page.keyboard.press('ArrowUp');
+            await app.page.keyboard.type('上セル編集');
+
+            await expect(upperCell).toContainText('上セル編集');
+        });
+
         test('テーブルセル内でEnterしても表構造が崩れない', async ({ app }) => {
             const firstCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
             await firstCell.click();
@@ -71,6 +105,134 @@ test.describe('テーブル操作テスト', () => {
             expect(headerCount).toBe(3);
             const bodyRowCount = await app.page.locator('#editor table tbody tr').count();
             expect(bodyRowCount).toBe(2);
+        });
+
+        test('左端セルを空にして再入力後Enterしても表構造が崩れない', async ({ app }) => {
+            const firstCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
+
+            await firstCell.click();
+            await app.page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+            await app.page.keyboard.press('Backspace');
+            await app.page.keyboard.type('再入力');
+            await app.page.keyboard.press('Enter');
+            await app.helpers.wait(200);
+
+            await expect(app.page.locator('#editor table')).toHaveCount(1);
+            await expect(app.page.locator('#editor table tbody tr')).toHaveCount(2);
+            await expect(app.page.locator('#editor table tbody tr').nth(0).locator('td')).toHaveCount(3);
+            await expect(app.page.locator('#editor table tbody tr').nth(1).locator('td')).toHaveCount(3);
+            await expect(firstCell).toContainText('再入力');
+        });
+
+        test('左端セルをBackspaceで空にして「あ」入力後Enterしても表構造が崩れない', async ({ app }) => {
+            const firstCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
+
+            await firstCell.click();
+            await app.page.keyboard.press('End');
+            await app.page.keyboard.press('Backspace');
+            await app.page.keyboard.press('Backspace');
+            await app.page.keyboard.press('Backspace');
+            await app.page.keyboard.type('あ');
+            await app.page.keyboard.press('Enter');
+            await app.helpers.wait(200);
+
+            await expect(app.page.locator('#editor table')).toHaveCount(1);
+            await expect(app.page.locator('#editor table tbody tr')).toHaveCount(2);
+            await expect(app.page.locator('#editor table tbody tr').nth(0).locator('td')).toHaveCount(3);
+            await expect(app.page.locator('#editor table tbody tr').nth(1).locator('td')).toHaveCount(3);
+            await expect(firstCell).toContainText('あ');
+        });
+
+        test('左端セルの左側をクリックしても編集後Enterで表構造が崩れない', async ({ app }) => {
+            const firstCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
+            const box = await firstCell.boundingBox();
+            expect(box).not.toBeNull();
+
+            await firstCell.click({ position: { x: 4, y: box.height / 2 } });
+            await app.page.keyboard.press('End');
+            await app.page.keyboard.press('Backspace');
+            await app.page.keyboard.press('Backspace');
+            await app.page.keyboard.press('Backspace');
+            await app.page.keyboard.type('あ');
+            await app.page.keyboard.press('Enter');
+            await app.helpers.wait(200);
+
+            await expect(app.page.locator('#editor table')).toHaveCount(1);
+            await expect(app.page.locator('#editor table tbody tr')).toHaveCount(2);
+            await expect(app.page.locator('#editor table tbody tr').nth(0).locator('td')).toHaveCount(3);
+            await expect(app.page.locator('#editor table tbody tr').nth(1).locator('td')).toHaveCount(3);
+        });
+
+        test('IME変換中のEnterでも表セルに既定のセル追加動作を適用しない', async ({ app }) => {
+            const state = await app.page.evaluate(() => {
+                const cell = document.querySelector('#editor table tbody tr td');
+                const editorEl = document.getElementById('editor');
+                if (!cell || !editorEl) return null;
+
+                cell.textContent = 'あ';
+                const range = document.createRange();
+                range.selectNodeContents(cell);
+                range.collapse(false);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+
+                cell.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+                const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true });
+                cell.dispatchEvent(enter);
+                cell.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+
+                return {
+                    prevented: enter.defaultPrevented,
+                    tableCount: editorEl.querySelectorAll('table').length,
+                    rowCount: editorEl.querySelectorAll('table tbody tr').length,
+                    cellCount: editorEl.querySelectorAll('table tbody tr:first-child td').length,
+                };
+            });
+
+            expect(state).not.toBeNull();
+            expect(state.prevented).toBe(true);
+            expect(state.tableCount).toBe(1);
+            expect(state.rowCount).toBe(2);
+            expect(state.cellCount).toBe(3);
+        });
+
+        test('表境界をまたぐRangeでEnterしても表構造を維持する', async ({ app }) => {
+            const state = await app.page.evaluate(() => {
+                const editorEl = document.getElementById('editor');
+                const table = editorEl?.querySelector('table');
+                const cell = table?.querySelector('tbody tr td');
+                if (!editorEl || !table || !cell) return null;
+
+                const outside = document.createElement('p');
+                outside.textContent = '外側';
+                editorEl.appendChild(outside);
+
+                const range = document.createRange();
+                range.selectNodeContents(cell);
+                range.setEndAfter(outside);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+
+                const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+                cell.dispatchEvent(enter);
+
+                return {
+                    prevented: enter.defaultPrevented,
+                    tableCount: editorEl.querySelectorAll('table').length,
+                    rowCount: table.querySelectorAll('tbody tr').length,
+                    firstRowCellCount: table.querySelectorAll('tbody tr:first-child td').length,
+                    outsideText: outside.textContent,
+                };
+            });
+
+            expect(state).not.toBeNull();
+            expect(state.prevented).toBe(true);
+            expect(state.tableCount).toBe(1);
+            expect(state.rowCount).toBe(2);
+            expect(state.firstRowCellCount).toBe(3);
+            expect(state.outsideText).toBe('外側');
         });
 
         test('セル選択状態（col-anchor）でEnterしても表構造が崩れない', async ({ app }) => {
@@ -161,6 +323,177 @@ test.describe('テーブル操作テスト', () => {
 
             const menu = app.page.locator('#tableContextMenu');
             await expect(menu).toBeVisible();
+        });
+
+        test('マウスドラッグの矩形選択でコピー時にTSVが生成される', async ({ app }) => {
+            await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                const r1 = rows[0];
+                const r2 = rows[1];
+                if (!r1 || !r2) return;
+                r1.children[0].textContent = 'A';
+                r1.children[1].textContent = 'B';
+                r2.children[0].textContent = 'C';
+                r2.children[1].textContent = 'D';
+            });
+
+            await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                const start = rows[0]?.children[0];
+                const end = rows[1]?.children[1];
+                if (!start || !end) return;
+
+                start.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+                end.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true }));
+                document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            });
+
+            const copied = await app.page.evaluate(() => {
+                const store = {};
+                const clipboardData = {
+                    setData: (type, value) => { store[type] = value; },
+                    getData: (type) => store[type] || '',
+                };
+                const ev = new Event('copy', { bubbles: true, cancelable: true });
+                Object.defineProperty(ev, 'clipboardData', { value: clipboardData });
+                const editorEl = document.getElementById('editor');
+                editorEl.dispatchEvent(ev);
+                return {
+                    prevented: ev.defaultPrevented,
+                    text: store['text/plain'] || '',
+                };
+            });
+
+            expect(copied.prevented).toBe(true);
+            expect(copied.text).toBe('A\tB\nC\tD');
+        });
+        test('実マウスのドラッグ後も矩形選択が保持されcopyできる', async ({ app }) => {
+            await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                const r1 = rows[0];
+                const r2 = rows[1];
+                if (!r1 || !r2) return;
+                r1.children[0].textContent = 'AA';
+                r1.children[1].textContent = 'BB';
+                r2.children[0].textContent = 'CC';
+                r2.children[1].textContent = 'DD';
+            });
+
+            const startCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
+            const endCell = app.page.locator('#editor table tbody tr').nth(1).locator('td').nth(1);
+            const startBox = await startCell.boundingBox();
+            const endBox = await endCell.boundingBox();
+            expect(startBox).not.toBeNull();
+            expect(endBox).not.toBeNull();
+
+            await app.page.mouse.move(startBox.x + startBox.width / 2, startBox.y + startBox.height / 2);
+            await app.page.mouse.down();
+            await app.page.mouse.move(endBox.x + endBox.width / 2, endBox.y + endBox.height / 2, { steps: 8 });
+            await app.page.mouse.up();
+
+            const selectedCount = await app.page.evaluate(() => {
+                const anchors = document.querySelectorAll('#editor .rect-anchor').length;
+                const selected = document.querySelectorAll('#editor .rect-selected').length;
+                return anchors + selected;
+            });
+            expect(selectedCount).toBeGreaterThan(1);
+
+            const nativeSelectionRangeCount = await app.page.evaluate(() => window.getSelection()?.rangeCount || 0);
+            expect(nativeSelectionRangeCount).toBe(0);
+
+            const copied = await app.page.evaluate(() => {
+                const store = {};
+                const clipboardData = {
+                    setData: (type, value) => { store[type] = value; },
+                    getData: (type) => store[type] || '',
+                };
+                const ev = new Event('copy', { bubbles: true, cancelable: true });
+                Object.defineProperty(ev, 'clipboardData', { value: clipboardData });
+                const editorEl = document.getElementById('editor');
+                editorEl.dispatchEvent(ev);
+                return { prevented: ev.defaultPrevented, text: store['text/plain'] || '' };
+            });
+
+            expect(copied.prevented).toBe(true);
+            expect(copied.text).toBe('AA\tBB\nCC\tDD');
+        });
+
+        test('矩形選択中の貼り付けはセル範囲へ適用され、既存テーブル構造を維持する', async ({ app }) => {
+            await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                const start = rows[0]?.children[0];
+                const end = rows[1]?.children[1];
+                if (!start || !end) return;
+
+                start.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+                end.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true }));
+                document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            });
+
+            const pasted = await app.page.evaluate(() => {
+                const clipboardData = {
+                    getData: (type) => {
+                        if (type === 'text/plain') return '11\t22\n33\t44';
+                        return '';
+                    },
+                };
+                const ev = new Event('paste', { bubbles: true, cancelable: true });
+                Object.defineProperty(ev, 'clipboardData', { value: clipboardData });
+                const editorEl = document.getElementById('editor');
+                editorEl.dispatchEvent(ev);
+                return ev.defaultPrevented;
+            });
+
+            expect(pasted).toBe(true);
+
+            const values = await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                return [
+                    rows[0]?.children[0]?.innerText?.trim() || '',
+                    rows[0]?.children[1]?.innerText?.trim() || '',
+                    rows[1]?.children[0]?.innerText?.trim() || '',
+                    rows[1]?.children[1]?.innerText?.trim() || '',
+                ];
+            });
+
+            expect(values).toEqual(['11', '22', '33', '44']);
+            await expect(app.page.locator('#editor table')).toHaveCount(1);
+        });
+
+        test('矩形選択後もShift+クリックの列選択は従来どおり動作する', async ({ app }) => {
+            await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                const start = rows[0]?.children[0];
+                const end = rows[1]?.children[1];
+                if (!start || !end) return;
+
+                start.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+                end.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true }));
+                document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            });
+
+            const cell11 = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
+            const cell21 = app.page.locator('#editor table tbody tr').nth(1).locator('td').nth(0);
+
+            await cell11.click();
+            await app.page.keyboard.down('Shift');
+            await cell21.click();
+            await app.page.keyboard.up('Shift');
+
+            const state = await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                const a = rows[0]?.children[0];
+                const b = rows[1]?.children[0];
+                return {
+                    anchor: !!a?.classList.contains('col-anchor'),
+                    selected: !!b?.classList.contains('col-selected'),
+                    rectLeft: document.querySelectorAll('#editor .rect-selected, #editor .rect-anchor').length,
+                };
+            });
+
+            expect(state.anchor).toBe(true);
+            expect(state.selected).toBe(true);
+            expect(state.rectLeft).toBe(0);
         });
 
         test('右クリックメニューで列を右揃えでき、Markdownに保持される', async ({ app }) => {

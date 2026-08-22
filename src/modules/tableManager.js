@@ -11,11 +11,31 @@
 // ========== テーブルコンテキストメニュー状態 ==========
 let tableContextMenu = null;
 let activeTableCell = null;
+let lastActiveTableCell = null;
 let rowDragObserver = null;
 
 // ========== 列選択状態 ==========
 let colAnchorCell = null;    // 最初にクリックしたセル（アンカー）
 let colSelectedCells = [];   // 選択中のセル配列（アンカー含む）
+
+// ========== 矩形選択状態（コピー/ペースト専用） ==========
+const rectSelection = {
+    active: false,
+    dragging: false,
+    moved: false,
+    suppressNextClickClear: false,
+    mode: 'edit',
+    startX: 0,
+    startY: 0,
+    table: null,
+    anchorCell: null,
+    focusCell: null,
+    startRow: -1,
+    startCol: -1,
+    endRow: -1,
+    endCol: -1,
+    cells: [],
+};
 
 // ========== 行ドラッグ状態 ==========
 const ROW_DRAG_HANDLE_WIDTH_MOUSE = 34;
@@ -180,6 +200,404 @@ function clearColSelection() {
     if (colAnchorCell) colAnchorCell.classList.remove('col-anchor');
     colSelectedCells = [];
     colAnchorCell = null;
+}
+
+function normalizeClipboardText(text) {
+    return String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function getTableRows(table) {
+    return table ? Array.from(table.querySelectorAll('tr')) : [];
+}
+
+function getCellPositionInTable(table, cell) {
+    if (!table || !cell) return null;
+    const rowEl = cell.closest('tr');
+    if (!rowEl) return null;
+    const rows = getTableRows(table);
+    const row = rows.indexOf(rowEl);
+    const col = Array.from(rowEl.children).indexOf(cell);
+    if (row < 0 || col < 0) return null;
+    return { row, col };
+}
+
+function clearRectCellClasses() {
+    rectSelection.cells.forEach(cell => {
+        cell.classList.remove('rect-selected');
+        cell.classList.remove('rect-anchor');
+    });
+    if (rectSelection.anchorCell) rectSelection.anchorCell.classList.remove('rect-anchor');
+}
+
+function clearRectSelection() {
+    clearRectCellClasses();
+    document.body.classList.remove('table-rect-selecting');
+    rectSelection.active = false;
+    rectSelection.dragging = false;
+    rectSelection.moved = false;
+    rectSelection.suppressNextClickClear = false;
+    rectSelection.mode = 'edit';
+    rectSelection.startX = 0;
+    rectSelection.startY = 0;
+    rectSelection.table = null;
+    rectSelection.anchorCell = null;
+    rectSelection.focusCell = null;
+    rectSelection.startRow = -1;
+    rectSelection.startCol = -1;
+    rectSelection.endRow = -1;
+    rectSelection.endCol = -1;
+    rectSelection.cells = [];
+}
+
+function collectRectCells(table, startRow, endRow, startCol, endCol) {
+    const rows = getTableRows(table);
+    const minRow = Math.min(startRow, endRow);
+    const maxRow = Math.max(startRow, endRow);
+    const minCol = Math.min(startCol, endCol);
+    const maxCol = Math.max(startCol, endCol);
+    const cells = [];
+
+    for (let r = minRow; r <= maxRow; r++) {
+        const row = rows[r];
+        if (!row) continue;
+        for (let c = minCol; c <= maxCol; c++) {
+            const cell = row.children[c];
+            if (cell) cells.push(cell);
+        }
+    }
+    return cells;
+}
+
+function updateRectSelection(table, anchorCell, focusCell) {
+    if (!table || !anchorCell || !focusCell) return;
+    const anchorPos = getCellPositionInTable(table, anchorCell);
+    const focusPos = getCellPositionInTable(table, focusCell);
+    if (!anchorPos || !focusPos) return;
+
+    clearRectCellClasses();
+
+    rectSelection.table = table;
+    rectSelection.anchorCell = anchorCell;
+    rectSelection.focusCell = focusCell;
+    rectSelection.startRow = anchorPos.row;
+    rectSelection.startCol = anchorPos.col;
+    rectSelection.endRow = focusPos.row;
+    rectSelection.endCol = focusPos.col;
+    rectSelection.cells = collectRectCells(
+        table,
+        rectSelection.startRow,
+        rectSelection.endRow,
+        rectSelection.startCol,
+        rectSelection.endCol
+    );
+    rectSelection.active = rectSelection.cells.length > 0;
+    if (rectSelection.moved || anchorCell !== focusCell) {
+        rectSelection.mode = 'select';
+    }
+
+    rectSelection.cells.forEach(cell => {
+        if (cell === anchorCell) {
+            cell.classList.add('rect-anchor');
+        } else {
+            cell.classList.add('rect-selected');
+        }
+    });
+}
+
+function startRectSelection(cell, e) {
+    const table = cell.closest('table');
+    if (!table) return;
+
+    clearColSelection();
+    clearRectSelection();
+    // mousedown直後からブラウザの文字選択を止める（6px未満の間も含む）。
+    window.getSelection().removeAllRanges();
+    document.body.classList.add('table-rect-selecting');
+    rectSelection.dragging = true;
+    rectSelection.moved = false;
+    rectSelection.suppressNextClickClear = false;
+    rectSelection.startX = e.clientX;
+    rectSelection.startY = e.clientY;
+    updateRectSelection(table, cell, cell);
+}
+
+function getRectBounds() {
+    if (!rectSelection.active || !rectSelection.table) return null;
+    return {
+        minRow: Math.min(rectSelection.startRow, rectSelection.endRow),
+        maxRow: Math.max(rectSelection.startRow, rectSelection.endRow),
+        minCol: Math.min(rectSelection.startCol, rectSelection.endCol),
+        maxCol: Math.max(rectSelection.startCol, rectSelection.endCol),
+    };
+}
+
+function isRectTableSelectionActive() {
+    return !!(rectSelection.active && rectSelection.table && rectSelection.cells.length > 0);
+}
+
+function getLastActiveTableCell() {
+    return lastActiveTableCell && editor && editor.contains(lastActiveTableCell)
+        ? lastActiveTableCell
+        : null;
+}
+
+function enterTableSelectionMode() {
+    if (!isRectTableSelectionActive()) return false;
+    rectSelection.mode = 'select';
+    clearRectCellClasses();
+    rectSelection.cells.forEach(cell => {
+        cell.classList.add(cell === rectSelection.anchorCell ? 'rect-anchor' : 'rect-selected');
+    });
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    return true;
+}
+
+function getAdjacentTableCell(cell, key) {
+    const table = cell ? cell.closest('table') : null;
+    const position = getCellPositionInTable(table, cell);
+    if (!table || !position) return null;
+    const rows = getTableRows(table);
+    let row = position.row;
+    let col = position.col;
+
+    if (key === 'ArrowUp') row -= 1;
+    if (key === 'ArrowDown') row += 1;
+    if (key === 'ArrowLeft') col -= 1;
+    if (key === 'ArrowRight' || key === 'Tab') col += 1;
+    if (key === 'Shift+Tab') col -= 1;
+    if (key === 'Tab' && (!rows[row] || col >= rows[row].children.length)) {
+        row += 1;
+        col = 0;
+    }
+    if (key === 'Shift+Tab' && col < 0) {
+        row -= 1;
+        col = rows[row] ? rows[row].children.length - 1 : -1;
+    }
+    return rows[row] && rows[row].children[col] ? rows[row].children[col] : null;
+}
+
+function moveTableSelection(key, selectMode) {
+    if (!isRectTableSelectionActive() || !rectSelection.focusCell) return false;
+    if (selectMode && rectSelection.mode !== 'select') return false;
+    const target = getAdjacentTableCell(rectSelection.focusCell, key);
+    if (!target) return false;
+    clearRectCellClasses();
+    rectSelection.anchorCell = target;
+    rectSelection.focusCell = target;
+    rectSelection.startRow = getCellPositionInTable(rectSelection.table, target).row;
+    rectSelection.startCol = getCellPositionInTable(rectSelection.table, target).col;
+    rectSelection.endRow = rectSelection.startRow;
+    rectSelection.endCol = rectSelection.startCol;
+    rectSelection.cells = [target];
+    rectSelection.mode = selectMode ? 'select' : 'edit';
+    target.classList.add('rect-anchor');
+    if (!selectMode) {
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+    } else {
+        window.getSelection().removeAllRanges();
+    }
+    return true;
+}
+
+function moveCurrentTableCell(key) {
+    // 通常のセル移動では、互換用に残っている列選択表示を解除する。
+    clearColSelection();
+    let cell = rectSelection.active ? rectSelection.focusCell : null;
+    if (!cell) {
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount) return false;
+        const container = selection.getRangeAt(0).startContainer;
+        const element = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+        cell = element && element.closest ? element.closest('td, th') : null;
+    }
+    if (!cell) return false;
+
+    if (!rectSelection.active) {
+        const table = cell.closest('table');
+        updateRectSelection(table, cell, cell);
+    }
+    return moveTableSelection(key, false);
+}
+
+function getCellPlainText(cell) {
+    if (!cell) return '';
+    return normalizeClipboardText(cell.innerText || cell.textContent || '').replace(/\u00A0/g, ' ').trimEnd();
+}
+
+function getRectSelectionMatrix() {
+    if (!isRectTableSelectionActive()) return null;
+    const bounds = getRectBounds();
+    if (!bounds) return null;
+    const rows = getTableRows(rectSelection.table);
+    const matrix = [];
+
+    for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+        const row = rows[r];
+        if (!row) continue;
+        const line = [];
+        for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+            line.push(getCellPlainText(row.children[c]));
+        }
+        matrix.push(line);
+    }
+    return matrix;
+}
+
+function matrixToTsv(matrix) {
+    if (!matrix || matrix.length === 0) return '';
+    return matrix.map(line => line.join('\t')).join('\n');
+}
+
+function matrixToHtmlTable(matrix) {
+    if (!matrix || matrix.length === 0) return '';
+    const esc = (typeof escapeHtml === 'function')
+        ? escapeHtml
+        : (s) => String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+    let html = '<table><tbody>';
+    matrix.forEach(line => {
+        html += '<tr>';
+        line.forEach(value => {
+            html += '<td>' + esc(value).replace(/\n/g, '<br>') + '</td>';
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    return html;
+}
+
+function handleRectSelectionCopyCut(e) {
+    if (!isRectTableSelectionActive()) return;
+    const matrix = getRectSelectionMatrix();
+    if (!matrix || matrix.length === 0) return;
+
+    const tsv = matrixToTsv(matrix);
+    const html = matrixToHtmlTable(matrix);
+
+    e.preventDefault();
+    if (e.clipboardData) {
+        e.clipboardData.setData('text/plain', tsv);
+        e.clipboardData.setData('text/html', html);
+    }
+
+    if (e.type === 'cut') {
+        const bounds = getRectBounds();
+        const rows = getTableRows(rectSelection.table);
+        for (let r = bounds.minRow; r <= bounds.maxRow; r++) {
+            const row = rows[r];
+            if (!row) continue;
+            for (let c = bounds.minCol; c <= bounds.maxCol; c++) {
+                const cell = row.children[c];
+                if (!cell) continue;
+                cell.innerHTML = '&nbsp;';
+            }
+        }
+        markModified();
+        onEditorInput();
+    }
+}
+
+function parseTsvToMatrix(text) {
+    const normalized = normalizeClipboardText(text);
+    if (!normalized) return [];
+    const lines = normalized.split('\n');
+    if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+    return lines.map(line => line.split('\t'));
+}
+
+function parseHtmlTableToMatrix(html) {
+    if (!html || !/<table[\s>]/i.test(html)) return [];
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const table = doc.querySelector('table');
+    if (!table) return [];
+    const rows = Array.from(table.querySelectorAll('tr'));
+    return rows.map(row => Array.from(row.querySelectorAll('th,td')).map(cell => normalizeClipboardText(cell.innerText || cell.textContent || '')));
+}
+
+function setCellTextWithBreaks(cell, text) {
+    const normalized = normalizeClipboardText(text);
+    if (!normalized) {
+        cell.innerHTML = '&nbsp;';
+        return;
+    }
+    const parts = normalized.split('\n');
+    cell.innerHTML = '';
+    parts.forEach((part, idx) => {
+        if (idx > 0) cell.appendChild(document.createElement('br'));
+        cell.appendChild(document.createTextNode(part));
+    });
+}
+
+function applyMatrixToRectSelection(matrix) {
+    if (!isRectTableSelectionActive() || !matrix || matrix.length === 0) return false;
+    const bounds = getRectBounds();
+    const table = rectSelection.table;
+    const rows = getTableRows(table);
+    const startRow = bounds.minRow;
+    const startCol = bounds.minCol;
+
+    const requiredColumnCount = startCol + Math.max(...matrix.map(row => row.length));
+    const currentColumnCount = rows.reduce((count, row) => Math.max(count, row.children.length), 0);
+    if (requiredColumnCount > currentColumnCount) {
+        rows.forEach(row => {
+            const tag = row.parentNode && row.parentNode.tagName === 'THEAD' ? 'th' : 'td';
+            for (let col = row.children.length; col < requiredColumnCount; col++) {
+                const cell = document.createElement(tag);
+                cell.innerHTML = '&nbsp;';
+                row.appendChild(cell);
+            }
+        });
+    }
+
+    const updatedRows = getTableRows(table);
+    const tbody = table.querySelector('tbody') || table.appendChild(document.createElement('tbody'));
+    while (updatedRows.length < startRow + matrix.length) {
+        tbody.appendChild(createTableRow(table, Math.max(requiredColumnCount, currentColumnCount), 'td'));
+        updatedRows.push(tbody.lastElementChild);
+    }
+
+    let changed = false;
+    for (let r = 0; r < matrix.length; r++) {
+        const row = updatedRows[startRow + r];
+        if (!row) continue;
+        for (let c = 0; c < matrix[r].length; c++) {
+            const cell = row.children[startCol + c];
+            if (!cell) continue;
+            setCellTextWithBreaks(cell, matrix[r][c]);
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        markModified();
+        onEditorInput();
+    }
+    return changed;
+}
+
+function handleRectSelectionPaste(e) {
+    if (!isRectTableSelectionActive()) return false;
+    if (!e || !e.clipboardData) return false;
+
+    let matrix = parseHtmlTableToMatrix(e.clipboardData.getData('text/html'));
+    if (!matrix || matrix.length === 0) {
+        matrix = parseTsvToMatrix(e.clipboardData.getData('text/plain'));
+    }
+    if (!matrix || matrix.length === 0) return false;
+
+    e.preventDefault();
+    return applyMatrixToRectSelection(matrix);
 }
 
 /**
@@ -532,6 +950,11 @@ function setupTableContextMenu() {
         if (e.button !== 0) return;
         const cell = e.target.closest('td, th');
         if (!cell || !editor.contains(cell)) return;
+        lastActiveTableCell = cell;
+
+        if (isRectTableSelectionActive()) {
+            clearRectSelection();
+        }
 
         if (maybeStartRowDrag(cell, e, false)) {
             return;
@@ -565,12 +988,57 @@ function setupTableContextMenu() {
                 }
             }
         } else if (!e.shiftKey) {
-            // 通常クリック: 選択解除してこのセルをアンカーに設定
+            // 通常クリック: 編集カーソルを優先し、ドラッグ時だけ矩形選択へ切り替える
             clearColSelection();
+            startRectSelection(cell, e);
             colAnchorCell = cell;
             cell.classList.add('col-anchor');
         }
     });
+
+    editor.addEventListener('focusin', e => {
+        const cell = e.target.closest ? e.target.closest('td, th') : null;
+        if (cell && editor.contains(cell)) lastActiveTableCell = cell;
+    });
+
+    editor.addEventListener('mousemove', e => {
+        if (!rectSelection.dragging || !rectSelection.table || !rectSelection.anchorCell) return;
+        const cell = e.target.closest('td, th');
+        if (!cell || !editor.contains(cell)) return;
+        if (cell.closest('table') !== rectSelection.table) return;
+        const movedDistance = Math.max(
+            Math.abs(e.clientX - rectSelection.startX),
+            Math.abs(e.clientY - rectSelection.startY)
+        );
+        const movedToAnotherCell = rectSelection.focusCell && rectSelection.focusCell !== cell;
+        if (!rectSelection.moved && movedDistance < 6 && !movedToAnotherCell) return;
+        if (!rectSelection.moved) {
+            if (e.cancelable) e.preventDefault();
+            window.getSelection().removeAllRanges();
+            document.body.classList.add('table-rect-selecting');
+        }
+        rectSelection.moved = true;
+        if (rectSelection.focusCell && rectSelection.focusCell !== cell) {
+            rectSelection.moved = true;
+        }
+        updateRectSelection(rectSelection.table, rectSelection.anchorCell, cell);
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (rectSelection.dragging && rectSelection.active && rectSelection.moved) {
+            rectSelection.suppressNextClickClear = true;
+            window.getSelection().removeAllRanges();
+        } else if (rectSelection.dragging) {
+            clearRectCellClasses();
+            document.body.classList.remove('table-rect-selecting');
+            rectSelection.mode = 'edit';
+        }
+        rectSelection.dragging = false;
+        document.body.classList.remove('table-rect-selecting');
+    });
+
+    editor.addEventListener('copy', handleRectSelectionCopyCut);
+    editor.addEventListener('cut', handleRectSelectionCopyCut);
 
     // タッチ環境向けの行ドラッグ開始
     editor.addEventListener('touchstart', e => {
@@ -583,17 +1051,27 @@ function setupTableContextMenu() {
 
     // それ以外のクリック/キー操作で非表示
     document.addEventListener('click', e => {
+        if (rectSelection.suppressNextClickClear) {
+            rectSelection.suppressNextClickClear = false;
+            return;
+        }
         if (tableContextMenu && !tableContextMenu.contains(e.target)) {
             hideTableContextMenu();
         }
         // テーブルセル以外のクリックで列選択を解除
         if (!e.target.closest('td, th')) {
             clearColSelection();
+            clearRectSelection();
         }
     });
     document.addEventListener('keydown', e => {
         hideTableContextMenu();
-        if (e.key === 'Escape') clearColSelection();
+        if (e.key === 'Escape') {
+            clearColSelection();
+            if (!isRectTableSelectionActive()) {
+                clearRectSelection();
+            }
+        }
     });
 
     refreshTableRowDragSupport();
@@ -854,3 +1332,7 @@ function parseCsv(text) {
 
     return rows;
 }
+
+// ========== グローバル公開（矩形選択フロー連携） ==========
+window.isRectTableSelectionActive = isRectTableSelectionActive;
+window.handleRectSelectionPaste = handleRectSelectionPaste;

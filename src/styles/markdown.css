@@ -378,6 +378,31 @@
     background-color: #dbeafe !important;
 }
 
+/* 矩形選択ハイライト（コピー/ペースト専用） */
+.markdown-body table td.rect-anchor,
+.markdown-body table th.rect-anchor {
+    background-color: #fde68a !important;
+    outline: 2px solid #f59e0b;
+    outline-offset: -2px;
+}
+
+.markdown-body table td.rect-selected,
+.markdown-body table th.rect-selected {
+    background-color: #fef3c7 !important;
+}
+
+/* 矩形選択中はブラウザ標準の文字選択を表示しない */
+body.table-rect-selecting,
+body.table-rect-selecting * {
+    user-select: none !important;
+    -webkit-user-select: none !important;
+}
+
+body.table-rect-selecting ::selection {
+    background: transparent;
+    color: inherit;
+}
+
 .markdown-body img {
     max-width: 100%;
     height: auto;

@@ -417,8 +417,8 @@ function setupEventListeners() {
 
     // エディタ関連イベント
     editor.addEventListener('input', onEditorInput);
-    editor.addEventListener('beforeinput', handleBeforeInput);
-    editor.addEventListener('keydown', handleKeyDown);
+    editor.addEventListener('beforeinput', handleBeforeInput, true);
+    editor.addEventListener('keydown', handleKeyDown, true);
     editor.addEventListener('paste', handlePaste);
     editor.addEventListener('compositionstart', () => { 
         console.log('[DEBUG] IME composition started');
@@ -1163,7 +1163,12 @@ function hideProgressIndicator() {
 
 // ========== ペースト処理 ==========
 async function handlePaste(e) {
-    // 0. コードブロック内では常にプレーンテキストとして貼り付け
+    // 0. 矩形選択中の貼り付けは tableManager 側の専用処理へ委譲
+    if (typeof handleRectSelectionPaste === 'function' && handleRectSelectionPaste(e)) {
+        return;
+    }
+
+    // 1. コードブロック内では常にプレーンテキストとして貼り付け
     const sel = window.getSelection();
     const activeRange = sel.rangeCount ? sel.getRangeAt(0) : null;
     const activeContainer = activeRange
@@ -1240,7 +1245,7 @@ async function handlePaste(e) {
         }
     }
 
-    // 1. クリップボード内の画像を確認
+    // 2. クリップボード内の画像を確認
     const items = e.clipboardData && e.clipboardData.items;
     if (items) {
         for (let i = 0; i < items.length; i++) {
@@ -1255,7 +1260,7 @@ async function handlePaste(e) {
         }
     }
 
-    // 2. HTMLテーブル（Excelコピー）を確認
+    // 3. HTMLテーブル（Excelコピー）を確認
     const htmlData = e.clipboardData.getData('text/html');
     // Option+V (Windows/Linux: Ctrl+Alt+V、macOS: Cmd+Option+V) の場合はテキスト貼り付けモード（案B）のため、表処理をスキップ
     if (htmlData && /<table[\s>]/i.test(htmlData) && !e.altKey) {
@@ -1274,11 +1279,11 @@ async function handlePaste(e) {
         }
     }
 
-    // 3. テキスト貼り付け
+    // 4. テキスト貼り付け
     e.preventDefault();
     const text = e.clipboardData.getData('text/plain');
 
-    // 4. タブ区切りテキスト（TSV）を確認して表へ変換
+    // 5. タブ区切りテキスト（TSV）を確認して表へ変換
     // Option+V (Windows/Linux: Ctrl+Alt+V、macOS: Cmd+Option+V) の場合はテキスト貼り付けモード（案B）のため、表処理をスキップ
     if (isTabDelimited(text) && !e.altKey) {
         const table = tsvToHtmlTable(text);
@@ -1293,7 +1298,7 @@ async function handlePaste(e) {
         return;
     }
 
-    // 5. Markdown判定
+    // 6. Markdown判定
     if (looksLikeMarkdown(text)) {
         // タスクリスト項目を正規化（GFMでは [x]/[ ] 後に空白が必要）
         let normalizedText = text.replace(/^(\s*[-*+]\s+\[[ xX]\])([^\s]|$)/gm, '$1 $2');
