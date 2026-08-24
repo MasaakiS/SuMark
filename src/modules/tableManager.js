@@ -477,18 +477,38 @@ function matrixToHtmlTable(matrix) {
     return html;
 }
 
+function getRectSelectionClipboardData() {
+    const matrix = getRectSelectionMatrix();
+    if (!matrix || matrix.length === 0) return null;
+    return {
+        matrix,
+        tsv: matrixToTsv(matrix),
+        html: matrixToHtmlTable(matrix),
+    };
+}
+
+function copyRectSelectionWithClipboardApi() {
+    const data = getRectSelectionClipboardData();
+    if (!data || !navigator.clipboard || !navigator.clipboard.writeText) return;
+
+    // Windows WebView2では、ネイティブ選択Rangeを持たない矩形選択でcopyイベントが
+    // editorへ届かないことがあるため、ユーザーのCtrl/Cmd+C操作中に直接書き込む。
+    navigator.clipboard.writeText(data.tsv).catch(() => {
+        // Clipboard APIが拒否された場合は、documentのcopyイベント経路へ委譲する。
+    });
+}
+
 function handleRectSelectionCopyCut(e) {
     if (!isRectTableSelectionActive()) return;
-    const matrix = getRectSelectionMatrix();
-    if (!matrix || matrix.length === 0) return;
-
-    const tsv = matrixToTsv(matrix);
-    const html = matrixToHtmlTable(matrix);
+    if (e.__sumarkRectClipboardHandled) return;
+    e.__sumarkRectClipboardHandled = true;
+    const data = getRectSelectionClipboardData();
+    if (!data) return;
 
     e.preventDefault();
     if (e.clipboardData) {
-        e.clipboardData.setData('text/plain', tsv);
-        e.clipboardData.setData('text/html', html);
+        e.clipboardData.setData('text/plain', data.tsv);
+        e.clipboardData.setData('text/html', data.html);
     }
 
     if (e.type === 'cut') {
@@ -1037,8 +1057,10 @@ function setupTableContextMenu() {
         document.body.classList.remove('table-rect-selecting');
     });
 
-    editor.addEventListener('copy', handleRectSelectionCopyCut);
-    editor.addEventListener('cut', handleRectSelectionCopyCut);
+    // 矩形選択ではネイティブSelection Rangeを解除しているため、Windows WebView2では
+    // copyイベントのtargetがeditor外になる場合がある。documentのcapture段階で捕捉する。
+    document.addEventListener('copy', handleRectSelectionCopyCut, true);
+    document.addEventListener('cut', handleRectSelectionCopyCut, true);
 
     // タッチ環境向けの行ドラッグ開始
     editor.addEventListener('touchstart', e => {

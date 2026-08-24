@@ -367,6 +367,39 @@ test.describe('テーブル操作テスト', () => {
             expect(copied.prevented).toBe(true);
             expect(copied.text).toBe('A\tB\nC\tD');
         });
+
+        test('copyイベントがeditor外へ届いても矩形選択をTSVでコピーできる', async ({ app }) => {
+            await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                const start = rows[0]?.children[0];
+                const end = rows[1]?.children[1];
+                if (!start || !end) return;
+                start.textContent = 'A';
+                rows[0].children[1].textContent = 'B';
+                rows[1].children[0].textContent = 'C';
+                end.textContent = 'D';
+
+                start.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+                end.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true }));
+                document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            });
+
+            const copied = await app.page.evaluate(() => {
+                const store = {};
+                const clipboardData = {
+                    setData: (type, value) => { store[type] = value; },
+                    getData: (type) => store[type] || '',
+                };
+                const ev = new Event('copy', { bubbles: true, cancelable: true });
+                Object.defineProperty(ev, 'clipboardData', { value: clipboardData });
+                document.body.dispatchEvent(ev);
+                return { prevented: ev.defaultPrevented, text: store['text/plain'] || '' };
+            });
+
+            expect(copied.prevented).toBe(true);
+            expect(copied.text).toBe('A\tB\nC\tD');
+        });
+
         test('実マウスのドラッグ後も矩形選択が保持されcopyできる', async ({ app }) => {
             await app.page.evaluate(() => {
                 const rows = document.querySelectorAll('#editor table tbody tr');

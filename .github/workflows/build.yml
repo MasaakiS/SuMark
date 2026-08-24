@@ -105,7 +105,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -127,7 +127,7 @@ jobs:
           releaseName: 'SuMark ${{ github.ref_name }}'
           releaseDraft: true
           prerelease: false
-          args: '--target universal-apple-darwin --bundles app'
+          args: '--target aarch64-apple-darwin --bundles app'
 
       - name: Create portable zip (macOS)
         run: |

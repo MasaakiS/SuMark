@@ -167,7 +167,7 @@ npm run dev
 npm run build:mac
 ```
 
-ビルドされたアプリは `src-tauri/target/release/bundle/` に生成されます。
+Apple Silicon（aarch64）向けの`.app`が `src-tauri/target/aarch64-apple-darwin/release/bundle/macos/` に生成されます。Intel MacとDMG installerはサポート対象外です。
 
 ### Windows向けビルド
 ```bash

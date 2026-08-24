@@ -82,8 +82,17 @@ function handleKeyDown(e) {
         }
     }
 
-    // 矩形選択中の Copy/Cut/Paste は tableManager 側の専用フローへ委譲する。
-    if (hasRectTableSelection && mod && (e.key === 'c' || e.key === 'x' || e.key === 'v')) {
+    // 矩形選択中のCopyは、Windows WebView2でcopyイベントがeditorへ届かない場合にも
+    // TSVを出力できるようClipboard APIへ補助的に直接書き込む。
+    if (hasRectTableSelection && mod && e.key.toLowerCase() === 'c') {
+        if (typeof copyRectSelectionWithClipboardApi === 'function') {
+            copyRectSelectionWithClipboardApi();
+        }
+        return;
+    }
+
+    // 矩形選択中のCut/PasteはtableManager側の専用フローへ委譲する。
+    if (hasRectTableSelection && mod && (e.key.toLowerCase() === 'x' || e.key.toLowerCase() === 'v')) {
         return;
     }
     
