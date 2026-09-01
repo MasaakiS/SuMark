@@ -690,6 +690,115 @@ test.describe('テーブル操作テスト', () => {
             expect(values).toEqual(['A', 'B', 'C', 'D']);
         });
 
+        test('矩形選択をコピーして貼り付けると貼り付け先範囲を再コピーできる', async ({ app }) => {
+            const copiedData = await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                const start = rows[0]?.children[0];
+                const end = rows[1]?.children[1];
+                if (!start || !end) return null;
+
+                start.textContent = 'A';
+                rows[0].children[1].textContent = 'B';
+                rows[1].children[0].textContent = 'C';
+                end.textContent = 'D';
+                start.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+                end.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true }));
+                document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+
+                const clipboard = {};
+                const copyEvent = new Event('copy', { bubbles: true, cancelable: true });
+                Object.defineProperty(copyEvent, 'clipboardData', {
+                    value: {
+                        setData: (type, value) => { clipboard[type] = value; },
+                        getData: (type) => clipboard[type] || '',
+                    },
+                });
+                document.getElementById('editor')?.dispatchEvent(copyEvent);
+                return clipboard;
+            });
+
+            expect(copiedData?.['text/plain']).toBe('A\tB\nC\tD');
+
+            const pasted = await app.page.evaluate((clipboard) => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                const target = rows[0]?.children[2];
+                const text = target?.firstChild;
+                if (!target || !text) return false;
+
+                const range = document.createRange();
+                range.setStart(text, 0);
+                range.collapse(true);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+
+                const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+                Object.defineProperty(pasteEvent, 'clipboardData', {
+                    value: { getData: (type) => clipboard[type] || '' },
+                });
+                target.dispatchEvent(pasteEvent);
+                return pasteEvent.defaultPrevented;
+            }, copiedData);
+
+            expect(pasted).toBe(true);
+            const selection = await app.page.evaluate(() => {
+                const selected = Array.from(document.querySelectorAll('#editor .rect-anchor, #editor .rect-selected'));
+                const store = {};
+                const copyEvent = new Event('copy', { bubbles: true, cancelable: true });
+                Object.defineProperty(copyEvent, 'clipboardData', {
+                    value: {
+                        setData: (type, value) => { store[type] = value; },
+                        getData: (type) => store[type] || '',
+                    },
+                });
+                document.getElementById('editor')?.dispatchEvent(copyEvent);
+                return {
+                    selectedCount: selected.length,
+                    anchor: selected.find(cell => cell.classList.contains('rect-anchor'))?.innerText.trim(),
+                    copiedText: store['text/plain'] || '',
+                };
+            });
+
+            expect(selection.selectedCount).toBe(4);
+            expect(selection.anchor).toBe('A');
+            expect(selection.copiedText).toBe('A\tB\nC\tD');
+        });
+
+        test('単一セルへの通常テキスト貼り付けは矩形選択にしない', async ({ app }) => {
+            const state = await app.page.evaluate(() => {
+                const target = document.querySelector('#editor table tbody tr td');
+                const text = target?.firstChild;
+                if (!target || !text) return null;
+
+                const range = document.createRange();
+                range.setStart(text, 0);
+                range.collapse(true);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+
+                const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+                Object.defineProperty(pasteEvent, 'clipboardData', {
+                    value: { getData: (type) => type === 'text/plain' ? '単一セル' : '' },
+                });
+                target.dispatchEvent(pasteEvent);
+
+                const activeRange = window.getSelection()?.rangeCount
+                    ? window.getSelection().getRangeAt(0)
+                    : null;
+                return {
+                    prevented: pasteEvent.defaultPrevented,
+                    selectedCount: document.querySelectorAll('#editor .rect-anchor, #editor .rect-selected').length,
+                    collapsed: activeRange?.collapsed || false,
+                };
+            });
+
+            expect(state).not.toBeNull();
+            expect(state.prevented).toBe(true);
+            expect(state.selectedCount).toBe(0);
+            expect(state.collapsed).toBe(true);
+        });
+
         test('矩形選択後もShift+クリックの列選択は従来どおり動作する', async ({ app }) => {
             await app.page.evaluate(() => {
                 const rows = document.querySelectorAll('#editor table tbody tr');

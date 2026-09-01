@@ -593,7 +593,8 @@ function applyMatrixToRectSelection(matrix) {
     const startRow = bounds.minRow;
     const startCol = bounds.minCol;
 
-    const requiredColumnCount = startCol + Math.max(...matrix.map(row => row.length));
+    const pastedColumnCount = Math.max(...matrix.map(row => row.length));
+    const requiredColumnCount = startCol + pastedColumnCount;
     const currentColumnCount = rows.reduce((count, row) => Math.max(count, row.children.length), 0);
     if (requiredColumnCount > currentColumnCount) {
         rows.forEach(row => {
@@ -626,6 +627,11 @@ function applyMatrixToRectSelection(matrix) {
     }
 
     if (changed) {
+        const endRow = updatedRows[startRow + matrix.length - 1];
+        const endCell = endRow && endRow.children[startCol + pastedColumnCount - 1];
+        if (endCell) {
+            updateRectSelection(table, rectSelection.anchorCell, endCell);
+        }
         markModified();
         onEditorInput();
     }
@@ -637,15 +643,14 @@ function handleRectSelectionPaste(e) {
 
     const html = e.clipboardData.getData('text/html');
     const text = e.clipboardData.getData('text/plain');
-    const containsHtmlTable = /<table[\s>]/i.test(html);
-    const containsTsv = /[\t\r\n]/.test(text);
-    if (!containsHtmlTable && !containsTsv) return false;
-
     let matrix = parseHtmlTableToMatrix(html);
     if (!matrix || matrix.length === 0) {
         matrix = parseTsvToMatrix(text);
     }
     if (!matrix || matrix.length === 0) return false;
+
+    const columnCount = Math.max(...matrix.map(row => row.length));
+    if (matrix.length === 1 && columnCount === 1) return false;
 
     if (!isRectTableSelectionActive()) {
         const selection = window.getSelection();
