@@ -80,6 +80,67 @@ test.describe('テーブル操作テスト', () => {
             await expect(upperCell).toContainText('上セル編集');
         });
 
+        test('セル内の左右矢印キーはキャレット境界でのみセルを移動する', async ({ app }) => {
+            const cells = app.page.locator('#editor table tbody tr').first().locator('td');
+            await cells.nth(0).evaluate(el => { el.textContent = 'abc'; });
+            await cells.nth(1).evaluate(el => { el.textContent = 'def'; });
+            await cells.nth(2).evaluate(el => { el.textContent = 'ghi'; });
+
+            const setSelection = async (cellIndex, start, end = start) => {
+                await app.page.evaluate(({ cellIndex, start, end }) => {
+                    const cell = document.querySelectorAll('#editor table tbody tr')[0]?.children[cellIndex];
+                    const text = cell?.firstChild;
+                    if (!cell || !text) return;
+                    const range = document.createRange();
+                    range.setStart(text, start);
+                    range.setEnd(text, end);
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }, { cellIndex, start, end });
+            };
+
+            const getSelectionState = () => app.page.evaluate(() => {
+                const range = window.getSelection()?.getRangeAt(0);
+                const row = document.querySelector('#editor table tbody tr');
+                if (!range || !row) return null;
+                const element = range.startContainer.nodeType === Node.ELEMENT_NODE
+                    ? range.startContainer
+                    : range.startContainer.parentElement;
+                const cell = element?.closest('td, th');
+                return {
+                    cellIndex: cell ? Array.from(row.children).indexOf(cell) : -1,
+                    collapsed: range.collapsed,
+                    startOffset: range.startOffset,
+                };
+            });
+
+            await cells.nth(1).click();
+            await setSelection(1, 1);
+            await app.page.keyboard.press('ArrowLeft');
+            expect(await getSelectionState()).toMatchObject({ cellIndex: 1, collapsed: true, startOffset: 0 });
+
+            await setSelection(1, 1);
+            await app.page.keyboard.press('ArrowRight');
+            expect(await getSelectionState()).toMatchObject({ cellIndex: 1, collapsed: true, startOffset: 2 });
+
+            await setSelection(1, 0);
+            await app.page.keyboard.press('ArrowLeft');
+            expect(await getSelectionState()).toMatchObject({ cellIndex: 0, collapsed: true });
+
+            await setSelection(1, 3);
+            await app.page.keyboard.press('ArrowRight');
+            expect(await getSelectionState()).toMatchObject({ cellIndex: 2, collapsed: true });
+
+            await setSelection(1, 0, 2);
+            await app.page.keyboard.press('ArrowLeft');
+            expect(await getSelectionState()).toMatchObject({ cellIndex: 1, collapsed: true });
+
+            await setSelection(1, 1, 2);
+            await app.page.keyboard.press('Shift+ArrowRight');
+            expect(await getSelectionState()).toMatchObject({ cellIndex: 1, collapsed: false });
+        });
+
         test('テーブルセル内でEnterしても表構造が崩れない', async ({ app }) => {
             const firstCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
             await firstCell.click();
@@ -235,6 +296,38 @@ test.describe('テーブル操作テスト', () => {
             expect(state.outsideText).toBe('外側');
         });
 
+        test('表外のリストでEnterしても直近のテーブルセルへ改行を挿入しない', async ({ app }) => {
+            const state = await app.page.evaluate(() => {
+                const editorEl = document.getElementById('editor');
+                const cell = editorEl?.querySelector('table tbody tr td:nth-child(2)');
+                if (!editorEl || !cell) return null;
+
+                const list = document.createElement('ul');
+                const item = document.createElement('li');
+                item.textContent = 'aaa';
+                list.appendChild(item);
+                editorEl.appendChild(list);
+
+                const range = document.createRange();
+                range.selectNodeContents(item);
+                range.collapse(false);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+
+                const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+                editorEl.dispatchEvent(enter);
+                return {
+                    prevented: enter.defaultPrevented,
+                    cellHtml: cell.innerHTML,
+                };
+            });
+
+            expect(state).not.toBeNull();
+            expect(state.prevented).toBe(false);
+            expect(state.cellHtml).toBe('データ');
+        });
+
         test('セル選択状態（col-anchor）でEnterしても表構造が崩れない', async ({ app }) => {
             // セル内容を単純化
             const firstCell = app.page.locator('#editor table tbody tr').nth(0).locator('td').nth(0);
@@ -368,6 +461,67 @@ test.describe('テーブル操作テスト', () => {
             expect(copied.text).toBe('A\tB\nC\tD');
         });
 
+        test('単一セル内のテキスト選択では標準のcopy/cutと編集操作を維持する', async ({ app }) => {
+            const cell = app.page.locator('#editor table tbody tr').first().locator('td').first();
+            await cell.evaluate(el => { el.textContent = '単一セル内の選択対象テキスト'; });
+            await app.page.locator('#editor table tbody tr').first().locator('td').nth(1)
+                .evaluate(el => { el.textContent = '隣接セルのテキスト'; });
+
+            const box = await cell.boundingBox();
+            expect(box).not.toBeNull();
+            await app.page.mouse.move(box.x + 24, box.y + box.height / 2);
+            await app.page.mouse.down();
+            await app.page.mouse.move(box.x + Math.min(box.width - 24, 160), box.y + box.height / 2, { steps: 8 });
+            await app.page.mouse.up();
+
+            const selection = await cell.evaluate(el => {
+                return window.getSelection()?.toString() || '';
+            });
+            expect(selection).not.toBe('');
+            expect(selection).not.toContain('隣接セルのテキスト');
+
+            const clipboardEvents = await cell.evaluate(el => {
+                const results = {};
+                ['copy', 'cut'].forEach(type => {
+                    const stored = {};
+                    const event = new Event(type, { bubbles: true, cancelable: true });
+                    Object.defineProperty(event, 'clipboardData', {
+                        value: { setData: (format, value) => { stored[format] = value; } },
+                    });
+                    el.dispatchEvent(event);
+                    results[type] = {
+                        prevented: event.defaultPrevented,
+                        tsv: stored['text/plain'] || '',
+                    };
+                });
+                return results;
+            });
+            expect(clipboardEvents.copy.prevented).toBe(false);
+            expect(clipboardEvents.copy.tsv).toBe('');
+            expect(clipboardEvents.cut.prevented).toBe(false);
+            expect(clipboardEvents.cut.tsv).toBe('');
+
+            await cell.evaluate(el => {
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+            });
+            await app.page.keyboard.type('上書き');
+            await expect(cell).toHaveText('上書き');
+
+            await cell.evaluate(el => {
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+            });
+            await app.page.keyboard.press('Backspace');
+            await expect(cell).toHaveText('');
+        });
+
         test('copyイベントがeditor外へ届いても矩形選択をTSVでコピーできる', async ({ app }) => {
             await app.page.evaluate(() => {
                 const rows = document.querySelectorAll('#editor table tbody tr');
@@ -491,6 +645,49 @@ test.describe('テーブル操作テスト', () => {
 
             expect(values).toEqual(['11', '22', '33', '44']);
             await expect(app.page.locator('#editor table')).toHaveCount(1);
+        });
+
+        test('単一セルを起点に表データを貼り付けると必要な行列を追加する', async ({ app }) => {
+            const targetCell = app.page.locator('#editor table tbody tr').nth(1).locator('td').nth(2);
+            await targetCell.click();
+
+            const pasted = await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                const target = rows[1]?.children[2];
+                const text = target?.firstChild;
+                if (!target || !text) return false;
+                const range = document.createRange();
+                range.setStart(text, 0);
+                range.collapse(true);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+
+                const clipboardData = {
+                    getData: (type) => type === 'text/plain' ? 'A\tB\nC\tD' : '',
+                };
+                const event = new Event('paste', { bubbles: true, cancelable: true });
+                Object.defineProperty(event, 'clipboardData', { value: clipboardData });
+                target.dispatchEvent(event);
+                return event.defaultPrevented;
+            });
+
+            expect(pasted).toBe(true);
+            await expect(app.page.locator('#editor table')).toHaveCount(1);
+            await expect(app.page.locator('#editor table thead tr').locator('th')).toHaveCount(4);
+            await expect(app.page.locator('#editor table tbody tr')).toHaveCount(3);
+            await expect(app.page.locator('#editor table tbody tr').nth(2).locator('td')).toHaveCount(4);
+
+            const values = await app.page.evaluate(() => {
+                const rows = document.querySelectorAll('#editor table tbody tr');
+                return [
+                    rows[1]?.children[2]?.innerText?.trim() || '',
+                    rows[1]?.children[3]?.innerText?.trim() || '',
+                    rows[2]?.children[2]?.innerText?.trim() || '',
+                    rows[2]?.children[3]?.innerText?.trim() || '',
+                ];
+            });
+            expect(values).toEqual(['A', 'B', 'C', 'D']);
         });
 
         test('矩形選択後もShift+クリックの列選択は従来どおり動作する', async ({ app }) => {

@@ -310,15 +310,15 @@ function startRectSelection(cell, e) {
 
     clearColSelection();
     clearRectSelection();
-    // mousedown直後からブラウザの文字選択を止める（6px未満の間も含む）。
-    window.getSelection().removeAllRanges();
-    document.body.classList.add('table-rect-selecting');
+    // 同一セル内ではブラウザ標準のRange選択を維持し、別セルに達した時点で矩形選択へ切り替える。
     rectSelection.dragging = true;
     rectSelection.moved = false;
     rectSelection.suppressNextClickClear = false;
     rectSelection.startX = e.clientX;
     rectSelection.startY = e.clientY;
-    updateRectSelection(table, cell, cell);
+    rectSelection.table = table;
+    rectSelection.anchorCell = cell;
+    rectSelection.focusCell = cell;
 }
 
 function getRectBounds() {
@@ -333,6 +333,32 @@ function getRectBounds() {
 
 function isRectTableSelectionActive() {
     return !!(rectSelection.active && rectSelection.table && rectSelection.cells.length > 0);
+}
+
+function isMultiCellRectSelectionActive() {
+    return isRectTableSelectionActive() && rectSelection.cells.length > 1;
+}
+
+function isCaretAtCellStart(cell) {
+    const selection = window.getSelection();
+    if (!cell || !selection || !selection.rangeCount || !selection.isCollapsed) return false;
+    const range = selection.getRangeAt(0);
+    if (range.startContainer !== cell && !cell.contains(range.startContainer)) return false;
+
+    const cellRange = document.createRange();
+    cellRange.selectNodeContents(cell);
+    return range.compareBoundaryPoints(Range.START_TO_START, cellRange) === 0;
+}
+
+function isCaretAtCellEnd(cell) {
+    const selection = window.getSelection();
+    if (!cell || !selection || !selection.rangeCount || !selection.isCollapsed) return false;
+    const range = selection.getRangeAt(0);
+    if (range.endContainer !== cell && !cell.contains(range.endContainer)) return false;
+
+    const cellRange = document.createRange();
+    cellRange.selectNodeContents(cell);
+    return range.compareBoundaryPoints(Range.END_TO_END, cellRange) === 0;
 }
 
 function getLastActiveTableCell() {
@@ -499,7 +525,7 @@ function copyRectSelectionWithClipboardApi() {
 }
 
 function handleRectSelectionCopyCut(e) {
-    if (!isRectTableSelectionActive()) return;
+    if (!isMultiCellRectSelectionActive()) return;
     if (e.__sumarkRectClipboardHandled) return;
     e.__sumarkRectClipboardHandled = true;
     const data = getRectSelectionClipboardData();
@@ -607,14 +633,34 @@ function applyMatrixToRectSelection(matrix) {
 }
 
 function handleRectSelectionPaste(e) {
-    if (!isRectTableSelectionActive()) return false;
-    if (!e || !e.clipboardData) return false;
+    if (!e || !e.clipboardData || e.altKey) return false;
 
-    let matrix = parseHtmlTableToMatrix(e.clipboardData.getData('text/html'));
+    const html = e.clipboardData.getData('text/html');
+    const text = e.clipboardData.getData('text/plain');
+    const containsHtmlTable = /<table[\s>]/i.test(html);
+    const containsTsv = /[\t\r\n]/.test(text);
+    if (!containsHtmlTable && !containsTsv) return false;
+
+    let matrix = parseHtmlTableToMatrix(html);
     if (!matrix || matrix.length === 0) {
-        matrix = parseTsvToMatrix(e.clipboardData.getData('text/plain'));
+        matrix = parseTsvToMatrix(text);
     }
     if (!matrix || matrix.length === 0) return false;
+
+    if (!isRectTableSelectionActive()) {
+        const selection = window.getSelection();
+        const range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+        const container = range && range.startContainer;
+        const element = container && (container.nodeType === Node.ELEMENT_NODE
+            ? container
+            : container.parentElement);
+        const cell = element && element.closest ? element.closest('td, th') : null;
+        const table = cell && cell.closest('table');
+        if (!cell || !table || !editor.contains(cell)) return false;
+        clearColSelection();
+        clearRectSelection();
+        updateRectSelection(table, cell, cell);
+    }
 
     e.preventDefault();
     return applyMatrixToRectSelection(matrix);
@@ -1026,21 +1072,13 @@ function setupTableContextMenu() {
         const cell = e.target.closest('td, th');
         if (!cell || !editor.contains(cell)) return;
         if (cell.closest('table') !== rectSelection.table) return;
-        const movedDistance = Math.max(
-            Math.abs(e.clientX - rectSelection.startX),
-            Math.abs(e.clientY - rectSelection.startY)
-        );
-        const movedToAnotherCell = rectSelection.focusCell && rectSelection.focusCell !== cell;
-        if (!rectSelection.moved && movedDistance < 6 && !movedToAnotherCell) return;
+        if (!rectSelection.moved && cell === rectSelection.anchorCell) return;
         if (!rectSelection.moved) {
             if (e.cancelable) e.preventDefault();
             window.getSelection().removeAllRanges();
             document.body.classList.add('table-rect-selecting');
         }
         rectSelection.moved = true;
-        if (rectSelection.focusCell && rectSelection.focusCell !== cell) {
-            rectSelection.moved = true;
-        }
         updateRectSelection(rectSelection.table, rectSelection.anchorCell, cell);
     });
 

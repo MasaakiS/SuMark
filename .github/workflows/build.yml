@@ -131,10 +131,19 @@ jobs:
 
       - name: Create portable zip (macOS)
         run: |
-          APP_PATH=$(find src-tauri/target -name "SuMark.app" -type d | head -1)
-          if [ -n "$APP_PATH" ]; then
-            ditto -c -k --sequesterRsrc "$APP_PATH" "SuMark-portable-macos-${{ github.ref_name }}.zip"
-          fi
+          APP_PATH="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/SuMark.app"
+          ZIP_PATH="SuMark-portable-macos-${GITHUB_REF_NAME}.zip"
+
+          test -d "$APP_PATH"
+          test -f "$APP_PATH/Contents/Info.plist"
+          test -x "$APP_PATH/Contents/MacOS/SuMark"
+          file "$APP_PATH/Contents/MacOS/SuMark" | grep -E 'Mach-O.*arm64'
+
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
+
+          unzip -t "$ZIP_PATH"
+          unzip -Z1 "$ZIP_PATH" | grep -Fx 'SuMark.app/Contents/MacOS/SuMark'
+          unzip -Z1 "$ZIP_PATH" | grep -Fx 'SuMark.app/Contents/Info.plist'
 
       - name: Upload portable zip (macOS)
         shell: bash

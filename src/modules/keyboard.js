@@ -55,8 +55,14 @@ function handleKeyDown(e) {
         }
     }
 
+    const selection = window.getSelection();
+    const range = selection && selection.rangeCount ? selection.getRangeAt(0) : null;
+    const tableCell = getTableCellFromEvent(e, range);
+    const isHorizontalBoundaryNavigation = !e.shiftKey && tableCell &&
+        ((e.key === 'ArrowLeft' && typeof isCaretAtCellStart === 'function' && isCaretAtCellStart(tableCell)) ||
+        (e.key === 'ArrowRight' && typeof isCaretAtCellEnd === 'function' && isCaretAtCellEnd(tableCell)));
     const isTableNavigationKey = e.key === 'Tab' ||
-        ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+        ['ArrowUp', 'ArrowDown'].includes(e.key) || isHorizontalBoundaryNavigation;
 
     if (!e.ctrlKey && !e.metaKey && !e.altKey && isTableNavigationKey &&
         typeof moveCurrentTableCell === 'function' && moveCurrentTableCell(e.key === 'Tab' && e.shiftKey ? 'Shift+Tab' : e.key)) {
@@ -537,6 +543,8 @@ function getTableCellFromEvent(e, range) {
     }
     const rangeCell = getTableCellFromRange(range);
     if (rangeCell) return rangeCell;
+    // 表外の有効なRangeがある場合は、直近セルへフォールバックしない。
+    if (range) return null;
     return typeof getLastActiveTableCell === 'function' ? getLastActiveTableCell() : null;
 }
 
