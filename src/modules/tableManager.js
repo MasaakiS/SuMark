@@ -627,13 +627,17 @@ function applyMatrixToRectSelection(matrix) {
     }
 
     if (changed) {
-        const endRow = updatedRows[startRow + matrix.length - 1];
-        const endCell = endRow && endRow.children[startCol + pastedColumnCount - 1];
-        if (endCell) {
-            updateRectSelection(table, rectSelection.anchorCell, endCell);
-        }
         markModified();
         onEditorInput();
+
+        const finalRows = getTableRows(table);
+        const anchorRow = finalRows[startRow];
+        const endRow = finalRows[startRow + matrix.length - 1];
+        const anchorCell = anchorRow && anchorRow.children[startCol];
+        const endCell = endRow && endRow.children[startCol + pastedColumnCount - 1];
+        if (anchorCell && endCell) {
+            updateRectSelection(table, anchorCell, endCell);
+        }
     }
     return changed;
 }
@@ -659,7 +663,10 @@ function handleRectSelectionPaste(e) {
         const element = container && (container.nodeType === Node.ELEMENT_NODE
             ? container
             : container.parentElement);
-        const cell = element && element.closest ? element.closest('td, th') : null;
+        const selectionCell = element && element.closest ? element.closest('td, th') : null;
+        const target = e.target;
+        const targetCell = target && target.closest ? target.closest('td, th') : null;
+        const cell = selectionCell && editor.contains(selectionCell) ? selectionCell : targetCell;
         const table = cell && cell.closest('table');
         if (!cell || !table || !editor.contains(cell)) return false;
         clearColSelection();

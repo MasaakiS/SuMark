@@ -764,6 +764,41 @@ test.describe('テーブル操作テスト', () => {
             expect(selection.copiedText).toBe('A\tB\nC\tD');
         });
 
+        test('ネイティブ選択を取得できない貼り付けでも対象セル範囲を選択する', async ({ app }) => {
+            const state = await app.page.evaluate(() => {
+                const target = document.querySelector('#editor table tbody tr td:nth-child(2)');
+                if (!target) return null;
+
+                window.getSelection()?.removeAllRanges();
+                const pasteEvent = new Event('paste', { bubbles: true, cancelable: true });
+                Object.defineProperty(pasteEvent, 'clipboardData', {
+                    value: { getData: (type) => type === 'text/plain' ? 'A\tB\nC\tD' : '' },
+                });
+                target.dispatchEvent(pasteEvent);
+
+                const clipboard = {};
+                const copyEvent = new Event('copy', { bubbles: true, cancelable: true });
+                Object.defineProperty(copyEvent, 'clipboardData', {
+                    value: {
+                        setData: (type, value) => { clipboard[type] = value; },
+                        getData: (type) => clipboard[type] || '',
+                    },
+                });
+                document.getElementById('editor')?.dispatchEvent(copyEvent);
+
+                return {
+                    prevented: pasteEvent.defaultPrevented,
+                    selectedCount: document.querySelectorAll('#editor .rect-anchor, #editor .rect-selected').length,
+                    copiedText: clipboard['text/plain'] || '',
+                };
+            });
+
+            expect(state).not.toBeNull();
+            expect(state.prevented).toBe(true);
+            expect(state.selectedCount).toBe(4);
+            expect(state.copiedText).toBe('A\tB\nC\tD');
+        });
+
         test('単一セルへの通常テキスト貼り付けは矩形選択にしない', async ({ app }) => {
             const state = await app.page.evaluate(() => {
                 const target = document.querySelector('#editor table tbody tr td');
