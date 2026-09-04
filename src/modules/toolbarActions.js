@@ -18,8 +18,6 @@ const searchState = {
     replaceTerm: '',
     isRegex: false,
     isCaseSensitive: false,
-    isWholeWord: false,
-    isInSelection: false,
     matches: [],
     currentMatchIndex: -1,
 };
@@ -29,9 +27,13 @@ function escapeRegexForSearch(value) {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function normalizeYenToBackslash(pattern) {
+    return pattern.replace(/\u00A5/g, '\u005C');
+}
+
 function getSearchPattern(query, options) {
     let pattern = options.isRegex ? query : escapeRegexForSearch(query);
-    if (options.isWholeWord) pattern = `\\b(?:${pattern})\\b`;
+    if (options.isRegex) pattern = normalizeYenToBackslash(pattern);
     return pattern;
 }
 
@@ -63,11 +65,13 @@ function findMatches(text, query, options = {}) {
 
 function clearSearchHighlights() {
     if (!currentSearchHighlights || currentSearchHighlights.length === 0) return;
-    currentSearchHighlights.forEach(span => {
-        const parent = span.parentNode;
-        if (!parent) return;
-        parent.replaceChild(document.createTextNode(span.textContent), span);
-        parent.normalize();
+    currentSearchHighlights.forEach(match => {
+        match.spans.forEach(span => {
+            const parent = span.parentNode;
+            if (!parent) return;
+            parent.replaceChild(document.createTextNode(span.textContent), span);
+            parent.normalize();
+        });
     });
     currentSearchHighlights = [];
     currentSearchIndex = -1;
@@ -75,6 +79,15 @@ function clearSearchHighlights() {
 
 function escapeRegExpForSearch(s) {
     return s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+}
+
+function isInsideNonEditableRegion(node, editorElement) {
+    let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    while (current && current !== editorElement) {
+        if (current.getAttribute('contenteditable') === 'false') return true;
+        current = current.parentElement;
+    }
+    return false;
 }
 
 function highlightSearchMatches(query, options = {}) {
@@ -88,13 +101,24 @@ function highlightSearchMatches(query, options = {}) {
         return 0;
     }
 
-    const selectedRange = options.isInSelection ? window.getSelection() : null;
-    const selectedText = selectedRange && selectedRange.rangeCount ? selectedRange.toString() : '';
+    const blockTags = new Set([
+        'ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'DIV', 'DL', 'FIELDSET',
+        'FIGURE', 'FOOTER', 'FORM', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HEADER',
+        'LI', 'MAIN', 'NAV', 'OL', 'P', 'PRE', 'SECTION', 'TABLE', 'UL'
+    ]);
+    const getBlockAncestor = node => {
+        let current = node.parentElement;
+        while (current && current !== editor) {
+            if (blockTags.has(current.tagName)) return current;
+            current = current.parentElement;
+        }
+        return editor;
+    };
 
     const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
         acceptNode(node) {
-            if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
-            if (options.isInSelection && !selectedText.includes(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+            if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
+            if (isInsideNonEditableRegion(node, editor)) return NodeFilter.FILTER_REJECT;
             if (node.parentNode && node.parentNode.classList && node.parentNode.classList.contains('search-highlight')) {
                 return NodeFilter.FILTER_REJECT;
             }
@@ -103,46 +127,94 @@ function highlightSearchMatches(query, options = {}) {
     });
 
     const textNodes = [];
+    const nodeOffsets = [];
+    let combinedText = '';
+    let previousBlock = null;
     while (walker.nextNode()) {
-        textNodes.push(walker.currentNode);
+        const node = walker.currentNode;
+        const block = getBlockAncestor(node);
+        if (previousBlock && block !== previousBlock) combinedText += '\n';
+        const start = combinedText.length;
+        combinedText += node.nodeValue;
+        textNodes.push(node);
+        nodeOffsets.push({ node, start, end: combinedText.length });
+        previousBlock = block;
     }
 
-    textNodes.forEach(textNode => {
-        const text = textNode.nodeValue;
-        const matches = [...text.matchAll(re)];
-        if (!matches.length) return;
+    const matches = [];
+    let match;
+    while ((match = re.exec(combinedText)) !== null) {
+        if (match[0].length === 0) {
+            re.lastIndex += 1;
+            continue;
+        }
+        const start = match.index;
+        const end = start + match[0].length;
+        const segments = [];
+        nodeOffsets.forEach(entry => {
+            const segmentStart = Math.max(start, entry.start);
+            const segmentEnd = Math.min(end, entry.end);
+            if (segmentStart < segmentEnd) {
+                segments.push({
+                    node: entry.node,
+                    start: segmentStart - entry.start,
+                    end: segmentEnd - entry.start,
+                });
+            }
+        });
+        if (segments.length > 0) {
+            matches.push({
+                text: match[0],
+                groups: match.slice(1),
+                segments,
+                spans: [],
+            });
+        }
+    }
 
+    const segmentsByNode = new Map();
+    matches.forEach(searchMatch => {
+        searchMatch.segments.forEach(segment => {
+            if (!segmentsByNode.has(segment.node)) segmentsByNode.set(segment.node, []);
+            segmentsByNode.get(segment.node).push({ ...segment, match: searchMatch });
+        });
+    });
+
+    textNodes.forEach(textNode => {
+        const nodeSegments = segmentsByNode.get(textNode);
+        if (!nodeSegments || !nodeSegments.length || !textNode.parentNode) return;
+        nodeSegments.sort((a, b) => a.start - b.start);
+        const text = textNode.nodeValue;
         const frag = document.createDocumentFragment();
         let lastIndex = 0;
 
-        matches.forEach(match => {
-            const matchIndex = match.index;
-            if (matchIndex > lastIndex) {
-                frag.appendChild(document.createTextNode(text.slice(lastIndex, matchIndex)));
+        nodeSegments.forEach(segment => {
+            if (segment.start > lastIndex) {
+                frag.appendChild(document.createTextNode(text.slice(lastIndex, segment.start)));
             }
             const span = document.createElement('span');
             span.className = 'search-highlight';
-            span.textContent = match[0];
+            span.textContent = text.slice(segment.start, segment.end);
             frag.appendChild(span);
-            currentSearchHighlights.push(span);
-            lastIndex = matchIndex + match[0].length;
+            segment.match.spans.push(span);
+            lastIndex = segment.end;
         });
 
         if (lastIndex < text.length) {
             frag.appendChild(document.createTextNode(text.slice(lastIndex)));
         }
-
         textNode.parentNode.replaceChild(frag, textNode);
     });
 
+    currentSearchHighlights = matches;
     currentSearchIndex = currentSearchHighlights.length > 0 ? 0 : -1;
-    searchState.matches = currentSearchHighlights.map(span => ({
-        text: span.textContent,
-        element: span,
+    searchState.matches = currentSearchHighlights.map(searchMatch => ({
+        text: searchMatch.text,
+        element: searchMatch.spans[0],
     }));
     searchState.currentMatchIndex = currentSearchIndex;
-    if (currentSearchHighlights.length > 0) {
-        currentSearchHighlights[0].classList.add('active-search-highlight');
+    if (currentSearchHighlights.length > 0 && currentSearchHighlights[0].spans[0]) {
+        currentSearchHighlights[0].spans.forEach(span => span.classList.add('active-search-highlight'));
     }
     return currentSearchHighlights.length;
 }
@@ -151,13 +223,15 @@ function moveToSearchHighlight(index) {
     if (!currentSearchHighlights.length) return;
     const normalized = ((index % currentSearchHighlights.length) + currentSearchHighlights.length) % currentSearchHighlights.length;
     if (currentSearchIndex >= 0 && currentSearchHighlights[currentSearchIndex]) {
-        currentSearchHighlights[currentSearchIndex].classList.remove('active-search-highlight');
+        currentSearchHighlights[currentSearchIndex].spans.forEach(span => {
+            span.classList.remove('active-search-highlight');
+        });
     }
     currentSearchIndex = normalized;
-    const el = currentSearchHighlights[currentSearchIndex];
-    if (!el) return;
-    el.classList.add('active-search-highlight');
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const match = currentSearchHighlights[currentSearchIndex];
+    if (!match || !match.spans.length) return;
+    match.spans.forEach(span => span.classList.add('active-search-highlight'));
+    match.spans[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function moveToNextSearchHighlight() {
@@ -604,9 +678,7 @@ function getFindDialog() {
                     '</div>' +
           '<div class="find-dialog-row find-dialog-options">' +
                         '<label class="find-option-btn" title="大文字と小文字を区別"><input type="checkbox" id="findCaseSensitive"> Aa</label>' +
-                        '<button type="button" class="find-option-btn" id="findWholeWord" title="単語単位">ab</button>' +
                         '<button type="button" class="find-option-btn" id="findRegex" title="正規表現">.*</button>' +
-                        '<button type="button" class="find-option-btn" id="findInSelection" title="選択範囲内">選択</button>' +
           '</div>' +
         '</div>' +
         '<div class="find-dialog-footer">' +
@@ -646,7 +718,7 @@ function getFindDialog() {
     document.getElementById('replaceOneBtn').addEventListener('click', replaceCurrentMatch);
     document.getElementById('replaceAllBtn').addEventListener('click', replaceAllMatches);
 
-    ['findWholeWord', 'findRegex', 'findInSelection'].forEach(id => {
+    ['findRegex'].forEach(id => {
         document.getElementById(id).addEventListener('click', e => {
             e.currentTarget.classList.toggle('active');
             clearSearchHighlights();
@@ -744,9 +816,7 @@ function getCurrentSearchOptions() {
     };
     return {
         isCaseSensitive: active('findCaseSensitive'),
-        isWholeWord: active('findWholeWord'),
         isRegex: active('findRegex'),
-        isInSelection: active('findInSelection'),
     };
 }
 
@@ -784,15 +854,28 @@ function refreshSearchAfterReplace() {
     updateFindCount();
 }
 
+function rehighlightCodeBlocks(codeBlocks) {
+    if (typeof highlightCodeBlock !== 'function') return;
+    codeBlocks.forEach(codeBlock => highlightCodeBlock(codeBlock));
+}
+
 function replaceCurrentMatch() {
     if (!currentSearchHighlights.length) doFindNext();
+    const match = currentSearchHighlights[currentSearchIndex];
     const replacementInput = document.getElementById('replaceInput');
-    const current = currentSearchHighlights[currentSearchIndex];
-    if (!replacementInput || !current) return;
+    if (!replacementInput || !match || !match.spans.length) return;
+
     const options = getCurrentSearchOptions();
-    const replacement = getReplacementValue(current.textContent, replacementInput.value, options);
+    const replacement = getReplacementValue(match.text, replacementInput.value, options);
+    const codeBlocks = new Set(
+        match.spans
+            .map(span => span.closest('code'))
+            .filter(Boolean)
+    );
+    match.spans[0].replaceWith(document.createTextNode(replacement));
+    match.spans.slice(1).forEach(span => span.remove());
     rememberReplaceHistory(replacementInput.value);
-    current.replaceWith(document.createTextNode(replacement));
+    rehighlightCodeBlocks(codeBlocks);
     markModified();
     saveEditorState();
     refreshSearchAfterReplace();
@@ -809,15 +892,25 @@ function replaceAllMatches() {
     if (!currentSearchHighlights.length) {
         highlightSearchMatches(input.value, options);
     }
-    let replacedCount = 0;
+
+    const matches = currentSearchHighlights.slice();
+    const codeBlocks = new Set();
     const replacement = replacementInput.value;
-    currentSearchHighlights.forEach(span => {
-        if (!span.parentNode) return;
-        span.replaceWith(document.createTextNode(getReplacementValue(span.textContent, replacement, options)));
+    let replacedCount = 0;
+    matches.forEach(match => {
+        if (!match.spans.length) return;
+        match.spans.forEach(span => {
+            const codeBlock = span.closest('code');
+            if (codeBlock) codeBlocks.add(codeBlock);
+        });
+        const replacementValue = getReplacementValue(match.text, replacement, options);
+        match.spans[0].replaceWith(document.createTextNode(replacementValue));
+        match.spans.slice(1).forEach(span => span.remove());
         replacedCount += 1;
     });
     if (replacedCount === 0) return;
     rememberReplaceHistory(replacement);
+    rehighlightCodeBlocks(codeBlocks);
     markModified();
     saveEditorState();
     refreshSearchAfterReplace();

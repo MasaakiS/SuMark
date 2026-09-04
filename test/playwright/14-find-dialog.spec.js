@@ -223,18 +223,24 @@ test.describe('検索ダイアログ（モードレス）', () => {
             expect(highlights).toBe(3);
         });
 
-        test('単語単位と正規表現の検索オプションが機能する', async ({ app }) => {
+        test('正規表現の検索オプションが機能する', async ({ app }) => {
             await app.helpers.typeInEditor('cat scatter cat2 cat');
             await app.helpers.clickToolbarButton('searchBtn');
-            await app.page.fill('#findInput', 'cat');
-            await app.page.locator('#findWholeWord').click();
-            await app.page.locator('#findNextBtn').click();
-            await expect(app.page.locator('#editor .search-highlight')).toHaveCount(2);
-
             await app.page.locator('#findRegex').click();
             await app.page.fill('#findInput', 'c.t2');
             await app.page.locator('#findNextBtn').click();
             await expect(app.page.locator('#editor .search-highlight')).toHaveCount(1);
+        });
+
+        test('正規表現モードで円記号のエスケープが機能する', async ({ app }) => {
+            await app.helpers.typeInEditor('code: 123 word');
+            await app.helpers.clickToolbarButton('searchBtn');
+            await app.page.locator('#findRegex').click();
+            await app.page.fill('#findInput', '¥d+¥s+¥bword¥b');
+            await app.page.locator('#findNextBtn').click();
+
+            await expect(app.page.locator('#editor .search-highlight')).toHaveCount(1);
+            await expect(app.page.locator('#findDialogCount')).toHaveText('1 / 1');
         });
 
         test('前へボタンで検索結果を逆順に移動できる', async ({ app }) => {
@@ -376,6 +382,45 @@ test.describe('検索ダイアログ（モードレス）', () => {
             const text = await app.page.locator('#editor').innerText();
             expect(text).toContain('user: taro');
             expect(text).toContain('user: hanako');
+        });
+
+        test('書式境界をまたぐ文字列を検索・置換できる', async ({ app }) => {
+            await app.page.evaluate(() => {
+                const editor = document.getElementById('editor');
+                editor.innerHTML = '<p><strong>りん</strong><em>ご</em></p>';
+            });
+
+            await app.helpers.clickToolbarButton('replaceBtn');
+            await app.page.fill('#findInput', 'りんご');
+            await app.page.locator('#findNextBtn').click();
+            await expect(app.page.locator('#editor .search-highlight')).toHaveCount(2);
+            await expect(app.page.locator('#findDialogCount')).toHaveText('1 / 1');
+
+            await app.page.fill('#replaceInput', 'apple');
+            await app.page.locator('#replaceAllBtn').click();
+            await app.helpers.wait(200);
+
+            await expect(app.page.locator('#editor')).toContainText('apple');
+            await expect(app.page.locator('#editor .search-highlight')).toHaveCount(0);
+        });
+
+        test('行番号付きコードブロックの数字を置換しても行番号は変化しない', async ({ app }) => {
+            const markdown = '```js\nconst value = 1;\nconsole.log(value);\n```';
+            await app.page.evaluate((value) => window.setMarkdown(value), markdown);
+            await app.helpers.wait(800);
+
+            const gutter = app.page.locator('#editor .line-numbers-gutter').first();
+            await expect(gutter).toHaveAttribute('contenteditable', 'false');
+            const lineNumbersBefore = await gutter.innerHTML();
+
+            await app.helpers.clickToolbarButton('replaceBtn');
+            await app.page.fill('#findInput', '1');
+            await app.page.fill('#replaceInput', '9');
+            await app.page.locator('#replaceAllBtn').click();
+            await app.helpers.wait(200);
+
+            await expect(app.page.locator('#editor pre code')).toContainText('const value = 9;');
+            expect(await gutter.innerHTML()).toBe(lineNumbersBefore);
         });
     });
 
