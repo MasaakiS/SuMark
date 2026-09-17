@@ -274,6 +274,28 @@ test.describe('Markdown 自動変換テスト', () => {
             expect(codeText).toContain('console.log("hello");\nx');
         });
 
+        test('コードブロック内の選択範囲はEnterで改行に置換される', async ({ app }) => {
+            await app.page.evaluate(() => window.setMarkdown('```text\nabc\n```'));
+            await app.helpers.wait(800);
+            await app.helpers.focusEditor();
+
+            await app.page.evaluate(() => {
+                const code = document.querySelector('#editor pre code');
+                const text = code.firstChild;
+                const range = document.createRange();
+                range.setStart(text, 1);
+                range.setEnd(text, 2);
+
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+            });
+
+            await app.page.keyboard.press('Enter');
+
+            await expect(app.page.locator('#editor pre code')).toHaveText('a\nc');
+        });
+
         test('事前作成HTMLの pre[data-wrap] でも wrap ボタンで折り返しを切り替えできる', async ({ app }) => {
             await app.page.evaluate(() => {
                 const editor = document.getElementById('editor');

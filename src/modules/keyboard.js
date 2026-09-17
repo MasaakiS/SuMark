@@ -860,10 +860,23 @@ function handleEnterKey(e) {
 
         e.preventDefault();
         if (codeEl) {
-            const caretOffset = getCaretCharacterOffsetWithin(codeEl);
             const currentText = codeEl.textContent;
-            codeEl.textContent = currentText.slice(0, caretOffset) + '\n' + currentText.slice(caretOffset);
-            setCaretCharacterOffset(codeEl, caretOffset + 1);
+            const startOffset = getCaretCharacterOffsetWithin(codeEl);
+            let endOffset = startOffset;
+
+            if (!range.collapsed) {
+                if (codeEl.contains(range.endContainer)) {
+                    const endRange = range.cloneRange();
+                    endRange.selectNodeContents(codeEl);
+                    endRange.setEnd(range.endContainer, range.endOffset);
+                    endOffset = endRange.toString().length;
+                } else {
+                    endOffset = currentText.length;
+                }
+            }
+
+            codeEl.textContent = currentText.slice(0, startOffset) + '\n' + currentText.slice(endOffset);
+            setCaretCharacterOffset(codeEl, startOffset + 1);
         } else if (targetEl) {
             document.execCommand('insertText', false, '\n');
         }
