@@ -262,6 +262,7 @@ jobs:
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu
           sudo dpkg --add-architecture arm64
+          sudo rm -f /etc/apt/sources.list.d/ubuntu.sources
           sudo bash -c 'cat > /etc/apt/sources.list << EOF
           deb [arch=amd64] http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse
           deb [arch=amd64] http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse
@@ -336,7 +337,7 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: bash
         run: |
-          npx tauri build --target x86_64-pc-windows-msvc --bundles none
+          npx tauri build --target x86_64-pc-windows-msvc --no-bundle
 
       - name: Create portable zip (Windows)
         if: matrix.platform == 'windows-latest'
