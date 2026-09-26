@@ -1,13 +1,13 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use chrono::{Local, Datelike, Timelike};
 use arboard::{Clipboard, ImageData};
 use base64::Engine;
+use chrono::{Datelike, Local, Timelike};
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// Files passed via command-line arguments (e.g. drag-onto-icon, "Open with")
 struct InitialFiles(Mutex<Vec<String>>);
@@ -58,8 +58,7 @@ fn copy_image_to_clipboard(image_data: String) -> Result<(), String> {
     let pixels = rgba.into_raw();
 
     // Copy to clipboard
-    let mut clipboard = Clipboard::new()
-        .map_err(|e| format!("Clipboard init error: {}", e))?;
+    let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard init error: {}", e))?;
     clipboard
         .set_image(ImageData {
             width: width as usize,
@@ -126,6 +125,9 @@ fn main() {
         .collect();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(InitialFiles(Mutex::new(file_args)))
         .invoke_handler(tauri::generate_handler![
             get_current_date,
@@ -137,14 +139,14 @@ fn main() {
             exit_app,
             get_initial_files
         ])
-        .on_window_event(|event| {
+        .on_window_event(|window, event| {
             // アプリXボタン: 常に防いで JS に委譲
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if CLOSE_ALLOWED.load(Ordering::SeqCst) {
                     return;
                 }
                 api.prevent_close();
-                let _ = event.window().app_handle().emit_all("app-close-requested", ());
+                let _ = window.app_handle().emit("app-close-requested", ());
             }
         })
         .build(tauri::generate_context!())
@@ -156,7 +158,7 @@ fn main() {
                     return;
                 }
                 api.prevent_exit();
-                let _ = app_handle.emit_all("app-close-requested", ());
+                let _ = app_handle.emit("app-close-requested", ());
             }
         });
 }

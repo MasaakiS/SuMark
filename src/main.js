@@ -265,18 +265,20 @@ function init() {
             // ここではreturnせず初期化を継続する
         } else {
             initRetryCount = 0;
-            invoke = window.__TAURI__.tauri.invoke;
+            invoke = window.__TAURI__.core.invoke;
             tauriOpen = window.__TAURI__.dialog.open;
             tauriSave = window.__TAURI__.dialog.save;
             readTextFile = window.__TAURI__.fs.readTextFile;
             writeTextFile = window.__TAURI__.fs.writeTextFile;
-            readBinaryFile = window.__TAURI__.fs.readBinaryFile;
-            writeBinaryFile = window.__TAURI__.fs.writeBinaryFile;
-            createDir = window.__TAURI__.fs.createDir;
+            readBinaryFile = window.__TAURI__.fs.readFile;
+            writeBinaryFile = window.__TAURI__.fs.writeFile;
+            createDir = window.__TAURI__.fs.mkdir;
             readDir = window.__TAURI__.fs.readDir;
             exists = window.__TAURI__.fs.exists;
-            convertFileSrc = window.__TAURI__.tauri.convertFileSrc;
-            shellOpen = window.__TAURI__.shell.open;
+            convertFileSrc = window.__TAURI__.core.convertFileSrc;
+            shellOpen = (path) => /^(https?:\/\/|mailto:)/i.test(path)
+                ? window.__TAURI__.opener.openUrl(path)
+                : window.__TAURI__.opener.openPath(path);
             console.log('Tauri APIs OK');
 
             // アプリ名の横にバージョンを表示
@@ -285,9 +287,8 @@ function init() {
                     const appName = await window.__TAURI__.app.getName();
                     const appVersion = await window.__TAURI__.app.getVersion();
                     document.title = `${appName} v${appVersion}`;
-                    if (window.__TAURI__.window && window.__TAURI__.window.appWindow) {
-                        window.__TAURI__.window.appWindow.setTitle(`${appName} v${appVersion}`);
-                    }
+                    await window.__TAURI__.webviewWindow.getCurrentWebviewWindow()
+                        .setTitle(`${appName} v${appVersion}`);
                 } catch (vErr) {
                     console.warn('Could not set version in title:', vErr);
                 }
@@ -724,53 +725,33 @@ function setupEventListeners() {
 
     console.log('Event listeners attached');
     
-    // ファイルドロップイベント（Tauri v1 drag-and-drop対応）
-    if (window.__TAURI__ && window.__TAURI__.event) {
+    // ファイルドロップイベント
+    if (window.__TAURI__ && window.__TAURI__.webviewWindow) {
         console.log('[DEBUG] Setting up Tauri file drop listeners...');
-        
-        // Tauri v1 のイベントAPIを使用
-        window.__TAURI__.event.listen('tauri://file-drop', async (event) => {
-            console.log('[DEBUG] File drop event received:', event);
-            console.log('[DEBUG] Event payload:', event.payload);
-            
-            const files = event.payload;
-            console.log('[DEBUG] Files:', files);
-            
-            if (files && Array.isArray(files)) {
-                console.log('[DEBUG] Processing', files.length, 'dropped files');
-                for (const filePath of files) {
-                    console.log('[DEBUG] Processing file:', filePath);
-                    // Markdownファイルか確認
-                    const ext = filePath.split('.').pop().toLowerCase();
-                    if (ext === 'md' || ext === 'markdown' || ext === 'txt') {
-                        try {
-                            await openFileFromPath(filePath);
-                            console.log('[DEBUG] Successfully opened:', filePath);
-                        } catch (err) {
-                            console.error('Error opening dropped file:', err);
-                            showError('ファイルを開けませんでした: ' + filePath);
-                        }
-                    } else {
-                        console.log('[INFO] Skipping non-Markdown file:', filePath);
+
+        window.__TAURI__.webviewWindow.getCurrentWebviewWindow().onDragDropEvent(async ({ payload }) => {
+            if (payload.type === 'enter' || payload.type === 'over') {
+                document.body.style.outline = '3px dashed #007bff';
+                return;
+            }
+
+            document.body.style.outline = '';
+            if (payload.type !== 'drop' || !Array.isArray(payload.paths)) return;
+
+            for (const filePath of payload.paths) {
+                const filename = filePath.split('/').pop().split('\\').pop();
+                const ext = filename.split('.').pop().toLowerCase();
+                if (['md', 'markdown', 'txt'].includes(ext)) {
+                    try {
+                        await openFileFromPath(filePath);
+                    } catch (err) {
+                        console.error('Error opening dropped file:', err);
+                        showError('ファイルを開けませんでした: ' + filePath);
                     }
                 }
-            } else {
-                console.warn('[WARN] No files in drop event or invalid format');
             }
-        });
-        
-        // ファイルドロップのホバーイベント（任意の視覚フィードバック）
-        window.__TAURI__.event.listen('tauri://file-drop-hover', (event) => {
-            console.log('[DEBUG] File drop hover:', event);
-            document.body.style.outline = '3px dashed #007bff';
-        });
-        
-        // ファイルドロップのキャンセルイベント
-        window.__TAURI__.event.listen('tauri://file-drop-cancelled', (event) => {
-            console.log('[DEBUG] File drop cancelled:', event);
-            document.body.style.outline = '';
-        });
-        
+        }).catch((err) => console.error('Could not register file drop listener:', err));
+
         console.log('[DEBUG] Tauri file drop listeners registered');
     } else {
         console.log('[DEBUG] Tauri event API not available - file drop disabled');
@@ -778,7 +759,7 @@ function setupEventListeners() {
     
     // ========== 統合ファイルドロップ処理（非Tauri時のフォールバック） ==========
     // Tauri外（ブラウザ単体）ではHTML5 Drag & Dropでファイルドロップを処理する。
-    // Tauriでは fileDropEnabled=true の場合に native tauri://file-drop が処理するため、
+    // TauriではdragDropEnabled=trueの場合にネイティブDnDイベントが処理するため、
     // このハンドラは非Tauri環境向けフォールバックとしてのみ利用する。
     const setupUnifiedDropHandler = () => {
         console.log('[DEBUG] Setting up unified drop handlers...');
@@ -831,7 +812,7 @@ function setupEventListeners() {
             e.preventDefault();
             e.stopPropagation();
 
-            // Tauri かつ fileDropEnabled=true では native tauri://file-drop が処理する。
+            // TauriかつdragDropEnabled=trueではネイティブDnDイベントが処理する。
             // このHTML5ハンドラが発火しても重複処理を避けるためスキップする。
             if (window.__TAURI__ && window.__TAURI__.event) {
                 console.log('[DEBUG] Tauri native file-drop is active, skipping HTML5 handler');

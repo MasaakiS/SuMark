@@ -167,7 +167,7 @@ function setupImageResize() {
             if (blob) {
                 // --- Hybrid clipboard logic start ---
                 // 1. Try Tauri native clipboard API if available
-                if (window.__TAURI__ && window.__TAURI__.tauri && window.__TAURI__.tauri.invoke) {
+                if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
                     try {
                         // blob を base64 へ変換
                         const base64 = await new Promise((resolve, reject) => {
@@ -176,7 +176,7 @@ function setupImageResize() {
                             reader.onerror = reject;
                             reader.readAsDataURL(blob);
                         });
-                        await window.__TAURI__.tauri.invoke('copy_image_to_clipboard', { imageData: base64 });
+                        await window.__TAURI__.core.invoke('copy_image_to_clipboard', { imageData: base64 });
                         showCopySuccess('(Tauri)');
                         return;
                     } catch (tauriErr) {

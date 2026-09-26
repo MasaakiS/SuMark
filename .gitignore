@@ -4,6 +4,7 @@ target/
 dist/
 *.log
 *.lock
+/src-tauri/gen/schemas/
 .vscode/
 .idea/
 *.backup

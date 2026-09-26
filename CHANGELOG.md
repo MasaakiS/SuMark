@@ -2,6 +2,23 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v1.3.0] - 2026.09.26
+### 更新
+- Tauriをv1.6からv2.11.6へ移行
+- JavaScript APIとCLIをv2系へ更新し、dialog / fs / openerプラグインとcapability権限を追加
+- macOS、Windows、Linuxのドラッグ&ドロップとファイル操作をTauri v2 APIに対応
+- Linux CIをUbuntu 24.04 / WebKitGTK 4.1へ更新
+
+### 修正
+- 保存時に`plugin dialog not found`となる問題を修正し、Rust側でTauriプラグインを登録
+
+### テスト
+- `npm ci --ignore-scripts`
+- `npm run test:lint`
+- `cargo check --manifest-path src-tauri/Cargo.toml`
+- `npx tauri build --no-bundle`
+- Playwright E2E: 235件通過、1件スキップ（並列実行で不安定だった1件は単独再実行で通過）
+
 ## [v1.2.2] - 2026.09.26
 ### 改善
 - GitHub Releaseのダウンロード表に、配布ファイル名とSHA-256チェックサムを表示
@@ -9,15 +26,6 @@
 
 ### CI
 - v1.2.2のリリースビルドをGitHub Actionsで実行
-
-## [v1.2.1] - 2026.09.16
-### 修正
-- Windows環境でコードブロック内の文字列を選択してEnterを押した際、選択範囲を削除せず改行を追加していた問題を修正
-- コードブロック内のEnter処理で選択範囲を改行に置換し、キャレット位置を復元するよう改善
-
-### テスト
-- `test/playwright/02-markdown.spec.js`に、コードブロック内で選択範囲をEnterで改行に置換する回帰テストを追加
-- Markdown変換テスト29件が全件通過
 
 ## [v1.2.0] - 2026.09.05
 ### 変更
