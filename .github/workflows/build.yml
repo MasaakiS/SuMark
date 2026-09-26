@@ -41,28 +41,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cat > /tmp/release_body.md <<EOF
-          ## Changes
-
-          ${{ steps.changelog.outputs.body }}
-
-          ## Downloads
-
-          ### Installer (recommended)
-          | OS | File |
-          |---|---|
-          | macOS | 無 |
-          | Windows | 無 |
-          | Linux / Chromebook (x86_64) | `.deb` |
-          | Linux / Chromebook (ARM64) | `.deb` (arm64) |
-
-          ### Portable (no install required)
-          | OS | File |
-          |---|---|
-          | macOS | `SuMark-portable-macos-${GITHUB_REF_NAME}.zip` |
-          | Windows | `SuMark-portable-windows-${GITHUB_REF_NAME}.zip` |
-          | Linux / Chromebook (x86_64) | 無 |
-          EOF
+          {
+            printf '## Changes\n\n'
+            cat /tmp/changelog_body.txt
+            printf '\n## Downloads\n\nAsset filenames and SHA-256 checksums will be added after all builds complete.\n'
+          } > /tmp/release_body.md
 
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release edit "$GITHUB_REF_NAME" \
@@ -77,6 +60,76 @@ jobs:
               --notes-file /tmp/release_body.md \
               --draft
           fi
+
+  # 全ビルド完了後に実際の添付ファイルとチェックサムをリリースノートへ反映
+  update_release_notes:
+    needs: [build_macos, build_others]
+    runs-on: ubuntu-latest
+    name: Update release notes with checksums
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Add asset filenames and SHA-256 checksums to release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk "/^## \\[v${VERSION}\\]/{found=1; next} /^## \\[v/{if(found) exit} found" CHANGELOG.md > /tmp/changelog_body.txt
+
+          mkdir -p /tmp/release-assets
+          gh release download "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.deb' \
+            --pattern 'SuMark-portable-macos-*.zip' \
+            --pattern 'SuMark-portable-windows-*.zip' \
+            --dir /tmp/release-assets
+
+          asset_cell() {
+            local pattern="$1"
+            local asset_path
+            asset_path=$(find /tmp/release-assets -maxdepth 1 -type f -name "$pattern" -print -quit)
+            if [[ -z "$asset_path" ]]; then
+              printf '無 | -'
+              return
+            fi
+
+            local asset_name checksum
+            asset_name=$(basename "$asset_path")
+            checksum=$(sha256sum "$asset_path" | cut -d ' ' -f 1)
+            printf '%s | %s' "$asset_name" "$checksum"
+          }
+
+          {
+            printf '### Installer (recommended)\n'
+            printf '| OS | File | SHA-256 |\n|---|---|---|\n'
+            printf '| macOS | 無 | - |\n'
+            printf '| Windows | 無 | - |\n'
+            printf '| Linux / Chromebook (x86_64) | %s |\n' "$(asset_cell '*amd64.deb')"
+            printf '| Linux / Chromebook (ARM64) | %s |\n' "$(asset_cell '*arm64.deb')"
+            printf '\n### Portable (no install required)\n'
+            printf '| OS | File | SHA-256 |\n|---|---|---|\n'
+            printf '| macOS | %s |\n' "$(asset_cell 'SuMark-portable-macos-*.zip')"
+            printf '| Windows | %s |\n' "$(asset_cell 'SuMark-portable-windows-*.zip')"
+            printf '| Linux / Chromebook (x86_64) | 無 | - |\n'
+          } > /tmp/downloads.md
+
+          {
+            printf '## Changes\n\n'
+            cat /tmp/changelog_body.txt
+            printf '\n## Downloads\n\n'
+            cat /tmp/downloads.md
+          } > /tmp/release_body.md
+
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "SuMark $GITHUB_REF_NAME" \
+            --notes-file /tmp/release_body.md \
+            --draft
 
   # macOS ビルド専用ジョブ（必要最小限）
   build_macos:
