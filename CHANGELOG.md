@@ -2,6 +2,13 @@
 
 すべての重要な変更点をここに記録します。セマンティックバージョニングに従います。
 
+## [v1.3.1] - 2026.11.07
+### セキュリティ
+- Mermaidを11.16.1、KaTeXを0.18.2へ更新し、報告済み脆弱性に対応
+  - CVSS v4.0: Mermaidのprototype pollutionは6.5（Medium）、CSS injectionは各5.3（Medium）、KaTeXの継承設定問題は2.1（Low）
+- KaTeXの数式描画で`trust: false`を明示し、描画結果をDOMPurifyでサニタイズ
+- CIで使用するNode.jsを更新し、CVE-2026-111497などのセキュリティ修正を適用（CVE-2026-111497: CVSS v3.1 9.8 / v4.0 9.2）
+
 ## [v1.3.0] - 2026.09.26
 ### 更新
 - Tauriをv1.6からv2.11.6へ移行

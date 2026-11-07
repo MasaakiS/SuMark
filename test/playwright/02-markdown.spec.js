@@ -385,6 +385,28 @@ test.describe('Markdown 自動変換テスト', () => {
             expect(hasMath).toBe(true);
         });
 
+        test('継承された trust を無効にし、数式出力をサニタイズする', async ({ app }) => {
+            const html = await app.page.evaluate(() => {
+                Object.defineProperty(Object.prototype, 'trust', {
+                    value: true,
+                    writable: true,
+                    configurable: true,
+                });
+                try {
+                    return renderKatexToString('\\href{https://example.com}{link}', {
+                        displayMode: false,
+                        throwOnError: false,
+                    });
+                } finally {
+                    delete Object.prototype.trust;
+                }
+            });
+
+            expect(html).toContain('katex');
+            expect(html).toContain('<math');
+            expect(html).not.toContain('<a ');
+        });
+
         test('$$math$$ からディスプレイ数式に変換される', async ({ app }) => {
             await app.helpers.typeInEditor('$$\\int_0^1 x^2 dx$$');
             await app.helpers.wait(800);

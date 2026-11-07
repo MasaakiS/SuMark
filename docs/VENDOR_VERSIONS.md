@@ -1,7 +1,7 @@
 # Vendor Libraries Version Record
 
-**Last Updated**: 2026-05-16  
-**Update Note**: All vendor libraries upgraded to latest stable versions. No known critical vulnerabilities reported in these versions as of 2026-04-22.
+**Last Updated**: 2026-11-07
+**Update Note**: Mermaid and KaTeX were updated to address the advisories listed below.
 
 ## Bundled Libraries
 
@@ -10,18 +10,14 @@
 | marked | 18.0.2 | Markdown Parser | CDN (jsdelivr) | HTML generation from Markdown |
 | highlight.js | 11.11.1 | Syntax Highlighter | CDN (jsdelivr) | Code block syntax highlighting |
 | DOMPurify | 3.4.1 | HTML Sanitizer | CDN (jsdelivr) | Security-focused HTML sanitization; includes XSS hardening |
-| Mermaid | 11.14.0 | Diagram Engine | CDN (jsdelivr) | Flowchart/diagram rendering |
-| KaTeX | 0.16.45 | Math Renderer | CDN (jsdelivr) + Fonts | LaTeX/math formula rendering with WOFF2 font support |
+| Mermaid | 11.16.1 | Diagram Engine | npm package | Fixes [GHSA-3rrr-jr9j-h3q3](https://github.com/advisories/GHSA-3rrr-jr9j-h3q3), [GHSA-87f9-hvmw-gh4p](https://github.com/advisories/GHSA-87f9-hvmw-gh4p), [GHSA-xcj9-5m2h-648r](https://github.com/advisories/GHSA-xcj9-5m2h-648r), and [GHSA-6x64-9x62-f2gx](https://github.com/advisories/GHSA-6x64-9x62-f2gx) |
+| KaTeX | 0.18.2 | Math Renderer | npm package + Fonts | Fixes [GHSA-238p-pmpm-9mq7](https://github.com/advisories/GHSA-238p-pmpm-9mq7); rendered output is also sanitized |
 | Turndown | 7.2.4 | HTML to Markdown | npm dist tarball | Markdown generation from HTML (no public dist.tarball URL) |
 | turndown-plugin-gfm | 1.0.2 | GFM Plugin | npm dist tarball | GitHub Flavored Markdown support for Turndown |
 
 ## Security Status
 
-All versions checked against **Google OSV** database as of 2026-04-22:
-- **No critical vulnerabilities** found for any of the above versions
-- **No active security advisories** (CVEs/GHSAs) detected
-
-See [Security Check Results](../docs/VENDOR_VERSIONS.md#security-check) below for details.
+The bundled Mermaid and KaTeX versions were updated on 2026-11-07 to fixed releases for the advisories listed in the table above. This does not certify the other bundled libraries or operating-system-provided components as vulnerability-free.
 
 ## Version Changes from Previous Release
 
@@ -38,8 +34,8 @@ See [Security Check Results](../docs/VENDOR_VERSIONS.md#security-check) below fo
 - ✅ Marked 18.x: Enhanced CommonMark compliance, better security defaults
 - ✅ highlight.js 11.11.1: Rust grammar regression fixes
 - ✅ DOMPurify 3.4.1: Strengthened XSS testing harness, regression fixes
-- ✅ Mermaid 11.14.0: Improved rendering, fewer edge case issues
-- ✅ KaTeX 0.16.45: Math rendering improvements, font handling fixes
+- ✅ Mermaid 11.16.1: Security fixes for prototype pollution and CSS injection advisories
+- ✅ KaTeX 0.18.2: Security fix for inherited trust configuration; generated markup is sanitized
 - ✅ Turndown 7.2.4: Stable HTML-to-Markdown conversion
 
 ## File Locations
@@ -49,12 +45,12 @@ src/vendor/
 ├── atom-one-light.min.css        (syntax highlighting theme)
 ├── highlight.min.js              (highlight.js 11.11.1)
 ├── marked.min.js                 (marked 18.0.2)
-├── mermaid.min.js                (mermaid 11.14.0)
+├── mermaid.min.js                (mermaid 11.16.1)
 ├── purify.min.js                 (DOMPurify 3.4.1)
 ├── turndown.js                   (Turndown 7.2.4)
 ├── turndown-plugin-gfm.js        (turndown-plugin-gfm 1.0.2)
 └── katex/
-    ├── katex.min.js              (KaTeX 0.16.45)
+    ├── katex.min.js              (KaTeX 0.18.2)
     ├── katex.min.css
     └── fonts/                    (KaTeX font files .woff2 format)
         ├── KaTeX_Main-Regular.woff2

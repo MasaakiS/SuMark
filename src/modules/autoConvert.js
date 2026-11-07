@@ -560,8 +560,9 @@ function handleInlineAutoConversion() {
             div.setAttribute('data-math', math);
             div.setAttribute('contenteditable', 'false');
             try {
-                div.innerHTML = katex.renderToString(math, {displayMode: true, throwOnError: false});
+                div.innerHTML = renderKatexToString(math, {displayMode: true, throwOnError: false});
             } catch (err) {
+                console.error('[Math] KaTeX render error:', err);
                 div.textContent = '$$' + math + '$$';
             }
             frag.appendChild(div);
@@ -602,8 +603,9 @@ function handleInlineAutoConversion() {
         span.setAttribute('data-math', math);
         span.setAttribute('contenteditable', 'false');
         try {
-            span.innerHTML = katex.renderToString(math, {displayMode: false, throwOnError: false});
+            span.innerHTML = renderKatexToString(math, {displayMode: false, throwOnError: false});
         } catch (err) {
+            console.error('[Math] KaTeX render error:', err);
             span.textContent = '$' + math + '$';
         }
         frag.appendChild(span);

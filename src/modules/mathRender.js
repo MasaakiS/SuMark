@@ -8,6 +8,17 @@
  */
 
 // ========== KaTeX Math Rendering ==========
+function renderKatexToString(math, options) {
+    if (typeof DOMPurify === 'undefined') {
+        throw new Error('DOMPurify is required to sanitize KaTeX output.');
+    }
+
+    const html = katex.renderToString(math, { ...options, trust: false });
+    return DOMPurify.sanitize(html, {
+        USE_PROFILES: { html: true, mathMl: true },
+    });
+}
+
 /**
  * Render all math expressions in the editor.
  * This is called after loading a Markdown file to convert $$...$$ and $...$ to rendered math.
@@ -90,7 +101,7 @@ function renderMathBlocks() {
                 div.setAttribute('data-math', rep.math);
                 div.setAttribute('contenteditable', 'false');
                 try {
-                    div.innerHTML = katex.renderToString(rep.math, {displayMode: true, throwOnError: false});
+                    div.innerHTML = renderKatexToString(rep.math, {displayMode: true, throwOnError: false});
                 } catch (err) {
                     console.error('[Math] KaTeX render error:', err);
                     div.textContent = '$$' + rep.math + '$$';
@@ -172,7 +183,7 @@ function renderMathBlocks() {
                 span.setAttribute('data-math', rep.math);
                 span.setAttribute('contenteditable', 'false');
                 try {
-                    span.innerHTML = katex.renderToString(rep.math, {displayMode: false, throwOnError: false});
+                    span.innerHTML = renderKatexToString(rep.math, {displayMode: false, throwOnError: false});
                 } catch (err) {
                     console.error('[Math] KaTeX render error:', err);
                     span.textContent = '$' + rep.math + '$';
